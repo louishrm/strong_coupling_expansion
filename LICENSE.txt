@@ -1,8 +1,4 @@
-sc_expansion - An example application using triqs and cpp2py
-
-Copyright (C) 2017-2018, N. Wentzell, O. Parcollet
-Copyright (C) 2018-2019, The Simons Foundation
-  authors: N. Wentzell, D. Simons, H. Strand, O. Parcollet
+sc_expansion - A strong-coupling expansion algorithm
 
 sc_expansion is free software: you can redistribute it and/or modify it under the
 terms of the GNU General Public License as published by the Free Software
