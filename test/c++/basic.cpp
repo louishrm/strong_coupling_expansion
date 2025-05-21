@@ -1,7 +1,7 @@
 #include <triqs/test_tools/gfs.hpp>
-#include <app4triqs/app4triqs.hpp>
+#include <sc_expansion/sc_expansion.hpp>
 
-using namespace app4triqs;
+using namespace sc_expansion;
 
 TEST(Toto, Add) { // NOLINT
 

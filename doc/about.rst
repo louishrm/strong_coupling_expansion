@@ -1,6 +1,6 @@
 .. _about:
 
-About app4triqs
+About sc_expansion
 ***************
 
 An example application using ``cpp2py`` and TRIQS.

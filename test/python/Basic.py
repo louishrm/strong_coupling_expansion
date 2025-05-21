@@ -2,7 +2,7 @@
 
 import unittest
 
-from app4triqs import Toto, chain
+from sc_expansion import Toto, chain
 from h5 import *
 from triqs.utility import mpi
 
