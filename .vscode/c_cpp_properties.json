@@ -1,0 +1,16 @@
+{
+    "configurations": [
+        {
+            "name": "LouisMBP",
+            "includePath": [
+                "/Users/louissharma/Desktop/install/triqs/include"
+            ],
+            "defines": [],
+            "compilerPath": "/usr/bin/clang",
+            "cppStandard": "c++20",
+            "intelliSenseMode": "${default}", //"linux-clang-x86",
+            "configurationProvider": "ms-vscode.cmake-tools"
+        }
+    ],
+    "version": 4
+}
