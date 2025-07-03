@@ -3,12 +3,14 @@
         {
             "name": "LouisMBP",
             "includePath": [
-                "/Users/louissharma/Desktop/install/triqs/include"
+                "/Users/louissharma/Desktop/install/triqs/include",
+                "/Users/louissharma/Desktop/source/sc_expansion/src/c++/sc_expansion",
+                "/Users/louissharma/Desktop/source/sc_expansion/src/test/c++"
             ],
             "defines": [],
             "compilerPath": "/usr/bin/clang",
             "cppStandard": "c++20",
-            "intelliSenseMode": "${default}", //"linux-clang-x86",
+            "intelliSenseMode": "${default}",
             "configurationProvider": "ms-vscode.cmake-tools"
         }
     ],
