@@ -24,4 +24,6 @@ namespace hubbard_atom {
 
   double G0(triqs::atom_diag::atom_diag<false> ad, double beta, std::vector<double> times, std::vector<int> spins, std::vector<int> flags);
 
+  double C02(triqs::atom_diag::atom_diag<false> ad, double beta, std::vector<double> times, std::vector<int> spins, std::vector<int> flags);
+
 } // namespace hubbard_atom

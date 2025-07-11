@@ -87,7 +87,10 @@ namespace hubbard_atom {
     //unperturbed n body local Green's function: < Tcdag(tau_1,s_1) c(tau_2,s_2) ....>_0
 
     //times is a vector of imaginary times and spins is a vector of spins "dn" or "up"
-    //Flag is a vector of flags, 0 for create and 1 for destroy.
+    //every imaginary time has a corresponding spin and flag. Every imaginary time with an
+    //even index is a creation operator and every imaginary time with an odd index is a destruction operator.
+    //spins is a vector of spins, 0 for "dn" and 1 for "up".
+    //flags is a vector of flags, 0 for create and 1 for destroy.
 
     nda::matrix<double> rho0 = triqs::atom_diag::atomic_density_matrix(ad, beta)[0]; //rho_0
 
@@ -124,6 +127,21 @@ namespace hubbard_atom {
     double G0_value = sign * trace(op);
 
     return G0_value;
+  }
+
+  double C02(triqs::atom_diag::atom_diag<false> ad, double beta, std::vector<double> times, std::vector<int> spins, std::vector<int> flags) {
+
+    //Second order cumulant C = G2(1,2|1',2') - G1(1|1') G1(2|2') + G1(1|1') G1(2|2')
+
+    double G02 = G0(ad, beta, times, spins, flags); //G0(1,2|1',2')
+
+    double G011_1 = G0(ad, beta, {times[0], times[1]}, {spins[0], spins[1]}, {flags[0], flags[1]}); //G0(1|1')
+    double G011_2 = G0(ad, beta, {times[2], times[3]}, {spins[2], spins[3]}, {flags[2], flags[3]}); //G0(2|2')
+
+    double G012_1 = G0(ad, beta, {times[0], times[3]}, {spins[0], spins[3]}, {flags[0], flags[3]}); //G0(2|1')
+    double G012_2 = G0(ad, beta, {times[1], times[2]}, {spins[1], spins[2]}, {flags[1], flags[2]}); //G0(1|2')
+
+    return G02 - G011_1 * G011_2 + G012_1 * G012_2;
   }
 
 } // namespace hubbard_atom

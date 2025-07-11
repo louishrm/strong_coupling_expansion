@@ -18,11 +18,42 @@ double exact_one_body_GF(double U, double mu, double beta, double Z0, double tau
   return expr;
 }
 
+double free_energy_o2_trimer_contrib(auto ad, double beta, double tau1, double tau2) {
+
+  std::vector<int> spins   = {0, 0};
+  std::vector<int> flags_1 = {0, 1};
+  std::vector<int> flags_2 = {1, 0};
+
+  double G01 = hubbard_atom::G0(ad, beta, {tau1, tau2}, spins, flags_1);
+  double G02 = hubbard_atom::G0(ad, beta, {tau1, tau2}, spins, flags_2);
+
+  double symmetry_factor = 2.0 * 6.0; // 0.5 from series, 2 for spin, 6 for permutations of sites
+
+  double contrib = symmetry_factor * (G01 * G02);
+
+  return contrib;
+}
+
+double free_energy_o2_trimer(auto ad, double beta, double delta) {
+
+  double integral = 0.0;
+  for (double tau_1 = 0.0; tau_1 < beta; tau_1 += delta) {
+
+    for (double tau_2 = 0.0; tau_2 < tau_1; tau_2 += delta) {
+
+      double value = free_energy_o2_trimer_contrib(ad, beta, tau_1, tau_2);
+      integral += value * delta * delta;
+    }
+  }
+
+  return integral;
+}
+
 int main(int argc, char *argv[]) {
 
   double U    = 4.0;
-  double mu   = 1.0;
-  double beta = 1.0;
+  double mu   = 5.0;
+  double beta = 0.5;
 
   triqs::hilbert_space::fundamental_operator_set fops = hubbard_atom::make_fops();
 
@@ -31,47 +62,9 @@ int main(int argc, char *argv[]) {
   triqs::atom_diag::atom_diag<false> ad(H0, fops, {}); // atom_diag object
 
   //double Z0 = triqs::atom_diag::partition_function(ad, beta); // Z0
+  double delta       = beta / 500.0;
+  double free_energy = free_energy_o2_trimer(ad, beta, delta);
 
-  double Z0 = 1 + 2 * std::exp(beta * mu) + std::exp(-beta * (U - 2 * mu));
-  //Z0 *= std::exp(-beta * 2 * mu);
-  double Z0test = hubbard_atom::partition_function(ad, beta); // Z0
-
-  //double Z0test = triqs::atom_diag::partition_function(ad, beta); // Z0 from atom_diag
-
-  std::vector<double> tau_test = {1.0, 0.3};
-  std::vector<int> spins_test  = {0, 0};
-  std::vector<int> flags_test  = {0, 1};
-
-  std::vector<int> spins   = {0, 0};
-  std::vector<int> flags_1 = {0, 1};
-  std::vector<int> flags_2 = {1, 0};
-
-  //std::vector<std::vector<double>> grid_vals;
-  double delta    = 5e-4; // Time step for integration
-  double integral = 0.0;
-
-  for (double tau_1 = 0.0; tau_1 < beta; tau_1 += delta) {
-    //std::vector<double> tau_2_row;
-
-    for (double tau_2 = 0.0; tau_2 < tau_1; tau_2 += delta) {
-
-      double G011 = hubbard_atom::G0(ad, beta, {tau_1, tau_2}, spins, flags_1);
-      double G012 = hubbard_atom::G0(ad, beta, {tau_1, tau_2}, spins, flags_2);
-
-      double value = G011 * G012;
-      integral += value * delta * delta;
-
-      //tau_2_row.push_back(value);
-    }
-
-    //grid_vals.push_back(tau_2_row);
-  }
-
-  integral *= 4 * Z0 * Z0; // Normalize by Z0^2
-
-  double exact = o2_exact(U, mu, beta);
-  std::cout << "Integral = " << integral << std::endl;
-  std::cout << "Exact = " << exact << std::endl;
-
+  std::cout << "Trimer second order for U = " << U << ", mu = " << mu << ", beta = " << beta << ": " << free_energy << std::endl;
   return 0;
 }
