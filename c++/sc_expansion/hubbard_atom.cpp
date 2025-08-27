@@ -46,6 +46,29 @@ namespace hubbard_atom {
     return std::make_tuple(tau, argsort, std::pow(-1, parity));
   }
 
+  bool isSpinConserved(const std::vector<int> &spins, const std::vector<int> &flags) {
+    int netSpinUp   = 0;
+    int netSpinDown = 0;
+
+    for (size_t i = 0; i < spins.size(); ++i) {
+      if (flags[i] == 0) { // Adding a spin
+        if (spins[i] == 1) {
+          netSpinUp++;
+        } else {
+          netSpinDown++;
+        }
+      } else if (flags[i] == 1) { // Removing a spin
+        if (spins[i] == 1) {
+          netSpinUp--;
+        } else {
+          netSpinDown--;
+        }
+      }
+    }
+
+    return netSpinUp == 0 && netSpinDown == 0;
+  }
+
   nda::matrix<double> make_interaction_picture_destroy_op(triqs::atom_diag::atom_diag<false> ad, double tau, int state_index) {
 
     double Z01 = partition_function(ad, tau);  //Z0
@@ -57,8 +80,7 @@ namespace hubbard_atom {
 
     auto time_evol_2 = triqs::atom_diag::atomic_density_matrix(ad, tau)[0]; //time evolution operator
     auto ctau        = Z01 * Z02 * time_evol_1 * cmat * time_evol_2;        //interaction picture destroy operator
-
-    // std::cout << "Interaction picture destroy operator: " << ctau << std::endl;
+    //std::cout << "Interaction picture destroy operator: " << ctau << std::endl;
     return ctau; //return the interaction picture destroy operator
   }
 
@@ -84,26 +106,23 @@ namespace hubbard_atom {
 
   double G0(triqs::atom_diag::atom_diag<false> ad, double beta, std::vector<double> times, std::vector<int> spins, std::vector<int> flags) {
 
-    //unperturbed n body local Green's function: < Tcdag(tau_1,s_1) c(tau_2,s_2) ....>_0
+    //unperturbed n body local Green's function: < Tc(tau_1,s_1) ... c(tau_n,s_n) \ cdag(tau_1', s_1')... cdag(tau_n', s_n')>_0
 
-    //times is a vector of imaginary times and spins is a vector of spins "dn" or "up"
-    //every imaginary time has a corresponding spin and flag. Every imaginary time with an
-    //even index is a creation operator and every imaginary time with an odd index is a destruction operator.
+    //times is a vector of imaginary times
+    //every imaginary time has a corresponding spin and flag.
     //spins is a vector of spins, 0 for "dn" and 1 for "up".
     //flags is a vector of flags, 0 for create and 1 for destroy.
+
+    //if (isSpinConserved(spins, flags) == false) { return 0.0; } //if the spin is not conserved, return 0
 
     nda::matrix<double> rho0 = triqs::atom_diag::atomic_density_matrix(ad, beta)[0]; //rho_0
 
     //first, sort the times, get the argsort and the sign of the UGF
     auto [sorted_times, argsort, sign] = imag_time_sort_and_sign(times);
 
-    // std::cout << "Sorted times: ";
-    // for (const auto &t : sorted_times) std::cout << t << " ";
-    // std::cout << std::endl;
-
     //now sort the spins according to the argsort
     std::vector<int> sorted_spins;
-    std::vector<int> sorted_flags;
+    std::vector<int> sorted_flags; 
     sorted_spins.reserve(spins.size());
     sorted_flags.reserve(flags.size());
     for (auto i : argsort) {
@@ -120,28 +139,27 @@ namespace hubbard_atom {
       } else {
         op *= make_interaction_picture_destroy_op(ad, sorted_times[i], sorted_spins[i]);
       }
+      //std::cout << "op after time " << sorted_times[i] << ": " << op << std::endl;
     }
-
-    double Z0 = partition_function(ad, beta); //Z0
-
     double G0_value = sign * trace(op);
+    //std::cout << "G0 value: " << G0_value << std::endl;
 
     return G0_value;
   }
 
   double C02(triqs::atom_diag::atom_diag<false> ad, double beta, std::vector<double> times, std::vector<int> spins, std::vector<int> flags) {
 
-    //Second order cumulant C = G2(1,2|1',2') - G1(1|1') G1(2|2') + G1(1|1') G1(2|2')
+    //Second order cumulant C(1,2|3,4) = G2(1,2|3,4) - G1(1|3) G1(2|4) + G1(1|4) G1(2|3)
 
     double G02 = G0(ad, beta, times, spins, flags); //G0(1,2|1',2')
 
-    double G011_1 = G0(ad, beta, {times[0], times[1]}, {spins[0], spins[1]}, {flags[0], flags[1]}); //G0(1|1')
-    double G011_2 = G0(ad, beta, {times[2], times[3]}, {spins[2], spins[3]}, {flags[2], flags[3]}); //G0(2|2')
+    double G01_13 = G0(ad, beta, {times[0], times[2]}, {spins[0], spins[2]}, {flags[0], flags[2]}); //G(1|3)
+    double G01_24 = G0(ad, beta, {times[1], times[3]}, {spins[1], spins[3]}, {flags[1], flags[3]}); //G(2|4)
 
-    double G012_1 = G0(ad, beta, {times[0], times[3]}, {spins[0], spins[3]}, {flags[0], flags[3]}); //G0(2|1')
-    double G012_2 = G0(ad, beta, {times[1], times[2]}, {spins[1], spins[2]}, {flags[1], flags[2]}); //G0(1|2')
+    double G01_14 = G0(ad, beta, {times[0], times[3]}, {spins[0], spins[3]}, {flags[0], flags[3]}); //G(1|4)
+    double G01_23 = G0(ad, beta, {times[1], times[2]}, {spins[1], spins[2]}, {flags[1], flags[2]}); //G(2|3)
 
-    return G02 - G011_1 * G011_2 + G012_1 * G012_2;
+    return G02 - G01_13 * G01_24 + G01_14 * G01_23; //return the second order cumulant
   }
 
 } // namespace hubbard_atom

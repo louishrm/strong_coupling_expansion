@@ -2,58 +2,126 @@
 #include "../c++/sc_expansion/hubbard_atom.hpp"
 
 #include <cmath>
+#include <iostream>
 
-double o2_exact(double U, double mu, double beta) {
-  double term1 = std::exp(beta * mu);
-  double term2 = beta * (1 + std::exp(-beta * (U - 2 * mu)));
-  double term3 = (4 / U) * std::exp(-beta * (U / 2 - mu)) * std::sinh(beta * U / 2);
+double dimer_Omega4a(auto ad, double beta, std::vector<double> tau) {
 
-  double expr = 2 * term1 * beta * (term2 + term3);
-  return expr;
+  std::vector<int> spins = {0, 0};
+  std::vector<int> flags = {1, 0};
+
+  double G01_14 = hubbard_atom::G0(ad, beta, {tau[0], tau[3]}, spins, flags); //G(1|4)
+  double G01_21 = hubbard_atom::G0(ad, beta, {tau[1], tau[0]}, spins, flags); //G(2|1)
+  double G01_32 = hubbard_atom::G0(ad, beta, {tau[2], tau[1]}, spins, flags); //G(3|2)
+  double G01_43 = hubbard_atom::G0(ad, beta, {tau[3], tau[2]}, spins, flags); //G(4|3)
+
+  double sign              = -1.0;
+  double symmetry_factor   = 1 / 4.0;
+  double free_multiplicity = 2.0;
+  double spin_factor       = 2.0; // for spin degeneracy
+  double prefactor         = sign * symmetry_factor * free_multiplicity * spin_factor;
+
+  return prefactor * G01_14 * G01_21 * G01_32 * G01_43;
 }
 
-double exact_one_body_GF(double U, double mu, double beta, double Z0, double tau_1, double tau_2) {
-  double expr = 1 / Z0 * std::exp(-mu * (tau_1 - tau_2)) * (std::exp(beta * mu) + std::exp(U * (tau_1 - tau_2)) * std::exp(-beta * (U - 2 * mu)));
+double dimer_Omega4b(auto ad, double beta, std::vector<double> tau) {
+  double result          = 0.0;
+  std::vector<int> flags = {1, 1, 0, 0};
+  std::vector<int> spins = {0, 0, 0, 0};
 
-  return expr;
+  double C02_up    = hubbard_atom::C02(ad, beta, {tau[1], tau[3], tau[0], tau[2]}, spins, flags); //C(2 4 | 1 3)
+  double G01_14_up = hubbard_atom::G0(ad, beta, {tau[0], tau[1]}, {0, 0}, {1, 0});                //G(1|4)
+  double G01_32_up = hubbard_atom::G0(ad, beta, {tau[2], tau[3]}, {0, 0}, {1, 0});                //G(4|1)
+  result += 2 * C02_up * G01_14_up * G01_32_up;
+
+  double C02_updown  = hubbard_atom::C02(ad, beta, {tau[1], tau[3], tau[0], tau[2]}, {0, 1, 0, 1}, flags); //C(2 4 | 1 3)
+  double G01_14_up_2 = hubbard_atom::G0(ad, beta, {tau[0], tau[1]}, {0, 0}, {1, 0});                       //G(1|4)
+  double G01_32_down = hubbard_atom::G0(ad, beta, {tau[2], tau[3]}, {1, 1}, {1, 0});                       //G(3|2)
+  result += 2 * C02_updown * G01_14_up_2 * G01_32_down;
+
+  double sign              = 1.0;
+  double symmetry_factor   = 1.0 / 2.0;
+  double free_multiplicity = 2.0;
+  double prefactor         = sign * symmetry_factor * free_multiplicity;
+
+  return prefactor * result;
 }
 
-double free_energy_o2_trimer_contrib(auto ad, double beta, double tau1, double tau2) {
+double dimer_Omega4c(auto ad, double beta, std::vector<double> tau) {
 
-  std::vector<int> spins   = {0, 0};
-  std::vector<int> flags_1 = {0, 1};
-  std::vector<int> flags_2 = {1, 0};
+  double result          = 0.0;
+  std::vector<int> flags = {1, 1, 0, 0};
 
-  double G01 = hubbard_atom::G0(ad, beta, {tau1, tau2}, spins, flags_1);
-  double G02 = hubbard_atom::G0(ad, beta, {tau1, tau2}, spins, flags_2);
+  result += 2 * hubbard_atom::C02(ad, beta, {tau[1], tau[3], tau[0], tau[2]}, {0, 0, 0, 0}, flags)
+     * hubbard_atom::C02(ad, beta, {tau[0], tau[2], tau[1], tau[3]}, {0, 0, 0, 0}, flags);
 
-  double symmetry_factor = 2.0 * 6.0; // 0.5 from series, 2 for spin, 6 for permutations of sites
+  result += 2 * hubbard_atom::C02(ad, beta, {tau[1], tau[3], tau[0], tau[2]}, {0, 1, 0, 1}, flags)
+     * hubbard_atom::C02(ad, beta, {tau[0], tau[2], tau[1], tau[3]}, {0, 1, 0, 1}, flags);
 
-  double contrib = symmetry_factor * (G01 * G02);
+  result += 2 * hubbard_atom::C02(ad, beta, {tau[1], tau[3], tau[0], tau[2]}, {1, 0, 0, 1}, flags)
+     * hubbard_atom::C02(ad, beta, {tau[0], tau[2], tau[1], tau[3]}, {0, 1, 1, 0}, flags);
 
-  return contrib;
+  double sign              = 1.0;
+  double symmetry_factor   = 1 / 8.0;
+  double free_multiplicity = 2.0;
+  double prefactor         = sign * symmetry_factor * free_multiplicity;
+
+  return prefactor * result;
 }
 
-double free_energy_o2_trimer(auto ad, double beta, double delta) {
+double dimer_Omega2a(auto ad, double beta, std::vector<double> tau) {
 
-  double integral = 0.0;
-  for (double tau_1 = 0.0; tau_1 < beta; tau_1 += delta) {
+  std::vector<int> spins = {0, 0};
+  std::vector<int> flags = {1, 0};
 
-    for (double tau_2 = 0.0; tau_2 < tau_1; tau_2 += delta) {
+  double G01_12 = hubbard_atom::G0(ad, beta, {tau[0], tau[1]}, spins, flags); //G(1|2)
+  double G01_21 = hubbard_atom::G0(ad, beta, {tau[1], tau[0]}, spins, flags); //G(2|1)
 
-      double value = free_energy_o2_trimer_contrib(ad, beta, tau_1, tau_2);
-      integral += value * delta * delta;
+  double sign              = 1.0;
+  double symmetry_factor   = 1 / 2.0;
+  double free_multiplicity = 2.0;
+  double spin_factor       = 2.0; // for spin degeneracy
+  double prefactor         = sign * symmetry_factor * free_multiplicity * spin_factor;
+
+  return prefactor * G01_12 * G01_21;
+}
+
+double dimer_Omega2(auto ad, double beta, double delta) {
+
+  double result = 0.0;
+
+  for (double tau2 = 0.0; tau2 <= beta; tau2 += delta) {
+    std::vector<double> tau = {0, tau2};
+    double result_a         = dimer_Omega2a(ad, beta, tau);
+    result += result_a * delta;
+  }
+  return result;
+}
+
+double dimer_Omega4(auto ad, double beta, double delta) {
+
+  double result = 0.0;
+
+  for (double tau2 = 0.0; tau2 <= beta; tau2 += delta) {
+    for (double tau3 = 0.0; tau3 <= beta; tau3 += delta) {
+      for (double tau4 = 0.0; tau4 <= beta; tau4 += delta) {
+
+        std::vector<double> tau = {0, tau2, tau3, tau4};
+
+        double result_a = dimer_Omega4a(ad, beta, tau);
+        double result_b = dimer_Omega4b(ad, beta, tau);
+        double result_c = dimer_Omega4c(ad, beta, tau);
+        result += (result_a + result_b + result_c) * delta * delta * delta;
+      }
     }
   }
-
-  return integral;
+  return result;
 }
 
 int main(int argc, char *argv[]) {
 
-  double U    = 4.0;
-  double mu   = 5.0;
-  double beta = 0.5;
+  double U    = 8.0;
+  double beta = 1.0;
+  double mu   = 2.0;
 
   triqs::hilbert_space::fundamental_operator_set fops = hubbard_atom::make_fops();
 
@@ -61,10 +129,12 @@ int main(int argc, char *argv[]) {
 
   triqs::atom_diag::atom_diag<false> ad(H0, fops, {}); // atom_diag object
 
-  //double Z0 = triqs::atom_diag::partition_function(ad, beta); // Z0
-  double delta       = beta / 500.0;
-  double free_energy = free_energy_o2_trimer(ad, beta, delta);
+  double delta = beta / 100.0;
 
-  std::cout << "Trimer second order for U = " << U << ", mu = " << mu << ", beta = " << beta << ": " << free_energy << std::endl;
+  double free_energy = dimer_Omega4(ad, beta, delta);
+  // double free_energy = dimer_Omega2(ad, beta, delta);
+  free_energy *= beta;
+  std::cout << "Free energy order 4 dimer for U = " << U << ", mu = " << mu << ", beta = " << beta << ": " << free_energy << std::endl;
+
   return 0;
 }

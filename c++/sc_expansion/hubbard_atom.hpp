@@ -18,6 +18,8 @@ namespace hubbard_atom {
 
   std::tuple<std::vector<double>, std::vector<int>, int> imag_time_sort_and_sign(std::vector<double> tau);
 
+  bool isSpinConserved(const std::vector<int> &spins, const std::vector<int> &flags);
+
   nda::matrix<double> make_interaction_picture_destroy_op(triqs::atom_diag::atom_diag<false> ad, double tau, int state_index);
 
   nda::matrix<double> make_interaction_picture_create_op(triqs::atom_diag::atom_diag<false> ad, double tau, int state_index);
