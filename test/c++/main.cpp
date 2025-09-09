@@ -117,6 +117,27 @@ double dimer_Omega4(auto ad, double beta, double delta) {
   return result;
 }
 
+double Omega8a(auto ad, double beta, std::vector<double> tau) {
+
+  //8th order polygon diagram with all vertices having same spin
+
+  std::vector<int> spins = {0, 0};
+  std::vector<int> flags = {1, 0};
+  double result          = 1.0;
+
+  //tau pairs = {tau[0], tau[-1]}, {tau[2], tau[0]}
+  int n = tau.size();
+  std::vector<std::vector<double>> tau_pairs;
+  for (int i = 0; i < n; i++) {
+    std::vector<double> pair = {tau[i], tau[(i + n - 1) % n]};
+    tau_pairs.push_back(pair);
+
+    result *= hubbard_atom::G0(ad, beta, pair, spins, flags); //G(i|i-1)
+  }
+
+  return result;
+}
+
 int main(int argc, char *argv[]) {
 
   double U    = 8.0;
@@ -129,12 +150,16 @@ int main(int argc, char *argv[]) {
 
   triqs::atom_diag::atom_diag<false> ad(H0, fops, {}); // atom_diag object
 
-  double delta = beta / 100.0;
+  // double delta = beta / 100.0;
 
-  double free_energy = dimer_Omega4(ad, beta, delta);
-  // double free_energy = dimer_Omega2(ad, beta, delta);
-  free_energy *= beta;
-  std::cout << "Free energy order 4 dimer for U = " << U << ", mu = " << mu << ", beta = " << beta << ": " << free_energy << std::endl;
+  // double free_energy = dimer_Omega4(ad, beta, delta);
+  // // double free_energy = dimer_Omega2(ad, beta, delta);
+  // free_energy *= beta;
+  // std::cout << "Free energy order 4 dimer for U = " << U << ", mu = " << mu << ", beta = " << beta << ": " << free_energy << std::endl;
+
+  std::vector<double> tau = {0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0};
+  double result           = Omega8a(ad, beta, tau);
+  std::cout << "Omega8a: " << result << std::endl;
 
   return 0;
 }
