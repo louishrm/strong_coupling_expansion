@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <iostream>
+#include <xfac/tensor/tensor_ci_2.h>
 
 double dimer_Omega4a(auto ad, double beta, std::vector<double> tau) {
 
@@ -149,6 +150,9 @@ int main(int argc, char *argv[]) {
   triqs::operators::many_body_operator_generic<double> H0 = hubbard_atom::make_H0(U, mu);
 
   triqs::atom_diag::atom_diag<false> ad(H0, fops, {}); // atom_diag object
+
+  xfac::TensorCI2Param params;
+  std::cout << params.bondDim << std::endl;
 
   // double delta = beta / 100.0;
 
