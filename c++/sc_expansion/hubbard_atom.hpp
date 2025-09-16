@@ -5,6 +5,8 @@
 #include <nda/nda.hpp>
 #include <utility>
 #include <iostream>
+#include <algorithm>
+#include <numeric>
 using namespace triqs::operators;
 
 namespace hubbard_atom {

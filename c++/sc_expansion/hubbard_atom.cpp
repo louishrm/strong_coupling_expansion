@@ -2,6 +2,8 @@
 
 namespace hubbard_atom {
 
+  using cumul_args = std::vector<std::pair<double, int>>; //vector of pairs of imaginary time and spin
+
   triqs::hilbert_space::fundamental_operator_set make_fops() {
     triqs::hilbert_space::fundamental_operator_set fops = {};
     for (int o : triqs::arrays::range(1)) fops.insert("dn", o);
@@ -13,7 +15,6 @@ namespace hubbard_atom {
 
     triqs::operators::many_body_operator_generic<double> h = U * n("up", 0) * n("dn", 0);
     h += -mu * (n("up", 0) + n("dn", 0));
-
     return h;
   }
 
@@ -25,48 +26,52 @@ namespace hubbard_atom {
     return Z0;
   }
 
-  std::tuple<std::vector<double>, std::vector<int>, int> imag_time_sort_and_sign(std::vector<double> tau) {
+  int calculate_permutation_sign(const std::vector<int> &p) {
+    int n = p.size();
+    if (n == 0) return 1;
 
-    //sort imaginary times tau, return the sorted times, parity and the argsort
-    std::vector<int> argsort = {};
-    for (int i = 0; i < tau.size(); i++) argsort.push_back(i); //create an index vector
-
-    int n      = tau.size(); //number of imaginary times
-    int parity = 0;          //parity of the permutation
-
-    for (int i = 0; i < n - 1; i++) {
-      for (int j = i + 1; j < n; j++) {
-        if (tau[i] < tau[j]) {
-          std::swap(tau[i], tau[j]);         //swap the imaginary times
-          std::swap(argsort[i], argsort[j]); //swap the index vector
-          parity++;                          //increment the parity
+    std::vector<bool> visited(n, false);
+    int num_cycles = 0;
+    for (int i = 0; i < n; ++i) {
+      if (!visited[i]) {
+        num_cycles++;
+        int j = i;
+        while (!visited[j]) {
+          visited[j] = true;
+          j          = p[j];
         }
       }
     }
-    return std::make_tuple(tau, argsort, std::pow(-1, parity));
+    // Sign of a permutation is (-1)^(n - number_of_cycles)
+    return std::pow(-1, n - num_cycles);
   }
 
-  bool isSpinConserved(const std::vector<int> &spins, const std::vector<int> &flags) {
-    int netSpinUp   = 0;
-    int netSpinDown = 0;
+  std::tuple<std::vector<double>, std::vector<int>, std::vector<int>, int>
+  sort_operators(const std::vector<double> &times, const std::vector<int> &spins, const std::vector<int> &flags) {
 
-    for (size_t i = 0; i < spins.size(); ++i) {
-      if (flags[i] == 0) { // Adding a spin
-        if (spins[i] == 1) {
-          netSpinUp++;
-        } else {
-          netSpinDown++;
-        }
-      } else if (flags[i] == 1) { // Removing a spin
-        if (spins[i] == 1) {
-          netSpinUp--;
-        } else {
-          netSpinDown--;
-        }
-      }
+    int n = times.size();
+    std::vector<int> argsort(n);
+    // 1. Create an index vector: 0, 1, 2, ...
+    std::iota(argsort.begin(), argsort.end(), 0);
+
+    // 2. Sort the index vector based on the corresponding time values (descending)
+    std::sort(argsort.begin(), argsort.end(), [&times](int i, int j) { return times[i] > times[j]; });
+
+    // 3. Calculate the permutation sign
+    int sign = calculate_permutation_sign(argsort);
+
+    // 4. Create the sorted vectors using the argsort vector
+    std::vector<double> sorted_times(n);
+    std::vector<int> sorted_spins(n);
+    std::vector<int> sorted_flags(n);
+
+    for (int i = 0; i < n; ++i) {
+      sorted_times[i] = times[argsort[i]];
+      sorted_spins[i] = spins[argsort[i]];
+      sorted_flags[i] = flags[argsort[i]];
     }
 
-    return netSpinUp == 0 && netSpinDown == 0;
+    return {sorted_times, sorted_spins, sorted_flags, sign};
   }
 
   nda::matrix<double> make_interaction_picture_destroy_op(triqs::atom_diag::atom_diag<false> ad, double tau, int state_index) {
@@ -76,11 +81,9 @@ namespace hubbard_atom {
 
     auto cmat        = ad.c_matrix(state_index, 0);
     auto time_evol_1 = triqs::atom_diag::atomic_density_matrix(ad, -tau)[0]; //time evolution operator
-    // std::cout << "cmat: " << cmat << std::endl;
+    auto time_evol_2 = triqs::atom_diag::atomic_density_matrix(ad, tau)[0];  //time evolution operator
+    auto ctau        = Z01 * Z02 * time_evol_1 * cmat * time_evol_2;         //interaction picture destroy operator
 
-    auto time_evol_2 = triqs::atom_diag::atomic_density_matrix(ad, tau)[0]; //time evolution operator
-    auto ctau        = Z01 * Z02 * time_evol_1 * cmat * time_evol_2;        //interaction picture destroy operator
-    //std::cout << "Interaction picture destroy operator: " << ctau << std::endl;
     return ctau; //return the interaction picture destroy operator
   }
 
@@ -91,58 +94,56 @@ namespace hubbard_atom {
 
     auto cmat        = ad.cdag_matrix(state_index, 0);
     auto time_evol_1 = triqs::atom_diag::atomic_density_matrix(ad, -tau)[0]; //time evolution operator
-
-    // std::cout << "cdagmat: " << cmat << std::endl;
-    // std::cout << "time evolution operator 1: " << time_evol_1 << std::endl;
-
-    auto time_evol_2 = triqs::atom_diag::atomic_density_matrix(ad, tau)[0]; //time evolution operator
-
-    auto cdagtau = Z01 * Z02 * time_evol_1 * cmat * time_evol_2; //interaction picture destroy operator
-
-    // std::cout << "Interaction picture create operator: " << cdagtau << std::endl;
+    auto time_evol_2 = triqs::atom_diag::atomic_density_matrix(ad, tau)[0];  //time evolution operator
+    auto cdagtau     = Z01 * Z02 * time_evol_1 * cmat * time_evol_2;         //interaction picture destroy operator
 
     return cdagtau; //return the interaction picture destroy operator
   }
 
-  double G0(triqs::atom_diag::atom_diag<false> ad, double beta, std::vector<double> times, std::vector<int> spins, std::vector<int> flags) {
+  double G0(triqs::atom_diag::atom_diag<false> ad, double beta, cumul_args unprimed_args, cumul_args primed_args) {
 
     //unperturbed n body local Green's function: < Tc(tau_1,s_1) ... c(tau_n,s_n) \ cdag(tau_1', s_1')... cdag(tau_n', s_n')>_0
 
-    //times is a vector of imaginary times
-    //every imaginary time has a corresponding spin and flag.
-    //spins is a vector of spins, 0 for "dn" and 1 for "up".
-    //flags is a vector of flags, 0 for create and 1 for destroy.
+    int order = unprimed_args.size(); //order of the Green's function
+    if (order != primed_args.size()) { throw std::runtime_error("Error in G0: unprimed_args and primed_args must have the same size"); }
 
-    //if (isSpinConserved(spins, flags) == false) { return 0.0; } //if the spin is not conserved, return 0
+    nda::matrix<double> rho0 = triqs::atom_diag::atomic_density_matrix(ad, beta)[0]; //rho_0 = exp(-beta H0)/Z0
 
-    nda::matrix<double> rho0 = triqs::atom_diag::atomic_density_matrix(ad, beta)[0]; //rho_0
+    //create vectors for all the times, spins and flags
+    int n_ops = 2 * order;
+    std::vector<double> times;
+    std::vector<int> spins;
+    std::vector<int> flags;
+    times.reserve(n_ops);
+    spins.reserve(n_ops);
+    flags.reserve(n_ops);
 
-    //first, sort the times, get the argsort and the sign of the UGF
-    auto [sorted_times, argsort, sign] = imag_time_sort_and_sign(times);
-
-    //now sort the spins according to the argsort
-    std::vector<int> sorted_spins;
-    std::vector<int> sorted_flags; 
-    sorted_spins.reserve(spins.size());
-    sorted_flags.reserve(flags.size());
-    for (auto i : argsort) {
-      sorted_spins.push_back(spins[i]);
-      sorted_flags.push_back(flags[i]);
+    for (auto [t, s] : unprimed_args) {
+      times.push_back(t);
+      spins.push_back(s);
+      flags.push_back(0); //destroy
     }
+
+    for (auto [t, s] : primed_args) {
+      times.push_back(t);
+      spins.push_back(s);
+      flags.push_back(1); //create
+    }
+
+    //get the sorted times, spins and flags as well as the sign of the time-ordering permutation
+    auto [sorted_times, sorted_spins, sorted_flags, sign] = sort_operators(times, spins, flags);
 
     //now compute the Green's function
     nda::matrix<double> op = rho0;
 
-    for (int i = 0; i < sorted_times.size(); i++) {
+    for (int i = 0; i < n_ops; i++) {
       if (sorted_flags[i] == 0) {
         op *= make_interaction_picture_create_op(ad, sorted_times[i], sorted_spins[i]);
       } else {
         op *= make_interaction_picture_destroy_op(ad, sorted_times[i], sorted_spins[i]);
       }
-      //std::cout << "op after time " << sorted_times[i] << ": " << op << std::endl;
     }
     double G0_value = sign * trace(op);
-    //std::cout << "G0 value: " << G0_value << std::endl;
 
     return G0_value;
   }
