@@ -3,6 +3,7 @@
 #include <iostream>
 #include <set>
 #include <sstream>
+#include "../c++/sc_expansion/hubbard_atom.hpp"
 
 // Type definitions for clarity
 using subset         = std::vector<int>;
@@ -125,9 +126,27 @@ void cumulant_decomposition(std::vector<int> &unprimed, std::vector<int> &primed
 }
 
 int main() {
-  std::vector<int> unprimed = {1, 2, 3};
-  std::vector<int> primed   = {1, 2, 3};
+  // std::vector<int> unprimed = {1, 2, 3};
+  // std::vector<int> primed   = {1, 2, 3};
 
-  cumulant_decomposition(unprimed, primed);
+  // cumulant_decomposition(unprimed, primed);
+  // return 0;
+
+  double U    = 8.0;
+  double beta = 1.0;
+  double mu   = 2.0;
+
+  triqs::hilbert_space::fundamental_operator_set fops = hubbard_atom::make_fops();
+
+  triqs::operators::many_body_operator_generic<double> H0 = hubbard_atom::make_H0(U, mu);
+
+  triqs::atom_diag::atom_diag<false> ad(H0, fops, {}); // atom_diag object
+
+  hubbard_atom::cumul_args unprimed = {{0.5, 0}};
+  hubbard_atom::cumul_args primed   = {{0, 0}};
+
+  double G0_value = hubbard_atom::G0(ad, beta, unprimed, primed);
+  std::cout << "result: " << G0_value << std::endl;
+
   return 0;
 }

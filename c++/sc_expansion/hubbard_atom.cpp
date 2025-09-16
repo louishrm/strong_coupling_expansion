@@ -137,7 +137,7 @@ namespace hubbard_atom {
     nda::matrix<double> op = rho0;
 
     for (int i = 0; i < n_ops; i++) {
-      if (sorted_flags[i] == 0) {
+      if (sorted_flags[i] == 1) {
         op *= make_interaction_picture_create_op(ad, sorted_times[i], sorted_spins[i]);
       } else {
         op *= make_interaction_picture_destroy_op(ad, sorted_times[i], sorted_spins[i]);
@@ -148,19 +148,19 @@ namespace hubbard_atom {
     return G0_value;
   }
 
-  double C02(triqs::atom_diag::atom_diag<false> ad, double beta, std::vector<double> times, std::vector<int> spins, std::vector<int> flags) {
+  // double C02(triqs::atom_diag::atom_diag<false> ad, double beta, std::vector<double> times, std::vector<int> spins, std::vector<int> flags) {
 
-    //Second order cumulant C(1,2|3,4) = G2(1,2|3,4) - G1(1|3) G1(2|4) + G1(1|4) G1(2|3)
+  //   //Second order cumulant C(1,2|3,4) = G2(1,2|3,4) - G1(1|3) G1(2|4) + G1(1|4) G1(2|3)
 
-    double G02 = G0(ad, beta, times, spins, flags); //G0(1,2|1',2')
+  //   double G02 = G0(ad, beta, times, spins, flags); //G0(1,2|1',2')
 
-    double G01_13 = G0(ad, beta, {times[0], times[2]}, {spins[0], spins[2]}, {flags[0], flags[2]}); //G(1|3)
-    double G01_24 = G0(ad, beta, {times[1], times[3]}, {spins[1], spins[3]}, {flags[1], flags[3]}); //G(2|4)
+  //   double G01_13 = G0(ad, beta, {times[0], times[2]}, {spins[0], spins[2]}, {flags[0], flags[2]}); //G(1|3)
+  //   double G01_24 = G0(ad, beta, {times[1], times[3]}, {spins[1], spins[3]}, {flags[1], flags[3]}); //G(2|4)
 
-    double G01_14 = G0(ad, beta, {times[0], times[3]}, {spins[0], spins[3]}, {flags[0], flags[3]}); //G(1|4)
-    double G01_23 = G0(ad, beta, {times[1], times[2]}, {spins[1], spins[2]}, {flags[1], flags[2]}); //G(2|3)
+  //   double G01_14 = G0(ad, beta, {times[0], times[3]}, {spins[0], spins[3]}, {flags[0], flags[3]}); //G(1|4)
+  //   double G01_23 = G0(ad, beta, {times[1], times[2]}, {spins[1], spins[2]}, {flags[1], flags[2]}); //G(2|3)
 
-    return G02 - G01_13 * G01_24 + G01_14 * G01_23; //return the second order cumulant
-  }
+  //   return G02 - G01_13 * G01_24 + G01_14 * G01_23; //return the second order cumulant
+  // }
 
 } // namespace hubbard_atom
