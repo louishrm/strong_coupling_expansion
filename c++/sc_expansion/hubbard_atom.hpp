@@ -31,6 +31,6 @@ namespace hubbard_atom {
 
   double G0(triqs::atom_diag::atom_diag<false> ad, double beta, cumul_args unprimed_args, cumul_args primed_args);
 
-  // double C02(triqs::atom_diag::atom_diag<false> ad, double beta, std::vector<double> times, std::vector<int> spins, std::vector<int> flags);
+  double C02(triqs::atom_diag::atom_diag<false> ad, double beta, cumul_args unprimed_args, cumul_args primed_args);
 
 } // namespace hubbard_atom

@@ -148,7 +148,18 @@ namespace hubbard_atom {
     return G0_value;
   }
 
-  // double C02(triqs::atom_diag::atom_diag<false> ad, double beta, std::vector<double> times, std::vector<int> spins, std::vector<int> flags) {
+  double C02(triqs::atom_diag::atom_diag<false> ad, double beta, cumul_args unprimed_args, cumul_args primed_args) {
+
+    double G02 = G0(ad, beta, unprimed_args, primed_args); //G0(1,2|1',2')
+
+    double G0_11 = G0(ad, beta, {unprimed_args[0]}, {primed_args[0]}); //G(1|3)
+    double G0_22 = G0(ad, beta, {unprimed_args[1]}, {primed_args[1]}); //G(2|4)
+
+    double G0_12 = G0(ad, beta, {unprimed_args[0]}, {primed_args[1]}); //G(1|4)
+    double G0_21 = G0(ad, beta, {unprimed_args[1]}, {primed_args[0]}); //G(2|3)
+
+    return G02 - G0_11 * G0_22 + G0_12 * G0_21;
+  } //return the second order cumulant
 
   //   //Second order cumulant C(1,2|3,4) = G2(1,2|3,4) - G1(1|3) G1(2|4) + G1(1|4) G1(2|3)
 
