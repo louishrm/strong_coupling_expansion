@@ -205,8 +205,8 @@ double compute_cumulant_decomposition(const hubbard_atom::cumul_args &unprimed, 
 
       //12
       for (size_t i = 0; i < current_partition.size(); ++i) {
-        const auto &unprimed_subset = current_partition[i];
-        const auto &primed_subset   = primed_subsets[i];
+        const auto &unprimed_idx_subset = current_partition[i];
+        const auto &primed_idx_subset   = primed_subsets[i];
 
         hubbard_atom::cumul_args current_unprimed_args;
         current_unprimed_args.reserve(unprimed_idx_subset.size());
@@ -222,7 +222,7 @@ double compute_cumulant_decomposition(const hubbard_atom::cumul_args &unprimed, 
       subtraction += sign * current_product;
     }
   }
-  return G0n - subtraction; //C^0_n = G^0_n - subtraction
+  return G0n + subtraction; //C^0_n = G^0_n - subtraction
 }
 
 int main() {
@@ -247,6 +247,18 @@ int main() {
 
   double G0_value = hubbard_atom::G0(ad, beta, unprimed, primed);
   std::cout << "result: " << G0_value << std::endl;
+
+  double C1 = compute_cumulant_decomposition(unprimed, primed, ad, beta);
+  std::cout << "C1: " << C1 << std::endl;
+
+  hubbard_atom::cumul_args unprimed_2 = {{0.5, 0}, {0.3, 0}};
+  hubbard_atom::cumul_args primed_2   = {{0, 0}, {0.2, 0}};
+
+  double true_C2 = hubbard_atom::C02(ad, beta, unprimed_2, primed_2);
+  std::cout << "true C2: " << true_C2 << std::endl;
+
+  double C2 = compute_cumulant_decomposition(unprimed_2, primed_2, ad, beta);
+  std::cout << "C2: " << C2 << std::endl;
 
   return 0;
 }
