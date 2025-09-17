@@ -141,7 +141,9 @@ double compute_cumulant_decomposition(const hubbard_atom::cumul_args &unprimed, 
   9. Loop through each subset of the current partition. For each subset, take a slice of the primed permutation corresponding to the size of the current unprimed subset. Sort this slice to get the canonical form. Add these elements to the effective permutation array and store the sorted slice in the primed subsets array.
   10. After constructing the effective permutation, check if it has already been visited. If so, skip to the next permutation. If not, mark it as visited.
   11. Calculate the sign and initialize the corresponding products contrbution. 
-  12. Build the argument lists for the recursive calls. 
+  12. Build the argument lists for the recursive calls and recursively call the function for each subset pair. Multiply the results to get the current product.
+  13. Add the signed product to the result variable.
+  14. Finally return G^0_n + result.
 
   */
 
@@ -259,6 +261,12 @@ int main() {
 
   double C2 = compute_cumulant_decomposition(unprimed_2, primed_2, ad, beta);
   std::cout << "C2: " << C2 << std::endl;
+
+  hubbard_atom::cumul_args unprimed_3 = {{0.5, 0}, {0.3, 0}, {0.1, 0}};
+  hubbard_atom::cumul_args primed_3   = {{0, 0}, {0.2, 0}, {0.4, 0}};
+
+  double C3 = compute_cumulant_decomposition(unprimed_3, primed_3, ad, beta);
+  std::cout << "C3: " << C3 << std::endl;
 
   return 0;
 }
