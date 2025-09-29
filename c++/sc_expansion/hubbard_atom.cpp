@@ -122,7 +122,7 @@ namespace hubbard_atom {
 
     //now sort the spins according to the argsort
     std::vector<int> sorted_spins;
-    std::vector<int> sorted_flags; 
+    std::vector<int> sorted_flags;
     sorted_spins.reserve(spins.size());
     sorted_flags.reserve(flags.size());
     for (auto i : argsort) {
