@@ -136,67 +136,67 @@
 //     result *= hubbard_atom::G0(ad, beta, pair, spins, flags); //G(i|i-1)
 //   }
 
-return result;
-}
-
-std::vector<double> linspace(double start, double end, int num, bool endpoint) {
-  std::vector<double> result;
-  if (num <= 0) { return result; }
-  if (num == 1) {
-    result.push_back(start);
-    return result;
-  }
-  double step = (end - start) / (endpoint ? (num - 1) : num);
-  for (int i = 0; i < num; i++) { result.push_back(start + i * step); }
-  return result;
-}
-//   return result;
+// return result;
 // }
 
-int main(int argc, char *argv[]) {
+// std::vector<double> linspace(double start, double end, int num, bool endpoint) {
+//   std::vector<double> result;
+//   if (num <= 0) { return result; }
+//   if (num == 1) {
+//     result.push_back(start);
+//     return result;
+//   }
+//   double step = (end - start) / (endpoint ? (num - 1) : num);
+//   for (int i = 0; i < num; i++) { result.push_back(start + i * step); }
+//   return result;
+// }
+// //   return result;
+// // }
 
-  int grid_size = std::stoi(argv[1]);
-  int bond_dim  = std::stoi(argv[2]);
+// int main(int argc, char *argv[]) {
 
-  //   double U    = 8.0;
-  //   double beta = 1.0;
-  //   double mu   = 2.0;
+//   int grid_size = std::stoi(argv[1]);
+//   int bond_dim  = std::stoi(argv[2]);
 
-  //   triqs::hilbert_space::fundamental_operator_set fops = hubbard_atom::make_fops();
+//   double U    = 8.0;
+//   double beta = 1.0;
+//   double mu   = 2.0;
 
-  //   triqs::operators::many_body_operator_generic<double> H0 = hubbard_atom::make_H0(U, mu);
+//   triqs::hilbert_space::fundamental_operator_set fops = hubbard_atom::make_fops();
 
-  triqs::atom_diag::atom_diag<false> ad(H0, fops, {}); // atom_diag object
+//   triqs::operators::many_body_operator_generic<double> H0 = hubbard_atom::make_H0(U, mu);
 
-  auto Omega2a_adaptator = [&ad, &beta](std::vector<double> x) {
-    std::vector<double> tau = {beta * sqrt(x[0]), beta * sqrt(x[0]) * x[1]};
-    return dimer_Omega2a(ad, beta, tau);
-  };
+// triqs::atom_diag::atom_diag<false> ad(H0, fops, {}); // atom_diag object
 
-  std::vector<std::vector<double>> grid;
-  for (int i = 0; i < grid_size; i++) {
-    auto row = linspace(0.0, 1.0, grid_size, false);
-    grid.push_back(row);
-  }
+// auto Omega2a_adaptator = [&ad, &beta](std::vector<double> x) {
+//   std::vector<double> tau = {beta * sqrt(x[0]), beta * sqrt(x[0]) * x[1]};
+//   return dimer_Omega2a(ad, beta, tau);
+// };
 
-  xfac::TensorCI2Param params;
-  params.bondDim = bond_dim;
-  std::cout << "Bond dim " << params.bondDim << std::endl;
+// std::vector<std::vector<double>> grid;
+// for (int i = 0; i < grid_size; i++) {
+//   auto row = linspace(0.0, 1.0, grid_size, false);
+//   grid.push_back(row);
+// }
 
-  xfac::CTensorCI2<double, double> TCI2(Omega2a_adaptator, grid, params);
-  TCI2.iterate();
+// xfac::TensorCI2Param params;
+// params.bondDim = bond_dim;
+// std::cout << "Bond dim " << params.bondDim << std::endl;
 
-  double delta = beta / grid_size;
+// xfac::CTensorCI2<double, double> TCI2(Omega2a_adaptator, grid, params);
+// TCI2.iterate();
 
-  // double free_energy = dimer_Omega4(ad, beta, delta);
-  double free_energy = dimer_Omega2(ad, beta, delta);
-  free_energy *= beta;
-  std::cout << "Free energy order 2 dimer for U = " << U << ", mu = " << mu << ", beta = " << beta << ": " << free_energy << std::endl;
-  // std::cout << "Free energy order 4 dimer for U = " << U << ", mu = " << mu << ", beta = " << beta << ": " << free_energy << std::endl;
+// double delta = beta / grid_size;
 
-  // std::vector<double> tau = {0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0};
-  // double result           = Omega8a(ad, beta, tau);
-  // std::cout << "Omega8a: " << result << std::endl;
+// // double free_energy = dimer_Omega4(ad, beta, delta);
+// double free_energy = dimer_Omega2(ad, beta, delta);
+// free_energy *= beta;
+// std::cout << "Free energy order 2 dimer for U = " << U << ", mu = " << mu << ", beta = " << beta << ": " << free_energy << std::endl;
+// std::cout << "Free energy order 4 dimer for U = " << U << ", mu = " << mu << ", beta = " << beta << ": " << free_energy << std::endl;
 
-  //   return 0;
-  // }
+// std::vector<double> tau = {0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0};
+// double result           = Omega8a(ad, beta, tau);
+// std::cout << "Omega8a: " << result << std::endl;
+
+//   return 0;
+// }
