@@ -5,9 +5,13 @@
 #include <nda/nda.hpp>
 #include <utility>
 #include <iostream>
+#include <algorithm>
+#include <numeric>
 using namespace triqs::operators;
 
 namespace hubbard_atom {
+
+  using cumul_args = std::vector<std::pair<double, int>>; //vector of pairs of imaginary time and spin
 
   //unperturbed Hamiltonian
   triqs::hilbert_space::fundamental_operator_set make_fops();
@@ -16,16 +20,17 @@ namespace hubbard_atom {
 
   double partition_function(triqs::atom_diag::atom_diag<false> ad, double beta);
 
-  std::tuple<std::vector<double>, std::vector<int>, int> imag_time_sort_and_sign(std::vector<double> tau);
+  int calculate_permutation_sign(const std::vector<int> &p);
 
-  bool isSpinConserved(const std::vector<int> &spins, const std::vector<int> &flags);
+  std::tuple<std::vector<double>, std::vector<int>, std::vector<int>, int>
+  sort_operators(const std::vector<double> &times, const std::vector<int> &spins, const std::vector<int> &flags);
 
   nda::matrix<double> make_interaction_picture_destroy_op(triqs::atom_diag::atom_diag<false> ad, double tau, int state_index);
 
   nda::matrix<double> make_interaction_picture_create_op(triqs::atom_diag::atom_diag<false> ad, double tau, int state_index);
 
-  double G0(triqs::atom_diag::atom_diag<false> ad, double beta, std::vector<double> times, std::vector<int> spins, std::vector<int> flags);
+  double G0(triqs::atom_diag::atom_diag<false> ad, double beta, cumul_args unprimed_args, cumul_args primed_args);
 
-  double C02(triqs::atom_diag::atom_diag<false> ad, double beta, std::vector<double> times, std::vector<int> spins, std::vector<int> flags);
+  double C02(triqs::atom_diag::atom_diag<false> ad, double beta, cumul_args unprimed_args, cumul_args primed_args);
 
 } // namespace hubbard_atom
