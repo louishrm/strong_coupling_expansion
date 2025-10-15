@@ -127,7 +127,8 @@ namespace {
 
 } // namespace
 
-double compute_cumulant_decomposition(const hubbard_atom::cumul_args &unprimed, const hubbard_atom::cumul_args &primed, auto ad, double beta) {
+double compute_cumulant_decomposition(const hubbard_atom::cumul_args &unprimed, const hubbard_atom::cumul_args &primed,
+                                      const triqs::atom_diag::atom_diag<false> &ad, double beta) {
 
   /*Core logic: 
   -This is a recursive function that should compute C^0_n( unprimed | primed).

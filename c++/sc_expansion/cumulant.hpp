@@ -5,6 +5,7 @@
 #include <vector>
 
 double compute_cumulant_decomposition(const hubbard_atom::cumul_args &unprimed, const hubbard_atom::cumul_args &primed,
-                                      const triqs::atom_diag::atom_diag<false> &ad, double beta);
+                                      const triqs::atom_diag::atom_diag<false> &ad, // <-- Use the specific type here
+                                      double beta);
 
 #endif
