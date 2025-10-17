@@ -91,3 +91,45 @@ int Diagram::get_symmetry_factor() const {
   }
   return symmetry_count * factorial_product;
 }
+
+std::vector<Diagram::Line> Diagram::get_hopping_lines() const {
+
+  std::vector<Line> hopping_lines;
+  for (int i = 0; i < this->V; i++) {
+    for (int j = 0; j < this->V; j++) {
+      int line_count = this->adjacency_matrix[i][j];
+      for (int k = 0; k < line_count; k++) {
+        Line line;
+        line.from_vertex = i;
+        line.to_vertex   = j;
+        hopping_lines.push_back(line);
+      }
+    }
+  }
+  return hopping_lines;
+}
+
+double Diagram::evaluate_at_points(triqs::atom_diag::atom_diag<false> ad, double beta, hubbard_atom::cumul_args args) const {
+
+  //evaluates a diagram at a given set of time-spin args
+
+  auto hopping_lines = this->get_hopping_lines();
+  std::vector<hubbard_atom::cumul_args> unprimed_args_per_vertex(this->V);
+  std::vector<hubbard_atom::cumul_args> primed_args_per_vertex(this->V);
+
+  for (size_t line_idx = 0; line_idx < hopping_lines.size(); line_idx++) { //loop through each hopping line
+
+    auto line = hopping_lines[line_idx];                                  //get the destroy and create vertices for this line
+    unprimed_args_per_vertex[line.from_vertex].push_back(args[line_idx]); //assign the unprimed args to the from vertex
+    primed_args_per_vertex[line.to_vertex].push_back(args[line_idx]);     //assign the primed args to the to vertex
+  }
+
+  double prod = 1.0;
+  for (int vertex = 0; vertex < this->V; vertex++) {
+
+    hubbard_atom::cumul_args unprimed_args = unprimed_args_per_vertex[vertex];
+    hubbard_atom::cumul_args primed_args   = primed_args_per_vertex[vertex];
+    prod *= compute_cumulant_decomposition(unprimed_args, primed_args, ad, beta);
+  }
+  return prod;
+}

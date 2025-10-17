@@ -2,6 +2,8 @@
 #include <numeric>   // For std::accumulate
 #include <algorithm> // For std::next_permutation
 #include <queue>
+#include "./hubbard_atom.hpp"
+#include "./cumulant.hpp"
 
 using adjmat = std::vector<std::vector<int>>; //adjacency matrix is a VxV matrix where V is the number of vertices.
 //Each entry Aij is the number of directed lines from i to j.
@@ -14,7 +16,16 @@ class Diagram {
   bool is_connected() const;
   bool is_particle_number_conserving() const;
   Diagram get_canonical_form() const;
+
   int get_symmetry_factor() const;
+
+  struct Line {
+    int from_vertex;
+    int to_vertex;
+  };
+  std::vector<Line> get_hopping_lines() const;
+
+  double evaluate_at_points(triqs::atom_diag::atom_diag<false> ad, double beta, hubbard_atom::cumul_args args) const;
 
   private:
   int n; //order= number of hopping lines
