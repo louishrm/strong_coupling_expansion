@@ -9,7 +9,121 @@ double dimer_Omega2a(auto ad, double beta, std::vector<double> tau) {
   double G0_12 = compute_cumulant_decomposition({{tau[0], 0}}, {{tau[1], 0}}, ad, beta); //G(1|2)
   double G0_21 = compute_cumulant_decomposition({{tau[1], 0}}, {{tau[0], 0}}, ad, beta); //G(2|1)
 
-  return G0_12 * G0_21;
+  double sign              = 1.0;
+  double symmetry_factor   = 1 / 2.0;
+  double free_multiplicity = 2.0;
+  double spin_factor       = 2.0; // for spin degeneracy
+  double prefactor         = sign * symmetry_factor * free_multiplicity * spin_factor;
+
+  return prefactor * G0_12 * G0_21;
+}
+
+double dimer_Omega2(auto ad, double beta, double delta) {
+
+  double result = 0.0;
+
+  for (double tau2 = 0.0; tau2 <= beta; tau2 += delta) {
+
+    std::vector<double> tau = {0, tau2};
+
+    double result_a = dimer_Omega2a(ad, beta, tau);
+    result += result_a * delta;
+  }
+  return result;
+}
+
+double dimer_Omega2_new(auto ad, double beta, Diagram &D, double delta) {
+
+  double result = 0.0;
+
+  for (double tau2 = 0.0; tau2 <= beta; tau2 += delta) {
+
+    std::vector<double> tau = {0, tau2};
+    double result_a         = D.evaluate_at_taus(ad, beta, tau);
+    result += result_a * delta;
+  }
+  return result;
+}
+
+double dimer_Omega4a(auto ad, double beta, std::vector<double> tau) {
+
+  double G01_14 = compute_cumulant_decomposition({{tau[0], 0}}, {{tau[3], 0}}, ad, beta); //G(1|4)
+  double G01_21 = compute_cumulant_decomposition({{tau[1], 0}}, {{tau[0], 0}}, ad, beta); //G(2|1)
+  double G01_32 = compute_cumulant_decomposition({{tau[2], 0}}, {{tau[1], 0}}, ad, beta); //G(3|2)
+  double G01_43 = compute_cumulant_decomposition({{tau[3], 0}}, {{tau[2], 0}}, ad, beta); //G(4|3)
+
+  double sign              = -1.0;
+  double symmetry_factor   = 1 / 4.0;
+  double free_multiplicity = 2.0;
+  double spin_factor       = 2.0; // for spin degeneracy
+  double prefactor         = sign * symmetry_factor * free_multiplicity * spin_factor;
+
+  return prefactor * G01_14 * G01_21 * G01_32 * G01_43;
+}
+
+double dimer_Omega4b(auto ad, double beta, std::vector<double> tau) {
+  double result = 0.0;
+
+  double C02_up = compute_cumulant_decomposition({{tau[1], 0}, {tau[3], 0}}, {{tau[0], 0}, {tau[2], 0}}, ad, beta); //C(2 4 | 1 3)
+
+  double G01_14_up = compute_cumulant_decomposition({{tau[0], 0}}, {{tau[1], 0}}, ad, beta);
+  double G01_32_up = compute_cumulant_decomposition({{tau[2], 0}}, {{tau[3], 0}}, ad, beta);
+  result += 2 * C02_up * G01_14_up * G01_32_up;
+
+  double C02_updown = compute_cumulant_decomposition({{tau[1], 0}, {tau[3], 1}}, {{tau[0], 0}, {tau[2], 1}}, ad, beta); //C(2 4 | 1 3)
+
+  double G01_14_up_2 = compute_cumulant_decomposition({{tau[0], 0}}, {{tau[1], 0}}, ad, beta); //G(1|4)
+  double G01_32_down = compute_cumulant_decomposition({{tau[2], 1}}, {{tau[3], 1}}, ad, beta); //G(3|2)
+
+  result += 2 * C02_updown * G01_14_up_2 * G01_32_down;
+
+  double sign              = 1.0;
+  double symmetry_factor   = 1.0 / 2.0;
+  double free_multiplicity = 2.0;
+  double prefactor         = sign * symmetry_factor * free_multiplicity;
+
+  return prefactor * result;
+}
+
+double dimer_Omega4c(auto ad, double beta, std::vector<double> tau) {
+
+  double result = 0.0;
+
+  result += 2 * compute_cumulant_decomposition({{tau[1], 0}, {tau[3], 0}}, {{tau[0], 0}, {tau[2], 0}}, ad, beta)
+     * compute_cumulant_decomposition({{tau[0], 0}, {tau[2], 0}}, {{tau[1], 0}, {tau[3], 0}}, ad, beta);
+
+  result += 2 * compute_cumulant_decomposition({{tau[1], 0}, {tau[3], 1}}, {{tau[0], 0}, {tau[2], 1}}, ad, beta)
+     * compute_cumulant_decomposition({{tau[0], 0}, {tau[2], 1}}, {{tau[1], 0}, {tau[3], 1}}, ad, beta);
+
+  result += 2 * compute_cumulant_decomposition({{tau[1], 1}, {tau[3], 0}}, {{tau[0], 0}, {tau[2], 1}}, ad, beta)
+     * compute_cumulant_decomposition({{tau[0], 0}, {tau[2], 1}}, {{tau[1], 1}, {tau[3], 0}}, ad, beta);
+
+  double sign              = 1.0;
+  double symmetry_factor   = 1 / 8.0;
+  double free_multiplicity = 2.0;
+  double prefactor         = sign * symmetry_factor * free_multiplicity;
+
+  return prefactor * result;
+}
+
+double dimer_Omega4(auto ad, double beta, double delta) {
+
+  double result = 0.0;
+
+  for (double tau2 = 0.0; tau2 <= beta; tau2 += delta) {
+    for (double tau3 = 0.0; tau3 <= beta; tau3 += delta) {
+      for (double tau4 = 0.0; tau4 <= beta; tau4 += delta) {
+
+        std::vector<double> tau = {0, tau2, tau3, tau4};
+
+        double result_a = dimer_Omega4a(ad, beta, tau);
+        double result_b = dimer_Omega4b(ad, beta, tau);
+        double result_c = dimer_Omega4c(ad, beta, tau);
+        result += (result_a + result_b + result_c) * delta * delta * delta;
+      }
+    }
+  }
+  return result;
 }
 
 int main() {
@@ -24,22 +138,59 @@ int main() {
 
   //adjmat adjmat_test = {{0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}, {1, 0, 0, 0}}; //4-cycle
   //adjmat adjmat_test = {{0, 1, 1}, {1, 0, 0}, {1, 0, 0}}; //3-cycle with double lines
-  adjmat adjmat_test = {{0, 1}, {1, 0}};
-  Diagram D(adjmat_test);
-  bool test1 = D.is_connected();
-  bool test2 = D.is_particle_number_conserving();
-  int sf     = D.get_symmetry_factor();
-  std::cout << "Connected: " << test1 << ", PNC: " << test2 << ", Symmetry factor: " << sf << std::endl;
+  // adjmat adjmat_test = {{0, 2}, {2, 0}};
+  // Diagram D(adjmat_test);
+  // bool test1 = D.is_connected();
+  // bool test2 = D.is_particle_number_conserving();
+  // int sf     = D.get_symmetry_factor();
+  // std::cout << "Connected: " << test1 << ", PNC: " << test2 << ", Symmetry factor: " << sf << std::endl;
 
-  auto hopping_lines = D.get_hopping_lines();
+  // auto hopping_lines = D.get_hopping_lines();
 
-  for (auto line : hopping_lines) { std::cout << "Line from " << line.from_vertex << " to " << line.to_vertex << std::endl; }
+  // for (auto line : hopping_lines) { std::cout << "Line from " << line.from_vertex << " to " << line.to_vertex << std::endl; }
 
-  double exact = dimer_Omega2a(ad, beta, {0.0, 0.5});
-  std::cout << "Exact Omega2a at (0,0.5): " << exact << std::endl;
+  // std::vector<double> taus = {0.0, 0.5, 0.7, 0.8};
+  // double exact             = dimer_Omega4c(ad, beta, taus);
+  // std::cout << "Exact: " << exact << std::endl;
 
-  hubbard_atom::cumul_args args = {{0.0, 0}, {0.5, 0}};
-  double eval                   = D.evaluate_at_points(ad, beta, args);
-  std::cout << "Diagram evaluated at same points: " << eval << std::endl;
+  // hubbard_atom::cumul_args args = {{0.0, 0}, {0.5, 0}, {0.7, 0}, {0.8, 0}};
+  // double eval                   = D.evaluate_at_points(ad, beta, args);
+  // std::cout << "Diagram evaluated at same points: " << eval << std::endl;
+
+  Diagram D({{0, 1}, {1, 0}}); // second order diagram
+
+  double delta = beta / 20.0;
+  double F2    = dimer_Omega2(ad, beta, delta);
+  std::cout << "Free energy 2nd order for U: " << U << ", mu: " << mu << ", beta: " << beta << " is " << F2 * beta << std::endl;
+
+  double F2_new = dimer_Omega2_new(ad, beta, D, delta);
+  std::cout << "Free energy 2nd order from Diagram class for U: " << U << ", mu: " << mu << ", beta: " << beta << " is " << F2_new * beta
+            << std::endl;
+
+  // double eval = D.evaluate_at_taus(ad, beta, taus);
+  // std::cout << "Diagram evaluated at same taus: " << eval << std::endl;
+
+  adjmat D4a = {{0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}, {1, 0, 0, 0}}; //4-cycle
+  adjmat D4b = {{0, 1, 1}, {1, 0, 0}, {1, 0, 0}};                        //3-cycle with double lines
+  adjmat D4c = {{0, 2}, {2, 0}};                                         //2-cycle with double lines
+
+  double F4                     = 0.0;
+  std::vector<Diagram> diagrams = {Diagram(D4a), Diagram(D4b), Diagram(D4c)};
+  for (int i = 0; i < diagrams.size(); i++) {
+    for (double tau2 = 0.0; tau2 <= beta; tau2 += delta) {
+      for (double tau3 = 0.0; tau3 <= beta; tau3 += delta) {
+        for (double tau4 = 0.0; tau4 <= beta; tau4 += delta) {
+
+          std::vector<double> tau = {0, tau2, tau3, tau4};
+          double result           = diagrams[i].evaluate_at_taus(ad, beta, tau);
+          F4 += result * delta * delta * delta;
+        }
+      }
+    }
+  }
+  std::cout << "Free energy 4th order from Diagram class for U: " << U << ", mu: " << mu << ", beta: " << beta << " is " << F4 * beta << std::endl;
+
+  double exact4 = dimer_Omega4(ad, beta, delta);
+  std::cout << "Free energy 4th order exact for U: " << U << ", mu: " << mu << ", beta: " << beta << " is " << exact4 * beta << std::endl;
   return 0;
 }
