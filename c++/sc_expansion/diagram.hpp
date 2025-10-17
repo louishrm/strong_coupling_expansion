@@ -27,6 +27,10 @@ class Diagram {
 
   double evaluate_at_points(triqs::atom_diag::atom_diag<false> ad, double beta, hubbard_atom::cumul_args args) const;
 
+  double evaluate_at_taus(triqs::atom_diag::atom_diag<false> ad, double beta, std::vector<double> taus) const;
+
+  int diagram_sign() const;
+
   private:
   int n; //order= number of hopping lines
   int V; //number of vertices

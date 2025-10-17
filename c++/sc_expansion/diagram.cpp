@@ -65,6 +65,43 @@ int factorial(int k) {
   return k * factorial(k - 1);
 }
 
+int Diagram::diagram_sign() const {
+
+  int num_loops = 0;
+  std::vector<bool> visited_lines(this->n, false);
+  auto lines = this->get_hopping_lines();
+
+  // Step 1: Build the pairing map (successor map)
+  // For each line 'i', this map will tell you the index of the next line in its loop.
+  std::vector<int> successor_map(this->n);
+  for (int v = 0; v < this->V; ++v) {
+    std::vector<int> incoming_indices;
+    std::vector<int> outgoing_indices;
+    for (int i = 0; i < this->n; ++i) {
+      if (lines[i].to_vertex == v) incoming_indices.push_back(i);
+      if (lines[i].from_vertex == v) outgoing_indices.push_back(i);
+    }
+    // Pair the i-th incoming line with the i-th outgoing line
+    for (size_t i = 0; i < incoming_indices.size(); ++i) { successor_map[incoming_indices[i]] = outgoing_indices[i]; }
+  }
+
+  // Step 2: Traverse and count
+  for (int i = 0; i < this->n; ++i) {
+    if (!visited_lines[i]) {
+      num_loops++;
+      int current_line = i;
+      // Follow the loop until we've marked all its lines
+      while (!visited_lines[current_line]) {
+        visited_lines[current_line] = true;
+        current_line                = successor_map[current_line];
+      }
+    }
+  }
+
+  // Step 3: Determine the sign
+  return (num_loops % 2 == 0) ? 1 : -1;
+}
+
 int Diagram::get_symmetry_factor() const {
 
   //get all V! permutations of vertices.
@@ -132,4 +169,25 @@ double Diagram::evaluate_at_points(triqs::atom_diag::atom_diag<false> ad, double
     prod *= compute_cumulant_decomposition(unprimed_args, primed_args, ad, beta);
   }
   return prod;
+}
+
+double Diagram::evaluate_at_taus(triqs::atom_diag::atom_diag<false> ad, double beta, std::vector<double> taus) const {
+
+  //evaluates a diagram at a given set of times, summing over all spin indices
+  double spin_sum  = 0.0;
+  long num_configs = 1 << this->n;                        //2^n spin configurations
+  for (long config = 0; config < num_configs; config++) { //TODO: only consider spin-conserving configs
+
+    hubbard_atom::cumul_args args;
+    for (int i = 0; i < this->n; i++) {
+      int spin = (config & (1 << i)) ? 1 : 0; //extract spin from bit representation
+      args.push_back({taus[i], spin});
+    }
+    spin_sum += this->evaluate_at_points(ad, beta, args);
+  }
+
+  double symmetry_factor   = (double)this->get_symmetry_factor();
+  double diagram_sign      = (double)this->diagram_sign();
+  double free_multiplicity = 2.0; //assume 2 for now, can be modified later if needed
+  return diagram_sign * spin_sum * free_multiplicity / symmetry_factor;
 }
