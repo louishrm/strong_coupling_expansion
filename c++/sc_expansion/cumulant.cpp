@@ -10,7 +10,7 @@ namespace {
   using partition      = std::vector<subset>;
   using all_partitions = std::vector<partition>;
 
-  void get_partitions(std::vector<int> &set, int index, all_partitions &ans, partition &current_partition) {
+  void get_partitions(std::vector<int> const &set, int index, all_partitions &ans, partition &current_partition) {
     //If all elements are processed, then finished, add the current partition.
     if (index == set.size()) {
       ans.push_back(current_partition);
@@ -20,10 +20,11 @@ namespace {
     // For each subset in the partition
     // add the current element to it
     // and recall
-    for (int i = 0; i < current_partition.size(); i++) {
-      current_partition[i].push_back(set[index]);
+    for (auto &sub : current_partition) {
+
+      sub.push_back(set[index]);
       get_partitions(set, index + 1, ans, current_partition);
-      current_partition[i].pop_back();
+      sub.pop_back();
     }
 
     // Add the current element as a
@@ -125,10 +126,32 @@ namespace {
     }
   }
 
+  bool is_spin_conserving(hubbard_atom::cumul_args const &unprimed, hubbard_atom::cumul_args const &primed) {
+    int up_count_unprimed   = 0;
+    int down_count_unprimed = 0;
+    for (const auto &arg : unprimed) {
+      if (arg.second == 0)
+        up_count_unprimed++;
+      else
+        down_count_unprimed++;
+    }
+
+    int up_count_primed   = 0;
+    int down_count_primed = 0;
+    for (const auto &arg : primed) {
+      if (arg.second == 0)
+        up_count_primed++;
+      else
+        down_count_primed++;
+    }
+
+    return (up_count_unprimed == up_count_primed) && (down_count_unprimed == down_count_primed);
+  }
+
 } // namespace
 
-double compute_cumulant_decomposition(const hubbard_atom::cumul_args &unprimed, const hubbard_atom::cumul_args &primed,
-                                      const triqs::atom_diag::atom_diag<false> &ad, double beta) {
+double compute_cumulant_decomposition(hubbard_atom::cumul_args const &unprimed, hubbard_atom::cumul_args const &primed,
+                                      triqs::atom_diag::atom_diag<false> const &ad, double beta) {
 
   /*Core logic: 
   -This is a recursive function that should compute C^0_n( unprimed | primed).
@@ -147,7 +170,12 @@ double compute_cumulant_decomposition(const hubbard_atom::cumul_args &unprimed, 
   13. Add the signed product to the result variable.
   14. Finally return G^0_n + result.
 
+  TODO: Optimize this function to cache results for specific (unprimed, primed) pairs to avoid redundant calculations.
+
   */
+
+  bool spin_cons = is_spin_conserving(unprimed, primed);
+  if (!spin_cons) { return 0.0; }
 
   //1 Create index vectors for unprimed and primed args.
   int order = unprimed.size();
