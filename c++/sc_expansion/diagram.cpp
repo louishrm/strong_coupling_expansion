@@ -146,7 +146,7 @@ std::vector<Diagram::Line> Diagram::get_hopping_lines() const {
   return hopping_lines;
 }
 
-double Diagram::evaluate_at_points(triqs::atom_diag::atom_diag<false> ad, double beta, hubbard_atom::cumul_args args) const {
+double Diagram::evaluate_at_points(triqs::atom_diag::atom_diag<false> const &ad, double beta, hubbard_atom::cumul_args const &args) const {
 
   //evaluates a diagram at a given set of time-spin args
 
@@ -171,7 +171,7 @@ double Diagram::evaluate_at_points(triqs::atom_diag::atom_diag<false> ad, double
   return prod;
 }
 
-double Diagram::evaluate_at_taus(triqs::atom_diag::atom_diag<false> ad, double beta, std::vector<double> taus) const {
+double Diagram::evaluate_at_taus(triqs::atom_diag::atom_diag<false> const &ad, double beta, std::vector<double> const &taus) const {
 
   //evaluates a diagram at a given set of times, summing over all spin indices
   double spin_sum  = 0.0;

@@ -25,9 +25,9 @@ class Diagram {
   };
   std::vector<Line> get_hopping_lines() const;
 
-  double evaluate_at_points(triqs::atom_diag::atom_diag<false> ad, double beta, hubbard_atom::cumul_args args) const;
+  double evaluate_at_points(triqs::atom_diag::atom_diag<false> const &ad, double beta, hubbard_atom::cumul_args const &args) const;
 
-  double evaluate_at_taus(triqs::atom_diag::atom_diag<false> ad, double beta, std::vector<double> taus) const;
+  double evaluate_at_taus(triqs::atom_diag::atom_diag<false> const &ad, double beta, std::vector<double> const &taus) const;
 
   int diagram_sign() const;
 
