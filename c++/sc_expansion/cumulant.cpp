@@ -6,11 +6,11 @@
 namespace {
 
   // Type definitions for clarity
-  using subset         = std::vector<int>;
-  using partition      = std::vector<subset>;
-  using all_partitions = std::vector<partition>;
+  using subset_t         = std::vector<int>;
+  using partition_t      = std::vector<subset_t>;
+  using all_partitions_t = std::vector<partition_t>;
 
-  void get_partitions(std::vector<int> const &set, int index, all_partitions &ans, partition &current_partition) {
+  void fill_partitions(std::vector<int> const &set, int index, all_partitions_t &ans, partition_t &current_partition) {
     //If all elements are processed, then finished, add the current partition.
     if (index == set.size()) {
       ans.push_back(current_partition);
@@ -23,15 +23,23 @@ namespace {
     for (auto &sub : current_partition) {
 
       sub.push_back(set[index]);
-      get_partitions(set, index + 1, ans, current_partition);
+      fill_partitions(set, index + 1, ans, current_partition);
       sub.pop_back();
     }
 
     // Add the current element as a
     // singleton subset and recall
     current_partition.push_back({set[index]});
-    get_partitions(set, index + 1, ans, current_partition);
+    fill_partitions(set, index + 1, ans, current_partition);
     current_partition.pop_back();
+  }
+
+  all_partitions_t get_partitions(std::vector<int> const &set) {
+
+    all_partitions_t ans;
+    partition_t current_partition;
+    fill_partitions(set, 0, ans, current_partition);
+    return ans;
   }
 
   std::vector<std::vector<int>> generate_permutations(std::vector<int> &set) {
@@ -119,17 +127,15 @@ double compute_cumulant_decomposition(hubbard_atom::cumul_args const &unprimed, 
   double G0n = hubbard_atom::G0(ad, beta, unprimed, primed);
 
   //4 initializae the subtraction term.
-  double subtraction = 0.0;
+  double low_order_cumulants = 0.0;
 
   //5 Generate all partitions of unprimed indices and permutations of primed indices.
-  all_partitions unprimed_partitions;
-  partition c_partition;
-  get_partitions(unprimed_indices, 0, unprimed_partitions, c_partition);
+  all_partitions_t unprimed_partitions = get_partitions(unprimed_indices);
 
   auto primed_perms = generate_permutations(primed_indices);
 
   //6 Loop through partitions and permutations.
-  for (partition current_partition : unprimed_partitions) {
+  for (partition_t current_partition : unprimed_partitions) {
     if (current_partition.size() == 1) continue; // Skip the trivial partition.
 
     //7
@@ -140,7 +146,7 @@ double compute_cumulant_decomposition(hubbard_atom::cumul_args const &unprimed, 
       //8
       int primed_cursor = 0;
       std::vector<int> effective_permutation(order);
-      std::vector<subset> primed_subsets;
+      std::vector<subset_t> primed_subsets;
       std::vector<int>::iterator write_cursor = effective_permutation.begin();
 
       //9.
@@ -178,10 +184,10 @@ double compute_cumulant_decomposition(hubbard_atom::cumul_args const &unprimed, 
         current_product *= compute_cumulant_decomposition(current_unprimed_args, current_primed_args, ad, beta);
       }
 
-      subtraction += sign * current_product;
+      low_order_cumulants += sign * current_product;
     }
   }
-  return G0n + subtraction; //C^0_n = G^0_n - subtraction
+  return G0n + low_order_cumulants;
 }
 
 //COMMENTED OUT FOR NOW, add to tests later
