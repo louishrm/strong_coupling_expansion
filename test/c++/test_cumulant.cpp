@@ -6,6 +6,7 @@
 #include "../c++/sc_expansion/hubbard_atom.hpp"
 #include "../c++/sc_expansion/cumulant.hpp"
 #include <numeric>
+#include <chrono>
 
 double dimer_Omega2a(auto ad, double beta, std::vector<double> tau) {
 
@@ -128,10 +129,24 @@ int main() {
 
   triqs::atom_diag::atom_diag<false> ad(H0, fops, {}); // atom_diag object
 
-  double delta = beta / 1000.0;
-  double F2    = dimer_Omega2(ad, beta, delta);
+  auto start              = std::chrono::high_resolution_clock::now();
+  std::vector<double> tau = {0.0, beta / 3.0, 2.0 * beta / 3.0, beta};
 
-  std::cout << "Free energy 2nd order for U: " << U << ", mu: " << mu << ", beta: " << beta << " is " << F2 * beta << std::endl;
+  double G01_14 = 0.0;
+  for (int i = 0; i < 100; i++) {
+    G01_14 += compute_cumulant_decomposition({{tau[0], 0}, {tau[2], 0}}, {{tau[1], 0}, {tau[3], 0}}, ad, beta); //G(1|4)
+  }
+  G01_14 /= 100.0;
+  std::cout << "Res 4th order cumulant " << G01_14 << std::endl;
+  auto end                              = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double> elapsed = end - start;
+  std::cout << "Elapsed time: " << elapsed.count() << std::endl;
+  std::cout << "4th order cumulant time: " << elapsed.count() / 100.0 << " seconds" << std::endl;
+
+  // double delta = beta / 1000.0;
+  // double F2    = dimer_Omega2(ad, beta, delta);
+
+  // std::cout << "Free energy 2nd order for U: " << U << ", mu: " << mu << ", beta: " << beta << " is " << F2 * beta << std::endl;
 
   //   double delta2 = beta / 100.0;
   //   double F4     = beta * dimer_Omega4(ad, beta, delta2);

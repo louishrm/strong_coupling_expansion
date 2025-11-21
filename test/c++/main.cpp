@@ -113,9 +113,9 @@ std::vector<double> linspace(double start, double end, int num, bool endpoint) {
   return result;
 }
 
-std::function<std::vector<double>(std::vector<double>)> make_x_to_tau(double &beta) {
+std::function<std::vector<double>(std::vector<double>)> make_x_to_tau(double beta) {
 
-  return [&beta](std::vector<double> xs) -> std::vector<double> {
+  return [beta](std::vector<double> xs) -> std::vector<double> {
     int n = xs.size();
     std::vector<double> taus(xs.size());
     taus[0] = beta * std::pow(xs[0], 1.0 / (double)n);
