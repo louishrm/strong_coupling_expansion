@@ -14,41 +14,59 @@ std::function<std::vector<double>(std::vector<double>)> make_x_to_tau(double bet
   };
 }
 
-int main(int argc, char *argv[]) {
+double compute_4th_order_diagrams(triqs::atom_diag::atom_diag<false> const &ad, double U, double beta, double mu, std::vector<double> const &taus) {
 
-  auto start = std::chrono::high_resolution_clock::now();
-  double x1  = std::stod(argv[1]);
-  double x2  = std::stod(argv[2]);
-  double x3  = std::stod(argv[3]);
-  double x4  = std::stod(argv[4]);
+  //Define the 4th order diagrams
+  adjmat D4a = {{0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}, {1, 0, 0, 0}}; //4-cycle
+  adjmat D4b = {{0, 1, 1}, {1, 0, 0}, {1, 0, 0}};                        //3-cycle with double lines
+  adjmat D4c = {{0, 2}, {2, 0}};                                         //2-cycle with double lines
 
-  double U    = 8.0;
-  double beta = 1.0;
-  double mu   = 2.0;
-
-  triqs::hilbert_space::fundamental_operator_set fops     = hubbard_atom::make_fops();
-  triqs::operators::many_body_operator_generic<double> H0 = hubbard_atom::make_H0(U, mu);
-  triqs::atom_diag::atom_diag<false> ad(H0, fops, {}); // atom_diag object
-
-  adjmat D4a                    = {{0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}, {1, 0, 0, 0}}; //4-cycle
-  adjmat D4b                    = {{0, 1, 1}, {1, 0, 0}, {1, 0, 0}};                        //3-cycle with double lines
-  adjmat D4c                    = {{0, 2}, {2, 0}};                                         //2-cycle with double lines
   std::vector<Diagram> diagrams = {Diagram(D4a), Diagram(D4b), Diagram(D4c)};
 
-  for (int i = 0; i < 100; i++) {
-    double diagram_sum = 0.0;
-    for (auto const &diagram : diagrams) {
+  double diagram_sum = 0.0;
+  for (auto const &diagram : diagrams) {
 
-      std::vector<double> x = {x1, x2, x3, x4};
-      auto taus             = make_x_to_tau(beta)(x);
-      double val            = diagram.evaluate_at_taus(ad, beta, taus);
-      diagram_sum += val;
-    }
+    double val = diagram.evaluate_at_taus(ad, beta, taus);
+    diagram_sum += val;
   }
-  auto end                              = std::chrono::high_resolution_clock::now();
-  std::chrono::duration<double> elapsed = end - start;
-  std::cout << "Elapsed time: " << elapsed.count() << " seconds\n";
-  //std::cout << "Value computed: " << diagram_sum << std::endl;
-  //std::cout.write(reinterpret_cast<const char *>(&diagram_sum), sizeof(diagram_sum));
-  return 0;
+  return diagram_sum;
 }
+
+// int main(int argc, char *argv[]) {
+
+//   auto start = std::chrono::high_resolution_clock::now();
+//   double x1  = std::stod(argv[1]);
+//   double x2  = std::stod(argv[2]);
+//   double x3  = std::stod(argv[3]);
+//   double x4  = std::stod(argv[4]);
+
+//   double U    = 8.0;
+//   double beta = 1.0;
+//   double mu   = 2.0;
+
+//   triqs::hilbert_space::fundamental_operator_set fops     = hubbard_atom::make_fops();
+//   triqs::operators::many_body_operator_generic<double> H0 = hubbard_atom::make_H0(U, mu);
+//   triqs::atom_diag::atom_diag<false> ad(H0, fops, {}); // atom_diag object
+
+//   adjmat D4a                    = {{0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}, {1, 0, 0, 0}}; //4-cycle
+//   adjmat D4b                    = {{0, 1, 1}, {1, 0, 0}, {1, 0, 0}};                        //3-cycle with double lines
+//   adjmat D4c                    = {{0, 2}, {2, 0}};                                         //2-cycle with double lines
+//   std::vector<Diagram> diagrams = {Diagram(D4a), Diagram(D4b), Diagram(D4c)};
+
+//   for (int i = 0; i < 100; i++) {
+//     double diagram_sum = 0.0;
+//     for (auto const &diagram : diagrams) {
+
+//       std::vector<double> x = {x1, x2, x3, x4};
+//       auto taus             = make_x_to_tau(beta)(x);
+//       double val            = diagram.evaluate_at_taus(ad, beta, taus);
+//       diagram_sum += val;
+//     }
+//   }
+//   auto end                              = std::chrono::high_resolution_clock::now();
+//   std::chrono::duration<double> elapsed = end - start;
+//   std::cout << "Elapsed time: " << elapsed.count() << " seconds\n";
+//   //std::cout << "Value computed: " << diagram_sum << std::endl;
+//   //std::cout.write(reinterpret_cast<const char *>(&diagram_sum), sizeof(diagram_sum));
+//   return 0;
+// }
