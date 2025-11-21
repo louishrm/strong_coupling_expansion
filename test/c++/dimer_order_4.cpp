@@ -14,14 +14,8 @@ std::function<std::vector<double>(std::vector<double>)> make_x_to_tau(double bet
   };
 }
 
-double compute_4th_order_diagrams(triqs::atom_diag::atom_diag<false> const &ad, double U, double beta, double mu, std::vector<double> const &taus) {
-
-  //Define the 4th order diagrams
-  adjmat D4a = {{0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}, {1, 0, 0, 0}}; //4-cycle
-  adjmat D4b = {{0, 1, 1}, {1, 0, 0}, {1, 0, 0}};                        //3-cycle with double lines
-  adjmat D4c = {{0, 2}, {2, 0}};                                         //2-cycle with double lines
-
-  std::vector<Diagram> diagrams = {Diagram(D4a), Diagram(D4b), Diagram(D4c)};
+double compute_4th_order_diagrams(triqs::atom_diag::atom_diag<false> const &ad, double U, double beta, double mu, std::vector<double> const &taus,
+                                  std::vector<Diagram> const &diagrams) {
 
   double diagram_sum = 0.0;
   for (auto const &diagram : diagrams) {
