@@ -168,6 +168,15 @@ double Diagram::evaluate_at_points(triqs::atom_diag::atom_diag<false> const &ad,
     hubbard_atom::cumul_args primed_args   = primed_args_per_vertex[vertex];
     prod *= compute_cumulant_decomposition(unprimed_args, primed_args, ad, beta);
   }
+
+  // for (int vertex = 0; vertex < this->V; vertex++) {
+  //   std::cout << "Vertex " << vertex << " unprimed args: ";
+  //   for (const auto &arg : unprimed_args_per_vertex[vertex]) { std::cout << "(" << arg.first << ", " << arg.second << ") "; }
+  //   std::cout << std::endl;
+  //   std::cout << "Vertex " << vertex << " primed args: ";
+  //   for (const auto &arg : primed_args_per_vertex[vertex]) { std::cout << "(" << arg.first << ", " << arg.second << ") "; }
+  //   std::cout << std::endl;
+  // }
   return prod;
 }
 
@@ -188,6 +197,6 @@ double Diagram::evaluate_at_taus(triqs::atom_diag::atom_diag<false> const &ad, d
 
   double symmetry_factor   = (double)this->get_symmetry_factor();
   double diagram_sign      = (double)this->diagram_sign();
-  double free_multiplicity = 2.0; //assume 2 for now, can be modified later if needed
+  double free_multiplicity = 1.0; //assume 1 for now, can be modified later if needed
   return diagram_sign * spin_sum * free_multiplicity / symmetry_factor;
 }
