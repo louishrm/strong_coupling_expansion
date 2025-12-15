@@ -25,6 +25,6 @@ r"""
 DOC
 
 """
-from .sc_expansion_module import Toto, chain
+from .sc_expansion_module import Order4
 
-__all__ = ['Toto', 'chain']
+__all__ = ['Order4']
