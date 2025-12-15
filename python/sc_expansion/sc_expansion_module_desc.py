@@ -32,4 +32,16 @@ c.add_method("""double compute_sum_diagrams(std::vector<double> taus)""", doc = 
 
 module.add_class(c)
 
+c = class_(
+        py_type = "Order2",  # name of the python class
+        c_type = "sc_expansion::order2",   # name of the C++ class
+        doc = r"""A very useful and important class""",   # doc of the C++ class
+        hdf5 = False
+)
+
+c.add_constructor("""(double U, double mu, double beta)""", doc = r"""""")
+
+c.add_method("""double compute_sum_diagrams(std::vector<double> taus)""", doc = r""" """)
+
+
 module.generate_code()
