@@ -9,23 +9,20 @@ class HubbardAtomTest : public ::testing::Test {
   double beta = 1.0;
   double mu   = 2.0;
 
-  // We declare the atom_diag object here, but initialize it in SetUp or constructor
-  // Depending on TRIQS version, smart pointers (std::shared_ptr) might be safer/easier here
-  // to avoid default constructor issues, but assuming copy/move works:
-  std::unique_ptr<triqs::atom_diag::atom_diag<false>> ad;
+  triqs::atom_diag::atom_diag<false> ad;
 
   void SetUp() override {
     auto fops = hubbard_atom::make_fops();
     auto H0   = hubbard_atom::make_H0(U, mu);
 
     // This allows you to keep using {} because it bypasses template deduction
-    ad.reset(new triqs::atom_diag::atom_diag<false>(H0, fops, {}));
+    ad = triqs::atom_diag::atom_diag<false>(H0, fops, {});
   }
 };
 
 TEST_F(HubbardAtomTest, PartitionFunctionMatchesExactResult) {
   double Z_exact = 1 + 2 * std::exp(beta * mu) + std::exp(-beta * (U - 2 * mu));
-  double Z       = hubbard_atom::partition_function(*ad, beta);
+  double Z       = hubbard_atom::_partition_function(ad, beta);
 
   // EXPECT_NEAR is better than 'abs > 1e-10' because it handles output formatting
   EXPECT_NEAR(Z, Z_exact, 1e-10);
@@ -40,7 +37,7 @@ TEST_F(HubbardAtomTest, GreenFunctionG01MatchesExactResult) {
   hubbard_atom::cumul_args unprimed = {{tau, 0}};
   hubbard_atom::cumul_args primed   = {{0, 0}};
 
-  double G01 = hubbard_atom::G0(*ad, beta, unprimed, primed);
+  double G01 = hubbard_atom::G0(ad, beta, unprimed, primed);
 
   EXPECT_NEAR(G01, G01_exact, 1e-10);
 }

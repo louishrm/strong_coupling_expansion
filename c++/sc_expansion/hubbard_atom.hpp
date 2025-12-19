@@ -18,7 +18,7 @@ namespace hubbard_atom {
 
   triqs::operators::many_body_operator_generic<double> make_H0(double U, double mu);
 
-  double partition_function(triqs::atom_diag::atom_diag<false> ad, double beta);
+  double _partition_function(triqs::atom_diag::atom_diag<false> ad, double beta);
 
   int calculate_permutation_sign(const std::vector<int> &p);
 
