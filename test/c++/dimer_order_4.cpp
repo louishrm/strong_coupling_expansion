@@ -3,6 +3,8 @@
 #include "../../c++/sc_expansion/cumulant.hpp"
 #include <chrono>
 
+using namespace sc_expansion;
+
 std::function<std::vector<double>(std::vector<double>)> make_x_to_tau(double beta) {
 
   return [beta](std::vector<double> xs) -> std::vector<double> {

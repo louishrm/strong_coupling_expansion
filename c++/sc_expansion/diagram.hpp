@@ -1,3 +1,5 @@
+#pragma once
+
 #include <vector>
 #include <numeric>   // For std::accumulate
 #include <algorithm> // For std::next_permutation
@@ -5,13 +7,15 @@
 #include "./hubbard_atom.hpp"
 #include "./cumulant.hpp"
 
+namespace sc_expansion {
+
 using adjmat = std::vector<std::vector<int>>; //adjacency matrix is a VxV matrix where V is the number of vertices.
 //Each entry Aij is the number of directed lines from i to j.
 
 class Diagram {
 
   public:
-  Diagram(const adjmat &adjacency_matrix, double U, double beta, double mu);
+  Diagram(adjmat adjacency_matrix, double U, double beta, double mu);
 
   bool is_connected() const;
   bool is_particle_number_conserving() const;
@@ -27,7 +31,7 @@ class Diagram {
 
   double evaluate_at_points(hubbard_atom::cumul_args const &args) const;
 
-  double evaluate_at_taus(std::vector<double> const &taus) const;
+  double evaluate_at_taus(std::vector<double> taus) const;
 
   int diagram_sign() const;
 
@@ -40,3 +44,5 @@ class Diagram {
   double beta;
   double mu;
 };
+
+}

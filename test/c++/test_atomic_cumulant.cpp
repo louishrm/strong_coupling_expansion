@@ -3,6 +3,8 @@
 #include "../c++/sc_expansion/hubbard_atom.hpp"
 #include "../c++/sc_expansion/cumulant.hpp"
 
+using namespace sc_expansion;
+
 // The Test Fixture: Sets up the data common to all tests
 class HubbardAtomTest : public ::testing::Test {
   protected:

@@ -3,10 +3,11 @@
 
 #include <cmath>
 #include <iostream>
-#include <xfac/tensor/tensor_ci_2.h>
 #include <nda/nda.hpp>
 #include "../c++/sc_expansion/cumulant.hpp"
 // #include <function>
+
+using namespace sc_expansion;
 
 double dimer_Omega2a(auto ad, double beta, std::vector<double> tau) {
 
@@ -124,6 +125,7 @@ std::function<std::vector<double>(std::vector<double>)> make_x_to_tau(double bet
   };
 }
 
+/*
 double sum_TCI(xfac::CTensorCI2<double, double> &TT, std::vector<std::vector<double>> &grid) {
 
   int n = TT.len();
@@ -339,3 +341,5 @@ int main(int argc, char *argv[]) {
 // //   }
 // //   std::cout << std::endl;
 // // }
+
+*/

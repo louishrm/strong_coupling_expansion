@@ -9,6 +9,8 @@
 #include <numeric>
 #include <chrono>
 
+using namespace sc_expansion;
+
 double dimer_Omega2a(auto ad, double beta, std::vector<double> tau) {
 
   double G0_12 = compute_cumulant_decomposition({{tau[0], 0}}, {{tau[1], 0}}, ad, beta); //G(1|2)

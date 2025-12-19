@@ -1,6 +1,8 @@
 #include "diagram.hpp"
 
-Diagram::Diagram(const adjmat &adjacency_matrix, double U, double beta, double mu) {
+namespace sc_expansion {
+
+Diagram::Diagram(adjmat adjacency_matrix, double U, double beta, double mu) {
 
   this->adjacency_matrix = adjacency_matrix;
 
@@ -190,7 +192,7 @@ double Diagram::evaluate_at_points(hubbard_atom::cumul_args const &args) const {
   return prod;
 }
 
-double Diagram::evaluate_at_taus(std::vector<double> const &taus) const {
+double Diagram::evaluate_at_taus(std::vector<double> taus) const {
 
   //evaluates a diagram at a given set of times, summing over all spin indices
   double spin_sum  = 0.0;
@@ -209,4 +211,6 @@ double Diagram::evaluate_at_taus(std::vector<double> const &taus) const {
   double diagram_sign      = (double)this->diagram_sign();
   double free_multiplicity = 1.0; //assume 1 for now, can be modified later if needed
   return diagram_sign * spin_sum * free_multiplicity / symmetry_factor;
+}
+
 }

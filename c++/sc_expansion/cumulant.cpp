@@ -85,6 +85,8 @@ namespace {
 
 } // namespace
 
+namespace sc_expansion {
+
 double compute_cumulant_decomposition(hubbard_atom::cumul_args const &unprimed, hubbard_atom::cumul_args const &primed,
                                       triqs::atom_diag::atom_diag<false> const &ad, double beta) {
 
@@ -264,3 +266,5 @@ double compute_cumulant_decomposition(hubbard_atom::cumul_args const &unprimed, 
 //     std::cout << "}\n";
 //   }
 // }
+
+}
