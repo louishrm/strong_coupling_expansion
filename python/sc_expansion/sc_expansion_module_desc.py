@@ -43,5 +43,6 @@ c.add_constructor("""(double U, double mu, double beta)""", doc = r"""""")
 
 c.add_method("""double compute_sum_diagrams(std::vector<double> taus)""", doc = r""" """)
 
+module.add_class(c)
 
 module.generate_code()

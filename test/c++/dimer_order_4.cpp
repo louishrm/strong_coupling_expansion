@@ -14,13 +14,12 @@ std::function<std::vector<double>(std::vector<double>)> make_x_to_tau(double bet
   };
 }
 
-double compute_4th_order_diagrams(triqs::atom_diag::atom_diag<false> const &ad, double U, double beta, double mu, std::vector<double> const &taus,
-                                  std::vector<Diagram> const &diagrams) {
+double compute_4th_order_diagrams(std::vector<double> const &taus, std::vector<Diagram> const &diagrams) {
 
   double diagram_sum = 0.0;
   for (auto const &diagram : diagrams) {
 
-    double val = diagram.evaluate_at_taus(ad, beta, taus);
+    double val = diagram.evaluate_at_taus(taus);
     diagram_sum += val;
   }
   return diagram_sum;

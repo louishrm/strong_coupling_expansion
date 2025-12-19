@@ -11,7 +11,7 @@ using adjmat = std::vector<std::vector<int>>; //adjacency matrix is a VxV matrix
 class Diagram {
 
   public:
-  Diagram(const adjmat &adjacency_matrix);
+  Diagram(const adjmat &adjacency_matrix, double U, double beta, double mu);
 
   bool is_connected() const;
   bool is_particle_number_conserving() const;
@@ -25,9 +25,9 @@ class Diagram {
   };
   std::vector<Line> get_hopping_lines() const;
 
-  double evaluate_at_points(triqs::atom_diag::atom_diag<false> const &ad, double beta, hubbard_atom::cumul_args const &args) const;
+  double evaluate_at_points(hubbard_atom::cumul_args const &args) const;
 
-  double evaluate_at_taus(triqs::atom_diag::atom_diag<false> const &ad, double beta, std::vector<double> const &taus) const;
+  double evaluate_at_taus(std::vector<double> const &taus) const;
 
   int diagram_sign() const;
 
@@ -35,4 +35,8 @@ class Diagram {
   int n; //order= number of hopping lines
   int V; //number of vertices
   adjmat adjacency_matrix;
+  triqs::atom_diag::atom_diag<false> ad;
+  double U;
+  double beta;
+  double mu;
 };

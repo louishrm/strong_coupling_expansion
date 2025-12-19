@@ -1,6 +1,6 @@
 #include "diagram.hpp"
 
-Diagram::Diagram(const adjmat &adjacency_matrix) {
+Diagram::Diagram(const adjmat &adjacency_matrix, double U, double beta, double mu) {
 
   this->adjacency_matrix = adjacency_matrix;
 
@@ -11,6 +11,16 @@ Diagram::Diagram(const adjmat &adjacency_matrix) {
     for (const auto &entry : row) { order += entry; }
   }
   this->n = order;
+
+  this->U    = U;
+  this->beta = beta;
+  this->mu   = mu;
+
+  triqs::atom_diag::atom_diag<false> ad;
+  triqs::hilbert_space::fundamental_operator_set fops     = hubbard_atom::make_fops();
+  triqs::operators::many_body_operator_generic<double> H0 = hubbard_atom::make_H0(U, mu);
+
+  this->ad = triqs::atom_diag::atom_diag<false>(H0, fops, {});
 }
 
 bool Diagram::is_particle_number_conserving() const {
@@ -146,7 +156,7 @@ std::vector<Diagram::Line> Diagram::get_hopping_lines() const {
   return hopping_lines;
 }
 
-double Diagram::evaluate_at_points(triqs::atom_diag::atom_diag<false> const &ad, double beta, hubbard_atom::cumul_args const &args) const {
+double Diagram::evaluate_at_points(hubbard_atom::cumul_args const &args) const {
 
   //evaluates a diagram at a given set of time-spin args
 
@@ -166,7 +176,7 @@ double Diagram::evaluate_at_points(triqs::atom_diag::atom_diag<false> const &ad,
 
     hubbard_atom::cumul_args unprimed_args = unprimed_args_per_vertex[vertex];
     hubbard_atom::cumul_args primed_args   = primed_args_per_vertex[vertex];
-    prod *= compute_cumulant_decomposition(unprimed_args, primed_args, ad, beta);
+    prod *= compute_cumulant_decomposition(unprimed_args, primed_args, this->ad, this->beta);
   }
 
   // for (int vertex = 0; vertex < this->V; vertex++) {
@@ -180,7 +190,7 @@ double Diagram::evaluate_at_points(triqs::atom_diag::atom_diag<false> const &ad,
   return prod;
 }
 
-double Diagram::evaluate_at_taus(triqs::atom_diag::atom_diag<false> const &ad, double beta, std::vector<double> const &taus) const {
+double Diagram::evaluate_at_taus(std::vector<double> const &taus) const {
 
   //evaluates a diagram at a given set of times, summing over all spin indices
   double spin_sum  = 0.0;
@@ -192,7 +202,7 @@ double Diagram::evaluate_at_taus(triqs::atom_diag::atom_diag<false> const &ad, d
       int spin = (config & (1 << i)) ? 1 : 0; //extract spin from bit representation
       args.push_back({taus[i], spin});
     }
-    spin_sum += this->evaluate_at_points(ad, beta, args);
+    spin_sum += this->evaluate_at_points(args);
   }
 
   double symmetry_factor   = (double)this->get_symmetry_factor();

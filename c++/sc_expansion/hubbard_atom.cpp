@@ -18,7 +18,7 @@ namespace hubbard_atom {
     return h;
   }
 
-  double partition_function(triqs::atom_diag::atom_diag<false> ad, double beta) {
+  double _partition_function(triqs::atom_diag::atom_diag<false> ad, double beta) {
 
     double Z0        = triqs::atom_diag::partition_function(ad, beta); //Z0 from atom_diag
     double gs_energy = ad.get_gs_energy();
@@ -55,7 +55,7 @@ namespace hubbard_atom {
     std::iota(argsort.begin(), argsort.end(), 0);
 
     // 2. Sort the index vector based on the corresponding time values (descending)
-    std::sort(argsort.begin(), argsort.end(), [&times](int i, int j) { return times[i] > times[j]; });
+    std::stable_sort(argsort.begin(), argsort.end(), [&times](int i, int j) { return times[i] > times[j]; });
 
     // 3. Calculate the permutation sign
     int sign = calculate_permutation_sign(argsort);
@@ -76,8 +76,8 @@ namespace hubbard_atom {
 
   nda::matrix<double> make_interaction_picture_destroy_op(triqs::atom_diag::atom_diag<false> ad, double tau, int state_index) {
 
-    double Z01 = partition_function(ad, tau);  //Z0
-    double Z02 = partition_function(ad, -tau); //Z0
+    double Z01 = _partition_function(ad, tau);  //Z0
+    double Z02 = _partition_function(ad, -tau); //Z0
 
     auto cmat        = ad.c_matrix(state_index, 0);
     auto time_evol_1 = triqs::atom_diag::atomic_density_matrix(ad, -tau)[0]; //time evolution operator
@@ -89,8 +89,8 @@ namespace hubbard_atom {
 
   nda::matrix<double> make_interaction_picture_create_op(triqs::atom_diag::atom_diag<false> ad, double tau, int state_index) {
 
-    double Z01 = partition_function(ad, tau);  //Z0
-    double Z02 = partition_function(ad, -tau); //Z0
+    double Z01 = _partition_function(ad, tau);  //Z0
+    double Z02 = _partition_function(ad, -tau); //Z0
 
     auto cmat        = ad.cdag_matrix(state_index, 0);
     auto time_evol_1 = triqs::atom_diag::atomic_density_matrix(ad, -tau)[0]; //time evolution operator
@@ -136,7 +136,7 @@ namespace hubbard_atom {
     //now compute the Green's function
     nda::matrix<double> op = rho0;
 
-    for (int i = 0; i < n_ops; i++) {
+    for (int i = 0; i < n_ops; ++i) {
       if (sorted_flags[i] == 1) {
         op *= make_interaction_picture_create_op(ad, sorted_times[i], sorted_spins[i]);
       } else {
