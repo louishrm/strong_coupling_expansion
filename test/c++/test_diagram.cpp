@@ -315,50 +315,72 @@ int main() {
   // save(directory + name, "omega4", omega4_arr);
   // outfile.close();
 
-  double integ = 0.0;
-  double delta = beta / grid_size;
-  for (size_t i = 0; i < grid[0].size(); ++i) {
-    double tau1 = grid[0][i];
+  // double integ = 0.0;
+  // double delta = beta / grid_size;
+  // for (size_t i = 0; i < grid[0].size(); ++i) {
+  //   double tau1 = grid[0][i];
 
-    // j index for tau2
-    for (size_t j = 0; j < grid[1].size(); ++j) {
-      double tau2 = grid[1][j];
+  //   // j index for tau2
+  //   for (size_t j = 0; j < grid[1].size(); ++j) {
+  //     double tau2 = grid[1][j];
 
-      // k index for tau3
-      for (size_t k = 0; k < grid[2].size(); ++k) {
-        double tau3 = grid[2][k];
+  //     // k index for tau3
+  //     for (size_t k = 0; k < grid[2].size(); ++k) {
+  //       double tau3 = grid[2][k];
 
-        for (size_t l = 0; l < grid[3].size(); l++) {
+  //       for (size_t l = 0; l < grid[3].size(); l++) {
 
-          double tau4              = grid[3][l];
-          std::vector<double> taus = {tau1, tau2, tau3, tau4};
-          double sum_val           = 0.0;
-          for (size_t diag_idx = 0; diag_idx < diagrams.size(); diag_idx++) {
-            // Evaluate each diagram contribution
-            double val = diagrams[diag_idx].evaluate_at_taus(taus);
-            sum_val += val; // Sum the contributions
-          }
-          integ += sum_val * delta * delta * delta * delta;
-        } //end l
-      } // end k
-    } // end j
-  } // end i
+  //         double tau4              = grid[3][l];
+  //         std::vector<double> taus = {tau1, tau2, tau3, tau4};
+  //         double sum_val           = 0.0;
+  //         for (size_t diag_idx = 0; diag_idx < diagrams.size(); diag_idx++) {
+  //           // Evaluate each diagram contribution
+  //           double val = diagrams[diag_idx].evaluate_at_taus(taus);
+  //           sum_val += val; // Sum the contributions
+  //         }
+  //         integ += sum_val * delta * delta * delta * delta;
+  //       } //end l
+  //     } // end k
+  //   } // end j
+  // } // end i
 
-  std::cout << "Free energy 4th order from Diagram class for U: " << U << ", mu: " << mu << ", beta: " << beta << " is " << integ * beta << std::endl;
+  // std::cout << "Free energy 4th order from Diagram class for U: " << U << ", mu: " << mu << ", beta: " << beta << " is " << integ * beta << std::endl;
 
-  std::vector<double> tau_set = {0.356, 0.679, 0.709, 0.9};
+  std::vector<double> tau_set = {0.22, 0.679, 0.709, 0.9};
 
-  std::sort(tau_set.begin(), tau_set.end());
-  std::set<double, NearLess> unique_vals;
+  // 2. Setup Indices
+  // These represent the positions: (0, 1, 2, 3)
+  std::vector<int> p(tau_set.size());
+  std::iota(p.begin(), p.end(), 0); // Fills p with 0, 1, 2, 3...
+
+  // Map: Key = Result Value, Value = The Index Permutation
+  std::map<double, std::vector<int>, NearLess> representatives;
+
+  // 3. Permute Indices
   do {
-    double val = diagrams[2].evaluate_at_taus(tau_set);
-    for (size_t i = 0; i < tau_set.size(); i++) { std::cout << tau_set[i] << ", "; }
-    std::cout << "}: " << val << std::endl;
-    unique_vals.insert(val);
-  } while (std::next_permutation(tau_set.begin(), tau_set.end()));
+    // Construct the specific tau arguments based on current index permutation
+    std::vector<double> current_tau;
+    current_tau.reserve(p.size());
+    for (int index : p) { current_tau.push_back(tau_set[index]); }
 
-  std::cout << "Unique values count: " << unique_vals.size() << std::endl;
-  for (const auto &val : unique_vals) { std::cout << "Unique value: " << val << std::endl; }
-  return 0;
+    // Evaluate
+    double val = diagrams[2].evaluate_at_taus(current_tau);
+
+    // Store if unique (stores the INDEX permutation 'p')
+    representatives.try_emplace(val, p);
+
+  } while (std::next_permutation(p.begin(), p.end()));
+
+  // 4. Display
+  std::cout << "Found " << representatives.size() << " unique values." << std::endl;
+  std::cout << "------------------------------------------------" << std::endl;
+
+  for (const auto &pair : representatives) {
+    double val                   = pair.first;
+    const std::vector<int> &perm = pair.second;
+
+    std::cout << "Value: " << val << "  |  Permutation: (";
+    for (size_t i = 0; i < perm.size(); i++) { std::cout << perm[i] << (i < perm.size() - 1 ? "," : ""); }
+    std::cout << ")" << std::endl;
+  }
 }
-

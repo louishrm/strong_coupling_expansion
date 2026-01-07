@@ -20,9 +20,9 @@ namespace hubbard_atom {
 
   double _partition_function(triqs::atom_diag::atom_diag<false> ad, double beta) {
 
-    double Z0        = triqs::atom_diag::partition_function(ad, beta); //Z0 from atom_diag
-    double gs_energy = ad.get_gs_energy();
-    Z0 *= std::exp(-beta * gs_energy); //Z0 = Z0 * exp(-beta * E_0)
+    double Z0 = triqs::atom_diag::partition_function(ad, beta); //Z0 from atom_diag
+    // double gs_energy = ad.get_gs_energy();
+    // Z0 *= std::exp(-beta * gs_energy); //Z0 = Z0 * exp(-beta * E_0)
     return Z0;
   }
 
@@ -82,7 +82,7 @@ namespace hubbard_atom {
     auto cmat        = ad.c_matrix(state_index, 0);
     auto time_evol_1 = triqs::atom_diag::atomic_density_matrix(ad, -tau)[0]; //time evolution operator
     auto time_evol_2 = triqs::atom_diag::atomic_density_matrix(ad, tau)[0];  //time evolution operator
-    auto ctau        = Z01 * Z02 * time_evol_1 * cmat * time_evol_2;         //interaction picture destroy operator
+    auto ctau        = Z01 * Z02 * time_evol_1 * cmat * time_evol_2;         //interaction picture destroy operator, watch -convention here
 
     return ctau; //return the interaction picture destroy operator
   }
