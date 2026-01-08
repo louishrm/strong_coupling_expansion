@@ -47,5 +47,36 @@ namespace sc_expansion {
       }
       return diagram_sum;
     }
-  }; // namespace sc_expansion
+  };
+
+  class order6 {
+
+    public:
+    adjmat D6a = {{0, 1, 0, 0, 0, 0}, {0, 0, 1, 0, 0, 0}, {0, 0, 0, 1, 0, 0}, {0, 0, 0, 0, 1, 0}, {0, 0, 0, 0, 0, 1}, {1, 0, 0, 0, 0, 0}}; //6-cycle
+    adjmat D6b = {{0, 3}, {3, 0}};                                                                      //watermelon triple
+    adjmat D6c = {{0, 1, 1, 1}, {1, 0, 0, 0}, {1, 0, 0, 0}, {1, 0, 0, 0}};                              //petal with 4 vertice
+    adjmat D6d = {{0, 1, 1, 0, 0}, {1, 0, 0, 0, 0}, {0, 0, 0, 1, 0}, {0, 0, 0, 0, 1}, {1, 0, 0, 0, 0}}; //square +digon
+    adjmat D6e = {{0, 1, 1, 0}, {1, 0, 0, 1}, {1, 0, 0, 0}, {0, 1, 0, 0}};                              //crab diagram
+    adjmat D6f = {{0, 2, 1}, {2, 0, 0}, {1, 0, 0}};                                                     //watermelon double + digon
+    adjmat D6g = {{0, 2, 0, 0}, {1, 0, 1, 0}, {0, 0, 0, 1}, {1, 0, 0, 0}};                              //square with one double line
+    adjmat D6h = {{0, 1, 0, 0}, {1, 0, 1, 0}, {0, 1, 0, 1}, {0, 0, 1, 0}};                              //chain of 4 digons
+
+    std::vector<Diagram> diagrams;
+    double beta;
+
+    order6(double U, double mu, double beta_)
+       : diagrams({Diagram(D6a, U, beta_, mu), Diagram(D6b, U, beta_, mu), Diagram(D6c, U, beta_, mu), Diagram(D6d, U, beta_, mu),
+                   Diagram(D6e, U, beta_, mu), Diagram(D6f, U, beta_, mu), Diagram(D6g, U, beta_, mu), Diagram(D6h, U, beta_, mu)}),
+         beta(beta_) {}
+
+    double compute_sum_diagrams(std::vector<double> taus) {
+
+      double diagram_sum = 0.0;
+      for (auto const &diagram : diagrams) {
+        double val = diagram.evaluate_at_taus(taus);
+        diagram_sum += val;
+      }
+      return diagram_sum;
+    }
+  };
 }; // namespace sc_expansion
