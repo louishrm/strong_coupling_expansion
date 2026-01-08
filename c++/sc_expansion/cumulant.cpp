@@ -11,27 +11,23 @@ namespace {
   using all_partitions_t = std::vector<partition_t>;
 
   void fill_partitions(std::vector<int> const &set, int index, all_partitions_t &ans, partition_t &current_partition) {
-    //If all elements are processed, then finished, add the current partition.
+
     if (index == set.size()) {
       ans.push_back(current_partition);
       return;
     }
 
-    // For each subset in the partition
-    // add the current element to it
-    // and recall
-    for (auto &sub : current_partition) {
-
-      sub.push_back(set[index]);
+    // Option 1: Add the current element to an existing subset
+    for (auto &subset : std::vector<subset_t>(current_partition)) {
+      subset.push_back(set[index]);
       fill_partitions(set, index + 1, ans, current_partition);
-      sub.pop_back();
+      subset.pop_back(); // Backtrack
     }
 
-    // Add the current element as a
-    // singleton subset and recall
+    // Option 2: Add the current element as a new singleton subset
     current_partition.push_back({set[index]});
     fill_partitions(set, index + 1, ans, current_partition);
-    current_partition.pop_back();
+    current_partition.pop_back(); // Backtrack
   }
 
   all_partitions_t get_partitions(std::vector<int> const &set) {
@@ -87,10 +83,10 @@ namespace {
 
 namespace sc_expansion {
 
-double compute_cumulant_decomposition(hubbard_atom::cumul_args const &unprimed, hubbard_atom::cumul_args const &primed,
-                                      triqs::atom_diag::atom_diag<false> const &ad, double beta) {
+  double compute_cumulant_decomposition(hubbard_atom::cumul_args const &unprimed, hubbard_atom::cumul_args const &primed,
+                                        triqs::atom_diag::atom_diag<false> const &ad, double beta) {
 
-  /*Core logic: 
+    /*Core logic: 
   -This is a recursive function that should compute C^0_n( unprimed | primed).
   1. Create index set = {0, 1, 2, ..., n-1} where n = size of unprimed (or primed, they should be equal).
   2. First we check if unprimed and primed have size 1. Then we return G^0_1( unprimed | primed).
@@ -111,160 +107,159 @@ double compute_cumulant_decomposition(hubbard_atom::cumul_args const &unprimed, 
 
   */
 
-  bool spin_cons = is_spin_conserving(unprimed, primed);
-  if (!spin_cons) { return 0.0; }
+    bool spin_cons = is_spin_conserving(unprimed, primed);
+    if (!spin_cons) { return 0.0; }
 
-  //1 Create index vectors for unprimed and primed args.
-  int order = unprimed.size();
-  std::vector<int> unprimed_indices(order);
-  std::iota(unprimed_indices.begin(), unprimed_indices.end(), 0);
+    //1 Create index vectors for unprimed and primed args.
+    int order = unprimed.size();
+    std::vector<int> unprimed_indices(order);
+    std::iota(unprimed_indices.begin(), unprimed_indices.end(), 0);
 
-  std::vector<int> primed_indices(order);
-  std::iota(primed_indices.begin(), primed_indices.end(), 0);
+    std::vector<int> primed_indices(order);
+    std::iota(primed_indices.begin(), primed_indices.end(), 0);
 
-  //2 Base case: if size is 1, return G0
-  if (unprimed.size() == 1) { return hubbard_atom::G0(ad, beta, unprimed, primed); }
+    //2 Base case: if size is 1, return G0
+    if (unprimed.size() == 1) { return hubbard_atom::G0(ad, beta, unprimed, primed); }
 
-  //3 Compute the first term: G^0_n( unprimed | primed)
-  double G0n = hubbard_atom::G0(ad, beta, unprimed, primed);
+    //3 Compute the first term: G^0_n( unprimed | primed)
+    double G0n = hubbard_atom::G0(ad, beta, unprimed, primed);
 
-  //4 initializae the subtraction term.
-  double low_order_cumulants = 0.0;
+    //4 initializae the subtraction term.
+    double low_order_cumulants = 0.0;
 
-  //5 Generate all partitions of unprimed indices and permutations of primed indices.
-  all_partitions_t unprimed_partitions = get_partitions(unprimed_indices);
+    //5 Generate all partitions of unprimed indices and permutations of primed indices.
+    all_partitions_t unprimed_partitions = get_partitions(unprimed_indices);
 
-  auto primed_perms = generate_permutations(primed_indices);
+    auto primed_perms = generate_permutations(primed_indices);
 
-  //6 Loop through partitions and permutations.
-  for (partition_t current_partition : unprimed_partitions) {
-    if (current_partition.size() == 1) continue; // Skip the trivial partition.
+    //6 Loop through partitions and permutations.
+    for (partition_t current_partition : unprimed_partitions) {
+      if (current_partition.size() == 1) continue; // Skip the trivial partition.
 
-    //7
-    std::set<std::vector<int>> visited_permutations;
+      //7
+      std::set<std::vector<int>> visited_permutations;
 
-    for (auto perm : primed_perms) {
+      for (auto perm : primed_perms) {
 
-      //8
-      int primed_cursor = 0;
-      std::vector<int> effective_permutation(order);
-      std::vector<subset_t> primed_subsets;
-      std::vector<int>::iterator write_cursor = effective_permutation.begin();
+        //8
+        int primed_cursor = 0;
+        std::vector<int> effective_permutation(order);
+        std::vector<subset_t> primed_subsets;
+        std::vector<int>::iterator write_cursor = effective_permutation.begin();
 
-      //9.
-      for (auto x : current_partition) {
+        //9.
+        for (auto x : current_partition) {
 
-        auto write_end_cursor = write_cursor + x.size();
-        std::copy(perm.begin() + primed_cursor, perm.begin() + primed_cursor + x.size(), write_cursor);
-        std::sort(write_cursor, write_end_cursor);
-        primed_subsets.push_back(std::vector<int>(write_cursor, write_end_cursor));
-        primed_cursor += x.size();
-        write_cursor = write_end_cursor;
+          auto write_end_cursor = write_cursor + x.size();
+          std::copy(perm.begin() + primed_cursor, perm.begin() + primed_cursor + x.size(), write_cursor);
+          std::sort(write_cursor, write_end_cursor);
+          primed_subsets.push_back(std::vector<int>(write_cursor, write_end_cursor));
+          primed_cursor += x.size();
+          write_cursor = write_end_cursor;
+        }
+
+        //10
+        if (visited_permutations.count(effective_permutation)) { continue; }
+        visited_permutations.insert(effective_permutation);
+
+        //11
+        double current_product = 1.0;
+        int sign               = -permutation_sign(effective_permutation); //opposite sign convention
+
+        //12
+        for (size_t i = 0; i < current_partition.size(); ++i) {
+          const auto &unprimed_idx_subset = current_partition[i];
+          const auto &primed_idx_subset   = primed_subsets[i];
+
+          hubbard_atom::cumul_args current_unprimed_args;
+          current_unprimed_args.reserve(unprimed_idx_subset.size());
+          for (int index : unprimed_idx_subset) { current_unprimed_args.push_back(unprimed[index]); }
+
+          hubbard_atom::cumul_args current_primed_args;
+          current_primed_args.reserve(primed_idx_subset.size());
+          for (int index : primed_idx_subset) { current_primed_args.push_back(primed[index]); }
+
+          current_product *= compute_cumulant_decomposition(current_unprimed_args, current_primed_args, ad, beta);
+        }
+        low_order_cumulants += sign * current_product;
       }
-
-      //10
-      if (visited_permutations.count(effective_permutation)) { continue; }
-      visited_permutations.insert(effective_permutation);
-
-      //11
-      double current_product = 1.0;
-      int sign               = -permutation_sign(effective_permutation); //opposite sign convention
-
-      //12
-      for (size_t i = 0; i < current_partition.size(); ++i) {
-        const auto &unprimed_idx_subset = current_partition[i];
-        const auto &primed_idx_subset   = primed_subsets[i];
-
-        hubbard_atom::cumul_args current_unprimed_args;
-        current_unprimed_args.reserve(unprimed_idx_subset.size());
-        for (int index : unprimed_idx_subset) { current_unprimed_args.push_back(unprimed[index]); }
-
-        hubbard_atom::cumul_args current_primed_args;
-        current_primed_args.reserve(primed_idx_subset.size());
-        for (int index : primed_idx_subset) { current_primed_args.push_back(primed[index]); }
-
-        current_product *= compute_cumulant_decomposition(current_unprimed_args, current_primed_args, ad, beta);
-      }
-
-      low_order_cumulants += sign * current_product;
     }
+    return G0n + low_order_cumulants;
   }
-  return G0n + low_order_cumulants;
-}
 
-//COMMENTED OUT FOR NOW, add to tests later
+  //COMMENTED OUT FOR NOW, add to tests later
 
-// void cumulant_decomposition(std::vector<int> &unprimed, std::vector<int> &primed) {
-//   all_partitions partitions;
-//   partition c_partition;
-//   get_partitions(unprimed, 0, partitions, c_partition);
+  // void cumulant_decomposition(std::vector<int> &unprimed, std::vector<int> &primed) {
+  //   all_partitions partitions;
+  //   partition c_partition;
+  //   get_partitions(unprimed, 0, partitions, c_partition);
 
-//   auto primed_perms = generate_permutations(primed);
+  //   auto primed_perms = generate_permutations(primed);
 
-//   std::cout << "G(";
-//   for (int val : unprimed) { std::cout << val; }
-//   std::cout << "|";
-//   for (int val : primed) { std::cout << val << "'"; }
-//   std::cout << ")" << std::endl;
+  //   std::cout << "G(";
+  //   for (int val : unprimed) { std::cout << val; }
+  //   std::cout << "|";
+  //   for (int val : primed) { std::cout << val << "'"; }
+  //   std::cout << ")" << std::endl;
 
-//   for (auto current_partition : partitions) {
-//     if (current_partition.size() == 1) continue; // Skip the full partition
+  //   for (auto current_partition : partitions) {
+  //     if (current_partition.size() == 1) continue; // Skip the full partition
 
-//     std::set<std::vector<int>> visited_permutations;
-//     for (auto perm : primed_perms) {
+  //     std::set<std::vector<int>> visited_permutations;
+  //     for (auto perm : primed_perms) {
 
-//       int primed_cursor = 0;
-//       std::vector<int> effective_permutation;
-//       std::vector<subset> term_subsets; // Store the generated subsets for printing
+  //       int primed_cursor = 0;
+  //       std::vector<int> effective_permutation;
+  //       std::vector<subset> term_subsets; // Store the generated subsets for printing
 
-//       // 1. Build the canonical permutation and the term's subsets in one go.
-//       for (auto &x : current_partition) {
-//         std::vector<int> primed_perm_slice(perm.begin() + primed_cursor, perm.begin() + primed_cursor + x.size());
-//         primed_cursor += x.size();
+  //       // 1. Build the canonical permutation and the term's subsets in one go.
+  //       for (auto &x : current_partition) {
+  //         std::vector<int> primed_perm_slice(perm.begin() + primed_cursor, perm.begin() + primed_cursor + x.size());
+  //         primed_cursor += x.size();
 
-//         std::sort(primed_perm_slice.begin(), primed_perm_slice.end()); // Canonical form
+  //         std::sort(primed_perm_slice.begin(), primed_perm_slice.end()); // Canonical form
 
-//         // Store the sorted slice for printing later
-//         term_subsets.push_back(primed_perm_slice);
+  //         // Store the sorted slice for printing later
+  //         term_subsets.push_back(primed_perm_slice);
 
-//         // Add the elements to the effective_permutation for the uniqueness check
-//         effective_permutation.insert(effective_permutation.end(), primed_perm_slice.begin(), primed_perm_slice.end());
-//       }
+  //         // Add the elements to the effective_permutation for the uniqueness check
+  //         effective_permutation.insert(effective_permutation.end(), primed_perm_slice.begin(), primed_perm_slice.end());
+  //       }
 
-//       // 2. Check if this canonical permutation has already been processed.
-//       if (visited_permutations.count(effective_permutation)) { continue; }
-//       visited_permutations.insert(effective_permutation);
+  //       // 2. Check if this canonical permutation has already been processed.
+  //       if (visited_permutations.count(effective_permutation)) { continue; }
+  //       visited_permutations.insert(effective_permutation);
 
-//       // 3. If it's new, calculate its sign and print the full term.
-//       int sign = permutation_sign(effective_permutation);
-//       std::cout << (sign == 1 ? "- " : "+"); //opposite sign convention
+  //       // 3. If it's new, calculate its sign and print the full term.
+  //       int sign = permutation_sign(effective_permutation);
+  //       std::cout << (sign == 1 ? "- " : "+"); //opposite sign convention
 
-//       for (size_t i = 0; i < current_partition.size(); ++i) {
-//         const auto &unprimed_subset = current_partition[i];
-//         const auto &primed_subset   = term_subsets[i]; // Use the stored subset
+  //       for (size_t i = 0; i < current_partition.size(); ++i) {
+  //         const auto &unprimed_subset = current_partition[i];
+  //         const auto &primed_subset   = term_subsets[i]; // Use the stored subset
 
-//         std::cout << "C(";
-//         for (int val : unprimed_subset) { std::cout << val; }
-//         std::cout << "|";
-//         for (int val : primed_subset) { std::cout << val << "'"; }
-//         std::cout << ") ";
-//       }
-//       std::cout << std::endl;
-//     }
-//   }
-// }
+  //         std::cout << "C(";
+  //         for (int val : unprimed_subset) { std::cout << val; }
+  //         std::cout << "|";
+  //         for (int val : primed_subset) { std::cout << val << "'"; }
+  //         std::cout << ") ";
+  //       }
+  //       std::cout << std::endl;
+  //     }
+  //   }
+  // }
 
-// // Helper function to print the results
-// void print_partitions(const all_partitions &partitions) {
-//   for (const auto &p : partitions) {
-//     std::cout << "{ ";
-//     for (const auto &s : p) {
-//       std::cout << "{ ";
-//       for (int val : s) { std::cout << val << " "; }
-//       std::cout << "} ";
-//     }
-//     std::cout << "}\n";
-//   }
-// }
+  // // Helper function to print the results
+  // void print_partitions(const all_partitions &partitions) {
+  //   for (const auto &p : partitions) {
+  //     std::cout << "{ ";
+  //     for (const auto &s : p) {
+  //       std::cout << "{ ";
+  //       for (int val : s) { std::cout << val << " "; }
+  //       std::cout << "} ";
+  //     }
+  //     std::cout << "}\n";
+  //   }
+  // }
 
-}
+} // namespace sc_expansion
