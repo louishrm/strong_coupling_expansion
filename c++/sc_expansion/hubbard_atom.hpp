@@ -1,4 +1,5 @@
 #pragma once
+
 #include <triqs/atom_diag/atom_diag.hpp>
 #include <triqs/atom_diag/functions.hpp>
 #include <vector>
@@ -7,30 +8,39 @@
 #include <iostream>
 #include <algorithm>
 #include <numeric>
-using namespace triqs::operators;
+#include <tuple>
 
-namespace hubbard_atom {
+namespace sc_expansion {
 
-  using cumul_args = std::vector<std::pair<double, int>>; //vector of pairs of imaginary time and spin
+  class HubbardAtom {
+    public:
+    using cumul_args = std::vector<std::pair<double, int>>;
 
-  //unperturbed Hamiltonian
-  triqs::hilbert_space::fundamental_operator_set make_fops();
+    // Attributes
+    double U;
+    double beta;
+    double mu;
+    triqs::operators::many_body_operator_generic<double> H;
+    triqs::atom_diag::atom_diag<false> ad;
 
-  triqs::operators::many_body_operator_generic<double> make_H0(double U, double mu);
+    // Constructor
+    HubbardAtom(double U, double beta, double mu);
 
-  double _partition_function(triqs::atom_diag::atom_diag<false> ad, double beta);
+    // Methods
+    static int calculate_permutation_sign(const std::vector<int> &p);
 
-  int calculate_permutation_sign(const std::vector<int> &p);
+    static std::tuple<std::vector<double>, std::vector<int>, std::vector<int>, int>
+    sort_operators(const std::vector<double> &times, const std::vector<int> &spins, const std::vector<int> &flags);
 
-  std::tuple<std::vector<double>, std::vector<int>, std::vector<int>, int>
-  sort_operators(const std::vector<double> &times, const std::vector<int> &spins, const std::vector<int> &flags);
+    nda::matrix<double> make_interaction_picture_destroy_op(double tau, int state_index) const;
 
-  nda::matrix<double> make_interaction_picture_destroy_op(triqs::atom_diag::atom_diag<false> ad, double tau, int state_index);
+    nda::matrix<double> make_interaction_picture_create_op(double tau, int state_index) const;
 
-  nda::matrix<double> make_interaction_picture_create_op(triqs::atom_diag::atom_diag<false> ad, double tau, int state_index);
+    double G0(cumul_args const &unprimed_args, cumul_args const &primed_args) const;
 
-  double G0(triqs::atom_diag::atom_diag<false> ad, double beta, cumul_args unprimed_args, cumul_args primed_args);
+    private:
+    static triqs::hilbert_space::fundamental_operator_set make_fops();
+    static triqs::operators::many_body_operator_generic<double> make_H0(double U, double mu);
+  };
 
-  double C02(triqs::atom_diag::atom_diag<false> ad, double beta, cumul_args unprimed_args, cumul_args primed_args);
-
-} // namespace hubbard_atom
+} // namespace sc_expansion
