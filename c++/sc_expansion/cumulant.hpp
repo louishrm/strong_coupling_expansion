@@ -6,9 +6,7 @@
 
 namespace sc_expansion {
 
-double compute_cumulant_decomposition(const hubbard_atom::cumul_args &unprimed, const hubbard_atom::cumul_args &primed,
-                                      const triqs::atom_diag::atom_diag<false> &ad, // <-- Use the specific type here
-                                      double beta);
+  double compute_cumulant_decomposition(HubbardAtom::cumul_args const &unprimed, HubbardAtom::cumul_args const &primed, HubbardAtom const &atom);
 
 }
 
