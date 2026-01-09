@@ -83,8 +83,7 @@ namespace {
 
 namespace sc_expansion {
 
-  double compute_cumulant_decomposition(HubbardAtom::cumul_args const &unprimed, HubbardAtom::cumul_args const &primed,
-                                        HubbardAtom const &atom) {
+  double compute_cumulant_decomposition(HubbardAtom::cumul_args const &unprimed, HubbardAtom::cumul_args const &primed, HubbardAtom const &atom) {
 
     /*Core logic: 
   -This is a recursive function that should compute C^0_n( unprimed | primed).
@@ -107,6 +106,8 @@ namespace sc_expansion {
     bool spin_cons = is_spin_conserving(unprimed, primed);
     if (!spin_cons) { return 0.0; }
 
+    if (unprimed.size() == 1) { return atom.G0(unprimed, primed); }
+
     //1 Create index vectors for unprimed and primed args.
     int order = unprimed.size();
     std::vector<int> unprimed_indices(order);
@@ -114,9 +115,6 @@ namespace sc_expansion {
 
     std::vector<int> primed_indices(order);
     std::iota(primed_indices.begin(), primed_indices.end(), 0);
-
-    //2 Base case: if size is 1, return G0
-    if (unprimed.size() == 1) { return atom.G0(unprimed, primed); }
 
     //3 Compute the first term: G^0_n( unprimed | primed)
     double G0n = atom.G0(unprimed, primed);
