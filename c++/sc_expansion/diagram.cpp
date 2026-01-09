@@ -2,7 +2,7 @@
 
 namespace sc_expansion {
 
-  Diagram::Diagram(adjmat adjacency_matrix, double U, double beta, double mu) {
+  Diagram::Diagram(adjmat adjacency_matrix, double U, double beta, double mu) : atom(U, beta, mu) {
 
     this->adjacency_matrix = adjacency_matrix;
 
@@ -13,16 +13,6 @@ namespace sc_expansion {
       for (const auto &entry : row) { order += entry; }
     }
     this->n = order;
-
-    this->U    = U;
-    this->beta = beta;
-    this->mu   = mu;
-
-    // triqs::atom_diag::atom_diag<false> ad;
-    triqs::hilbert_space::fundamental_operator_set fops     = hubbard_atom::make_fops();
-    triqs::operators::many_body_operator_generic<double> H0 = hubbard_atom::make_H0(U, mu);
-
-    this->ad = triqs::atom_diag::atom_diag<false>(H0, fops, {});
   }
 
   bool Diagram::is_particle_number_conserving() const {
@@ -158,13 +148,12 @@ namespace sc_expansion {
     return hopping_lines;
   }
 
-  double Diagram::evaluate_at_points(hubbard_atom::cumul_args const &args) const {
+  double Diagram::evaluate_at_points(HubbardAtom::cumul_args const &args) const {
 
     //evaluates a diagram at a given set of time-spin args
-
     auto hopping_lines = this->get_hopping_lines();
-    std::vector<hubbard_atom::cumul_args> unprimed_args_per_vertex(this->V);
-    std::vector<hubbard_atom::cumul_args> primed_args_per_vertex(this->V);
+    std::vector<HubbardAtom::cumul_args> unprimed_args_per_vertex(this->V);
+    std::vector<HubbardAtom::cumul_args> primed_args_per_vertex(this->V);
 
     for (size_t line_idx = 0; line_idx < hopping_lines.size(); line_idx++) { //loop through each hopping line
 
@@ -172,23 +161,14 @@ namespace sc_expansion {
       unprimed_args_per_vertex[line.from_vertex].push_back(args[line_idx]); //assign the unprimed args to the from vertex
       primed_args_per_vertex[line.to_vertex].push_back(args[line_idx]);     //assign the primed args to the to vertex
     }
-
     double prod = 1.0;
     for (int vertex = 0; vertex < this->V; vertex++) {
 
-      hubbard_atom::cumul_args unprimed_args = unprimed_args_per_vertex[vertex];
-      hubbard_atom::cumul_args primed_args   = primed_args_per_vertex[vertex];
-      prod *= compute_cumulant_decomposition(unprimed_args, primed_args, this->ad, this->beta);
-    }
+      HubbardAtom::cumul_args unprimed_args = unprimed_args_per_vertex[vertex];
 
-    // for (int vertex = 0; vertex < this->V; vertex++) {
-    //   std::cout << "Vertex " << vertex << " unprimed args: ";
-    //   for (const auto &arg : unprimed_args_per_vertex[vertex]) { std::cout << "(" << arg.first << ", " << arg.second << ") "; }
-    //   std::cout << std::endl;
-    //   std::cout << "Vertex " << vertex << " primed args: ";
-    //   for (const auto &arg : primed_args_per_vertex[vertex]) { std::cout << "(" << arg.first << ", " << arg.second << ") "; }
-    //   std::cout << std::endl;
-    // }
+      HubbardAtom::cumul_args primed_args = primed_args_per_vertex[vertex];
+      prod *= compute_cumulant_decomposition(unprimed_args, primed_args, this->atom);
+    }
     return prod;
   }
 
@@ -199,7 +179,7 @@ namespace sc_expansion {
     long num_configs = 1 << this->n;                        //2^n spin configurations
     for (long config = 0; config < num_configs; config++) { //TODO: only consider spin-conserving configs
 
-      hubbard_atom::cumul_args args;
+      HubbardAtom::cumul_args args;
       for (int i = 0; i < this->n; i++) {
         int spin = (config & (1 << i)) ? 1 : 0; //extract spin from bit representation
         args.push_back({taus[i], spin});

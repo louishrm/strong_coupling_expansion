@@ -29,7 +29,7 @@ class Diagram {
   };
   std::vector<Line> get_hopping_lines() const;
 
-  double evaluate_at_points(hubbard_atom::cumul_args const &args) const;
+  double evaluate_at_points(HubbardAtom::cumul_args const &args) const;
 
   double evaluate_at_taus(std::vector<double> taus) const;
 
@@ -39,10 +39,7 @@ class Diagram {
   int n; //order= number of hopping lines
   int V; //number of vertices
   adjmat adjacency_matrix;
-  triqs::atom_diag::atom_diag<false> ad;
-  double U;
-  double beta;
-  double mu;
+  HubbardAtom atom;
 };
 
 }
