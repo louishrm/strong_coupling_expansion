@@ -167,7 +167,7 @@ namespace sc_expansion {
       HubbardAtom::cumul_args unprimed_args = unprimed_args_per_vertex[vertex];
 
       HubbardAtom::cumul_args primed_args = primed_args_per_vertex[vertex];
-      prod *= compute_cumulant_decomposition(unprimed_args, primed_args, this->atom);
+      prod *= compute_cumulant_decomposition(unprimed_args, primed_args, this->atom, false);
     }
     return prod;
   }

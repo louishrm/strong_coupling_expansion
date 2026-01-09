@@ -2,6 +2,7 @@
 #include <numeric>
 #include <set>
 #include <algorithm>
+#include <stdexcept>
 
 namespace {
 
@@ -12,22 +13,23 @@ namespace {
 
   void fill_partitions(std::vector<int> const &set, int index, all_partitions_t &ans, partition_t &current_partition) {
 
+    // Base Case: All elements processed
     if (index == set.size()) {
       ans.push_back(current_partition);
       return;
     }
 
     // Option 1: Add the current element to an existing subset
-    for (auto &subset : std::vector<subset_t>(current_partition)) {
-      subset.push_back(set[index]);
-      fill_partitions(set, index + 1, ans, current_partition);
-      subset.pop_back(); // Backtrack
+    for (size_t i = 0; i < current_partition.size(); ++i) {
+      current_partition[i].push_back(set[index]);              // Do
+      fill_partitions(set, index + 1, ans, current_partition); // Recurse
+      current_partition[i].pop_back();                         // Undo (Backtrack)
     }
 
     // Option 2: Add the current element as a new singleton subset
-    current_partition.push_back({set[index]});
-    fill_partitions(set, index + 1, ans, current_partition);
-    current_partition.pop_back(); // Backtrack
+    current_partition.push_back({set[index]});               // Do
+    fill_partitions(set, index + 1, ans, current_partition); // Recurse
+    current_partition.pop_back();                            // Undo (Backtrack)
   }
 
   all_partitions_t get_partitions(std::vector<int> const &set) {
@@ -83,68 +85,94 @@ namespace {
 
 namespace sc_expansion {
 
-  double compute_cumulant_decomposition(HubbardAtom::cumul_args const &unprimed, HubbardAtom::cumul_args const &primed, HubbardAtom const &atom) {
+  CumulantSolver::CumulantSolver(const ArgList &u, const ArgList &p, const HubbardAtom &a) : master_unprimed(u), master_primed(p), atom(a) {
+    // Pre-calculate spin patterns for fast checks
+    // Assuming Arg.second is the spin (0 or 1)
+    for (size_t i = 0; i < u.size(); ++i) {
+      if (u[i].second == 1) master_spin_mask_u |= (1ULL << i);
+    }
+    for (size_t i = 0; i < p.size(); ++i) {
+      if (p[i].second == 1) master_spin_mask_p |= (1ULL << i);
+    }
+  }
 
-    /*Core logic: 
-  -This is a recursive function that should compute C^0_n( unprimed | primed).
-  1. Create index set = {0, 1, 2, ..., n-1} where n = size of unprimed (or primed, they should be equal).
-  2. First we check if unprimed and primed have size 1. Then we return G^0_1( unprimed | primed).
-  3. The first term is G^0_n( unprimed |primed) which we can compute directly.
-  4. Initialize a result variable that computes C^0_n - G^0_n.
-  5. Generate all partitions of the unprimed indices, and all the permutations of the primed indices. 
-  6. Loop through partitions and permutations (skip the trivial partition). 
-  7. Make a set to track visited canonical permutations.
-  8. For each permutation, create an array to store the resulting "effective permutation" and a cursor to track the subset of the unprimed partition and an array to store the primed subsets. 
-  9. Loop through each subset of the current partition. For each subset, take a slice of the primed permutation corresponding to the size of the current unprimed subset. Sort this slice to get the canonical form. Add these elements to the effective permutation array and store the sorted slice in the primed subsets array.
-  10. After constructing the effective permutation, check if it has already been visited. If so, skip to the next permutation. If not, mark it as visited.
-  11. Calculate the sign and initialize the corresponding products contrbution. 
-  12. Build the argument lists for the recursive calls and recursively call the function for each subset pair. Multiply the results to get the current product.
-  13. Add the signed product to the result variable.
-  14. Finally return G^0_n + result.
-  */
+  double CumulantSolver::solve(uint64_t mask_u, uint64_t mask_p) {
 
-    bool spin_cons = is_spin_conserving(unprimed, primed);
-    if (!spin_cons) { return 0.0; }
+    // 1. Check Spin Conservation (Fast Bitwise Check)
+    int up_u = __builtin_popcountll(mask_u & master_spin_mask_u);
+    int up_p = __builtin_popcountll(mask_p & master_spin_mask_p);
+    if (up_u != up_p) return 0.0;
 
-    if (unprimed.size() == 1) { return atom.G0(unprimed, primed); }
+    // 2. Check Cache
+    // 2. Check Cache
+    CacheKey key{mask_u, mask_p};
+    if (auto it = memo.find(key); it != memo.end()) {
+      cache_hits++; // <--- HIT!
+      return it->second;
+    }
 
-    //1 Create index vectors for unprimed and primed args.
-    int order = unprimed.size();
-    std::vector<int> unprimed_indices(order);
-    std::iota(unprimed_indices.begin(), unprimed_indices.end(), 0);
+    cache_misses++; // <--- MISS (We have to compute it)
 
-    std::vector<int> primed_indices(order);
-    std::iota(primed_indices.begin(), primed_indices.end(), 0);
+    // 3. Prepare Mapping: Global Indices -> Local Indices (0..k-1)
+    std::vector<int> global_map_u;
+    std::vector<int> global_map_p;
 
-    //3 Compute the first term: G^0_n( unprimed | primed)
-    double G0n = atom.G0(unprimed, primed);
+    // Extract set bits to create the mapping
+    for (int i = 0; i < 64; ++i) {
+      if ((mask_u >> i) & 1) global_map_u.push_back(i);
+    }
+    for (int i = 0; i < 64; ++i) {
+      if ((mask_p >> i) & 1) global_map_p.push_back(i);
+    }
 
-    //4 initializae the subtraction term.
+    // 4. Base Case: Order 1
+    if (global_map_u.size() == 1) {
+      // Reconstruct temp vectors for the atom call
+      ArgList args_u   = {master_unprimed[global_map_u[0]]};
+      ArgList args_p   = {master_primed[global_map_p[0]]};
+      return memo[key] = atom.G0(args_u, args_p);
+    }
+
+    // 5. Compute G0_n (First term)
+    ArgList current_args_u, current_args_p;
+    current_args_u.reserve(global_map_u.size());
+    current_args_p.reserve(global_map_p.size());
+
+    for (int idx : global_map_u) current_args_u.push_back(master_unprimed[idx]);
+    for (int idx : global_map_p) current_args_p.push_back(master_primed[idx]);
+
+    double G0n = atom.G0(current_args_u, current_args_p);
+
+    // 6. Subtraction Term Logic
     double low_order_cumulants = 0.0;
+    int order                  = global_map_u.size();
 
-    //5 Generate all partitions of unprimed indices and permutations of primed indices.
-    all_partitions_t unprimed_partitions = get_partitions(unprimed_indices);
+    // Create local indices 0, 1, ..., k-1
+    std::vector<int> local_indices(order);
+    std::iota(local_indices.begin(), local_indices.end(), 0);
 
-    auto primed_perms = generate_permutations(primed_indices);
+    auto unprimed_partitions = get_partitions(local_indices);
+    auto primed_perms        = generate_permutations(local_indices);
 
-    //6 Loop through partitions and permutations.
-    for (partition_t current_partition : unprimed_partitions) {
-      if (current_partition.size() == 1) continue; // Skip the trivial partition.
+    for (const auto &current_partition : unprimed_partitions) {
+      if (current_partition.size() == 1) continue;
 
-      //7
+      std::vector<int> flattened_unprimed_perm;
+      flattened_unprimed_perm.reserve(order);
+
+      for (auto const &subset : current_partition) { flattened_unprimed_perm.insert(flattened_unprimed_perm.end(), subset.begin(), subset.end()); }
+
+      int sign_u = permutation_sign(flattened_unprimed_perm);
+
       std::set<std::vector<int>> visited_permutations;
 
-      for (auto perm : primed_perms) {
-
-        //8
+      for (const auto &perm : primed_perms) {
         int primed_cursor = 0;
         std::vector<int> effective_permutation(order);
-        std::vector<subset_t> primed_subsets;
-        std::vector<int>::iterator write_cursor = effective_permutation.begin();
+        std::vector<std::vector<int>> primed_subsets;
+        auto write_cursor = effective_permutation.begin();
 
-        //9.
-        for (auto x : current_partition) {
-
+        for (const auto &x : current_partition) {
           auto write_end_cursor = write_cursor + x.size();
           std::copy(perm.begin() + primed_cursor, perm.begin() + primed_cursor + x.size(), write_cursor);
           std::sort(write_cursor, write_end_cursor);
@@ -153,33 +181,57 @@ namespace sc_expansion {
           write_cursor = write_end_cursor;
         }
 
-        //10
-        if (visited_permutations.count(effective_permutation)) { continue; }
+        if (visited_permutations.count(effective_permutation)) continue;
         visited_permutations.insert(effective_permutation);
 
-        //11
         double current_product = 1.0;
-        int sign               = -permutation_sign(effective_permutation); //opposite sign convention
+        int sign_p             = permutation_sign(effective_permutation);
+        int sign               = -sign_p * sign_u;
 
-        //12
         for (size_t i = 0; i < current_partition.size(); ++i) {
-          const auto &unprimed_idx_subset = current_partition[i];
-          const auto &primed_idx_subset   = primed_subsets[i];
+          const auto &local_u_subset = current_partition[i];
+          const auto &local_p_subset = primed_subsets[i];
 
-          HubbardAtom::cumul_args current_unprimed_args;
-          current_unprimed_args.reserve(unprimed_idx_subset.size());
-          for (int index : unprimed_idx_subset) { current_unprimed_args.push_back(unprimed[index]); }
+          uint64_t next_mask_u = 0;
+          uint64_t next_mask_p = 0;
 
-          HubbardAtom::cumul_args current_primed_args;
-          current_primed_args.reserve(primed_idx_subset.size());
-          for (int index : primed_idx_subset) { current_primed_args.push_back(primed[index]); }
+          for (int local_idx : local_u_subset) {
+            int global_idx = global_map_u[local_idx];
+            next_mask_u |= (1ULL << global_idx);
+          }
 
-          current_product *= compute_cumulant_decomposition(current_unprimed_args, current_primed_args, atom);
+          for (int local_idx : local_p_subset) {
+            int global_idx = global_map_p[local_idx];
+            next_mask_p |= (1ULL << global_idx);
+          }
+
+          current_product *= solve(next_mask_u, next_mask_p);
         }
         low_order_cumulants += sign * current_product;
       }
     }
-    return G0n + low_order_cumulants;
+
+    return memo[key] = G0n + low_order_cumulants;
+  }
+
+  double CumulantSolver::compute_cumulant_decomposition() {
+    uint64_t full_mask = (master_unprimed.size() == 64) ? ~0ULL : (1ULL << master_unprimed.size()) - 1;
+    return solve(full_mask, full_mask);
+  }
+
+  double compute_cumulant_decomposition(HubbardAtom::cumul_args const &unprimed, HubbardAtom::cumul_args const &primed, HubbardAtom const &atom,
+                                        bool verbose) {
+    if (unprimed.size() != primed.size())
+      throw std::invalid_argument("CumulantSolver::compute_cumulant_decomposition: unprimed and primed lists must have the same size.");
+    if (unprimed.empty()) throw std::invalid_argument("CumulantSolver::compute_cumulant_decomposition: unprimed and primed lists cannot be empty.");
+
+    CumulantSolver solver(unprimed, primed, atom);
+
+    double result = solver.compute_cumulant_decomposition();
+
+    if (verbose) { std::cout << "CumulantSolver Cache Stats: Hits = " << solver.cache_hits << ", Misses = " << solver.cache_misses << "\n"; }
+
+    return result;
   }
 
 } // namespace sc_expansion

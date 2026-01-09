@@ -33,7 +33,7 @@ namespace sc_expansion {
 
     /// Copy/Move assignment
     toto &operator=(toto const &) = default;
-    toto &operator=(toto &&) = default;
+    toto &operator=(toto &&)      = default;
 
     /// Simple accessor
     [[nodiscard]] int get_i() const { return i; }
@@ -59,8 +59,8 @@ namespace sc_expansion {
     friend void h5_read(h5::group grp, std::string subgroup_name, toto &m);
 
     /// Serialization
-    void serialize(auto &ar) const { ar &i; }
-    void deserialize(auto &ar) { ar &i; }
+    void serialize(auto &ar) const { ar & i; }
+    void deserialize(auto &ar) { ar & i; }
   };
 
   /**
