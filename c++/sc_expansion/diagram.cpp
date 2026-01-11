@@ -155,11 +155,24 @@ namespace sc_expansion {
     std::vector<HubbardAtom::cumul_args> unprimed_args_per_vertex(this->V);
     std::vector<HubbardAtom::cumul_args> primed_args_per_vertex(this->V);
 
+    // Monotonic shift to enforce strict ordering and uniqueness
+    // delta, 2*delta, 3*delta, ...
+    constexpr double DELTA = 1.0e-12;
+
     for (size_t line_idx = 0; line_idx < hopping_lines.size(); line_idx++) { //loop through each hopping line
 
-      auto line = hopping_lines[line_idx];                                  //get the destroy and create vertices for this line
-      unprimed_args_per_vertex[line.from_vertex].push_back(args[line_idx]); //assign the unprimed args to the from vertex
-      primed_args_per_vertex[line.to_vertex].push_back(args[line_idx]);     //assign the primed args to the to vertex
+      auto line = hopping_lines[line_idx]; //get the destroy and create vertices for this line
+
+      // Unprimed (Annihilation): Shift by 2*i * delta
+      auto arg_unprimed = args[line_idx];
+      arg_unprimed.first += (2 * line_idx) * DELTA;
+      unprimed_args_per_vertex[line.from_vertex].push_back(arg_unprimed);
+
+      // Primed (Creation): Shift by (2*i + 1) * delta
+      // Ensures Creation > Annihilation (Normal Ordering)
+      auto arg_primed = args[line_idx];
+      arg_primed.first += (2 * line_idx + 1) * DELTA;
+      primed_args_per_vertex[line.to_vertex].push_back(arg_primed);
     }
     double prod = 1.0;
     for (int vertex = 0; vertex < this->V; vertex++) {
