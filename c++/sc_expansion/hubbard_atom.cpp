@@ -5,9 +5,14 @@ namespace sc_expansion {
   using namespace triqs::operators;
 
   HubbardAtom::HubbardAtom(double U, double beta, double mu) : U(U), beta(beta), mu(mu) {
-    auto fops = make_fops();
-    H         = make_H0(U, mu);
-    ad        = triqs::atom_diag::atom_diag<false>(H, fops, {});
+    auto fops     = make_fops();
+    this->H       = make_H0(U, mu);
+    this->ad      = triqs::atom_diag::atom_diag<false>(this->H, fops, {});
+    this->rho0    = triqs::atom_diag::atomic_density_matrix(this->ad, beta)[0];
+    this->c_dn    = this->ad.c_matrix(0, 0);
+    this->c_up    = this->ad.c_matrix(1, 0);
+    this->cdag_dn = this->ad.cdag_matrix(0, 0);
+    this->cdag_up = this->ad.cdag_matrix(1, 0);
   }
 
   triqs::hilbert_space::fundamental_operator_set HubbardAtom::make_fops() {
@@ -23,23 +28,15 @@ namespace sc_expansion {
     return h;
   }
 
-  int HubbardAtom::calculate_permutation_sign(const std::vector<int> &p) {
-    int n = p.size();
-    if (n == 0) return 1;
+  int HubbardAtom::calculate_permutation_sign(std::vector<int> const &perm) {
 
-    std::vector<bool> visited(n, false);
-    int num_cycles = 0;
-    for (int i = 0; i < n; ++i) {
-      if (!visited[i]) {
-        num_cycles++;
-        int j = i;
-        while (!visited[j]) {
-          visited[j] = true;
-          j          = p[j];
-        }
+    int inversions = 0;
+    for (size_t i = 0; i < perm.size(); ++i) {
+      for (size_t j = i + 1; j < perm.size(); ++j) {
+        if (perm[i] > perm[j]) { ++inversions; }
       }
     }
-    return std::pow(-1, n - num_cycles);
+    return (inversions % 2 == 0) ? 1 : -1;
   }
 
   std::tuple<std::vector<double>, std::vector<int>, std::vector<int>, int>
@@ -66,38 +63,48 @@ namespace sc_expansion {
     return {sorted_times, sorted_spins, sorted_flags, sign};
   }
 
+  bool HubbardAtom::verify_consecutive_terms(const std::vector<int> &sorted_spins, const std::vector<int> &sorted_flags, int n_ops) {
+    for (int i = 0; i < 2 * n_ops - 2; ++i) {
+
+      if (sorted_flags[i] == sorted_flags[i + 1] && sorted_flags[i + 1] == sorted_flags[i + 2]) {
+        return false;
+      } //Three consecutive creates or destroys
+    }
+    for (int i = 0; i < 2 * n_ops - 1; ++i) {
+      if (sorted_flags[i] == sorted_flags[i + 1] && sorted_spins[i] == sorted_spins[i + 1]) {
+        return false;
+      } //Two consecutive creates or destroys with same spin
+    }
+    return true;
+  }
+
   nda::matrix<double> HubbardAtom::make_interaction_picture_destroy_op(double tau, int state_index) const {
+    double Z01 = triqs::atom_diag::partition_function(this->ad, tau);
+    double Z02 = triqs::atom_diag::partition_function(this->ad, -tau);
 
-    double Z01 = triqs::atom_diag::partition_function(ad, tau);
-    double Z02 = triqs::atom_diag::partition_function(ad, -tau);
-
-    auto cmat        = ad.c_matrix(state_index, 0);
-    auto time_evol_1 = triqs::atom_diag::atomic_density_matrix(ad, -tau)[0];
-    auto time_evol_2 = triqs::atom_diag::atomic_density_matrix(ad, tau)[0];
+    auto const &cmat = (state_index == 0 ? this->c_dn : this->c_up);
+    auto time_evol_1 = triqs::atom_diag::atomic_density_matrix(this->ad, -tau)[0];
+    auto time_evol_2 = triqs::atom_diag::atomic_density_matrix(this->ad, tau)[0];
     auto ctau        = Z01 * Z02 * time_evol_1 * cmat * time_evol_2;
 
     return ctau;
   }
 
   nda::matrix<double> HubbardAtom::make_interaction_picture_create_op(double tau, int state_index) const {
+    double Z01 = triqs::atom_diag::partition_function(this->ad, tau);
+    double Z02 = triqs::atom_diag::partition_function(this->ad, -tau);
 
-    double Z01 = triqs::atom_diag::partition_function(ad, tau);
-    double Z02 = triqs::atom_diag::partition_function(ad, -tau);
-
-    auto cmat        = ad.cdag_matrix(state_index, 0);
-    auto time_evol_1 = triqs::atom_diag::atomic_density_matrix(ad, -tau)[0];
-    auto time_evol_2 = triqs::atom_diag::atomic_density_matrix(ad, tau)[0];
+    auto const &cmat = (state_index == 0 ? this->cdag_dn : this->cdag_up);
+    auto time_evol_1 = triqs::atom_diag::atomic_density_matrix(this->ad, -tau)[0];
+    auto time_evol_2 = triqs::atom_diag::atomic_density_matrix(this->ad, tau)[0];
     auto cdagtau     = Z01 * Z02 * time_evol_1 * cmat * time_evol_2;
 
     return cdagtau;
   }
 
   double HubbardAtom::G0(cumul_args const &unprimed_args, cumul_args const &primed_args) const {
-
     int order = unprimed_args.size();
     if (order != primed_args.size()) { throw std::runtime_error("Error in G0: unprimed_args and primed_args must have the same size"); }
-
-    nda::matrix<double> rho0 = triqs::atom_diag::atomic_density_matrix(ad, beta)[0];
 
     int n_ops = 2 * order;
     std::vector<double> times;
@@ -120,14 +127,15 @@ namespace sc_expansion {
     }
 
     auto [sorted_times, sorted_spins, sorted_flags, sign] = sort_operators(times, spins, flags);
+    if (!verify_consecutive_terms(sorted_spins, sorted_flags, order)) { return 0.0; }
 
-    nda::matrix<double> op = rho0;
+    nda::matrix<double> op = this->rho0;
 
     for (int i = 0; i < n_ops; ++i) {
       if (sorted_flags[i] == 1) {
-        op *= make_interaction_picture_create_op(sorted_times[i], sorted_spins[i]);
+        op *= this->make_interaction_picture_create_op(sorted_times[i], sorted_spins[i]);
       } else {
-        op *= make_interaction_picture_destroy_op(sorted_times[i], sorted_spins[i]);
+        op *= this->make_interaction_picture_destroy_op(sorted_times[i], sorted_spins[i]);
       }
     }
     double G0_value = sign * trace(op);

@@ -22,6 +22,12 @@ namespace sc_expansion {
     double mu;
     triqs::operators::many_body_operator_generic<double> H;
     triqs::atom_diag::atom_diag<false> ad;
+    nda::matrix<double> rho0;
+    nda::matrix<double> c_up;
+    nda::matrix<double> c_dn;
+    nda::matrix<double> cdag_up;
+    nda::matrix<double> cdag_dn;
+    std::vector<double> energies;
 
     // Constructor
     HubbardAtom(double U, double beta, double mu);
@@ -31,6 +37,8 @@ namespace sc_expansion {
 
     static std::tuple<std::vector<double>, std::vector<int>, std::vector<int>, int>
     sort_operators(const std::vector<double> &times, const std::vector<int> &spins, const std::vector<int> &flags);
+
+    static bool verify_consecutive_terms(const std::vector<int> &sorted_spins, const std::vector<int> &sorted_flags, int n_ops);
 
     nda::matrix<double> make_interaction_picture_destroy_op(double tau, int state_index) const;
 
