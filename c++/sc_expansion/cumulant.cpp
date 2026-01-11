@@ -89,29 +89,28 @@ namespace sc_expansion {
     // Pre-calculate spin patterns for fast checks
     // Assuming Arg.second is the spin (0 or 1)
     for (size_t i = 0; i < u.size(); ++i) {
-      if (u[i].second == 1) master_spin_mask_u |= (1ULL << i);
+      if (u[i].second == 1) this->master_spin_mask_u |= (1ULL << i);
     }
     for (size_t i = 0; i < p.size(); ++i) {
-      if (p[i].second == 1) master_spin_mask_p |= (1ULL << i);
+      if (p[i].second == 1) this->master_spin_mask_p |= (1ULL << i);
     }
   }
 
   double CumulantSolver::solve(uint64_t mask_u, uint64_t mask_p) {
 
     // 1. Check Spin Conservation (Fast Bitwise Check)
-    int up_u = __builtin_popcountll(mask_u & master_spin_mask_u);
-    int up_p = __builtin_popcountll(mask_p & master_spin_mask_p);
+    int up_u = __builtin_popcountll(mask_u & this->master_spin_mask_u);
+    int up_p = __builtin_popcountll(mask_p & this->master_spin_mask_p);
     if (up_u != up_p) return 0.0;
 
     // 2. Check Cache
-    // 2. Check Cache
     CacheKey key{mask_u, mask_p};
-    if (auto it = memo.find(key); it != memo.end()) {
-      cache_hits++; // <--- HIT!
+    if (auto it = this->memo.find(key); it != this->memo.end()) {
+      this->cache_hits++; // <--- HIT!
       return it->second;
     }
 
-    cache_misses++; // <--- MISS (We have to compute it)
+    this->cache_misses++; // <--- MISS (We have to compute it)
 
     // 3. Prepare Mapping: Global Indices -> Local Indices (0..k-1)
     std::vector<int> global_map_u;
@@ -128,9 +127,9 @@ namespace sc_expansion {
     // 4. Base Case: Order 1
     if (global_map_u.size() == 1) {
       // Reconstruct temp vectors for the atom call
-      ArgList args_u   = {master_unprimed[global_map_u[0]]};
-      ArgList args_p   = {master_primed[global_map_p[0]]};
-      return memo[key] = atom.G0(args_u, args_p);
+      ArgList args_u         = {this->master_unprimed[global_map_u[0]]};
+      ArgList args_p         = {this->master_primed[global_map_p[0]]};
+      return this->memo[key] = this->atom.G0(args_u, args_p);
     }
 
     // 5. Compute G0_n (First term)
@@ -138,10 +137,10 @@ namespace sc_expansion {
     current_args_u.reserve(global_map_u.size());
     current_args_p.reserve(global_map_p.size());
 
-    for (int idx : global_map_u) current_args_u.push_back(master_unprimed[idx]);
-    for (int idx : global_map_p) current_args_p.push_back(master_primed[idx]);
+    for (int idx : global_map_u) current_args_u.push_back(this->master_unprimed[idx]);
+    for (int idx : global_map_p) current_args_p.push_back(this->master_primed[idx]);
 
-    double G0n = atom.G0(current_args_u, current_args_p);
+    double G0n = this->atom.G0(current_args_u, current_args_p);
 
     // 6. Subtraction Term Logic
     double low_order_cumulants = 0.0;
@@ -205,18 +204,18 @@ namespace sc_expansion {
             next_mask_p |= (1ULL << global_idx);
           }
 
-          current_product *= solve(next_mask_u, next_mask_p);
+          current_product *= this->solve(next_mask_u, next_mask_p);
         }
         low_order_cumulants += sign * current_product;
       }
     }
 
-    return memo[key] = G0n + low_order_cumulants;
+    return this->memo[key] = G0n + low_order_cumulants;
   }
 
   double CumulantSolver::compute_cumulant_decomposition() {
-    uint64_t full_mask = (master_unprimed.size() == 64) ? ~0ULL : (1ULL << master_unprimed.size()) - 1;
-    return solve(full_mask, full_mask);
+    uint64_t full_mask = (this->master_unprimed.size() == 64) ? ~0ULL : (1ULL << this->master_unprimed.size()) - 1;
+    return this->solve(full_mask, full_mask);
   }
 
   double compute_cumulant_decomposition(HubbardAtom::cumul_args const &unprimed, HubbardAtom::cumul_args const &primed, HubbardAtom const &atom,

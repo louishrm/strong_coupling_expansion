@@ -18,7 +18,7 @@ namespace sc_expansion {
       uint64_t u_mask;
       uint64_t p_mask;
 
-      bool operator==(const CacheKey &o) const { return u_mask == o.u_mask && p_mask == o.p_mask; }
+      bool operator==(const CacheKey &o) const { return this->u_mask == o.u_mask && this->p_mask == o.p_mask; }
     };
 
     struct KeyHasher {
