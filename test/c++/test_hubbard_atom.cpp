@@ -14,9 +14,7 @@ class HubbardAtomTest : public ::testing::Test {
 
   std::unique_ptr<HubbardAtom> atom;
 
-  void SetUp() override {
-    atom = std::make_unique<HubbardAtom>(U, beta, mu);
-  }
+  void SetUp() override { atom = std::make_unique<HubbardAtom>(U, beta, mu); }
 };
 
 TEST_F(HubbardAtomTest, PartitionFunctionMatchesExactResult) {
@@ -82,6 +80,16 @@ TEST_F(HubbardAtomTest, GreenFunctionG01MatchesExactResult) {
   double G01 = atom->G0(unprimed, primed);
 
   EXPECT_NEAR(G01, G01_exact, 1e-10);
+}
+
+TEST_F(HubbardAtomTest, GreenFunctionG02VanishConsecutiveTimes) {
+
+  HubbardAtom::cumul_args unprimed = {{0.1, 0}, {0.2, 0}};
+  HubbardAtom::cumul_args primed   = {{0.3, 0}, {0.4, 0}};
+
+  double G02 = atom->G0(unprimed, primed);
+
+  EXPECT_NEAR(G02, 0.0, 1e-10);
 }
 
 // Main is usually provided by gtest_main, but if you need a custom one:
