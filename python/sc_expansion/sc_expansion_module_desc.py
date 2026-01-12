@@ -59,4 +59,31 @@ c.add_method("""double evaluate_at_taus(std::vector<double> taus)""", doc = r"""
 
 module.add_class(c)
 
+
+c = class_(
+        py_type = "Order6",  # name of the python class
+        c_type = "sc_expansion::order6",   # name of the C++ class
+        doc = r"""A very useful and important class""",   # doc of the C++ class
+        hdf5 = False
+)
+
+c.add_constructor("""(double U, double mu, double beta)""", doc = r"""""")
+
+c.add_method("""double compute_sum_diagrams(std::vector<double> taus)""", doc = r""" """)
+
+module.add_class(c)
+
+c = class_(
+        py_type = "Cumulant",
+        c_type = "sc_expansion::CumulantHelper",
+        doc = r"""Calculates cumulants for specific times with spin 0""",
+        hdf5 = False
+)
+
+c.add_constructor("""(double U, double beta, double mu)""", doc = r"""""")
+
+c.add_method("""double compute(std::vector<double> taus)""", doc = r""" """)
+
+module.add_class(c)
+
 module.generate_code()
