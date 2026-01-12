@@ -40,11 +40,15 @@ namespace sc_expansion {
 
     static bool verify_consecutive_terms(const std::vector<int> &sorted_spins, const std::vector<int> &sorted_flags, int n_ops);
 
+    static bool verify_consecutive_terms_infinite_U(const std::vector<int> &sorted_spins, const std::vector<int> &sorted_flags, int n_ops);
+
     nda::matrix<double> make_interaction_picture_destroy_op(double tau, int state_index) const;
 
     nda::matrix<double> make_interaction_picture_create_op(double tau, int state_index) const;
 
     double G0(cumul_args const &unprimed_args, cumul_args const &primed_args) const;
+
+    double G0_infinite_U(cumul_args const &unprimed_args, cumul_args const &primed_args) const;
 
     private:
     static triqs::hilbert_space::fundamental_operator_set make_fops();

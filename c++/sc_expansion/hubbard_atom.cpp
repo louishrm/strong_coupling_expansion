@@ -143,4 +143,54 @@ namespace sc_expansion {
     return G0_value;
   }
 
+  bool HubbardAtom::verify_consecutive_terms_infinite_U(const std::vector<int> &sorted_spins, const std::vector<int> &sorted_flags, int n_ops) {
+    for (int i = 0; i < 2 * n_ops - 1; ++i) {
+      if (sorted_flags[i] == sorted_flags[i + 1]) { return false; } //Two consecutive creates or destroys (no double occupancy)
+    }
+    return true;
+  }
+
+  double HubbardAtom::G0_infinite_U(cumul_args const &unprimed_args, cumul_args const &primed_args) const {
+
+    int order = unprimed_args.size();
+    if (order != primed_args.size()) { throw std::runtime_error("Error in G0: unprimed_args and primed_args must have the same size"); }
+
+    int n_ops = 2 * order;
+    std::vector<double> times;
+    std::vector<int> spins;
+    std::vector<int> flags;
+    times.reserve(n_ops);
+    spins.reserve(n_ops);
+    flags.reserve(n_ops);
+
+    for (auto [t, s] : unprimed_args) {
+      times.push_back(t);
+      spins.push_back(s);
+      flags.push_back(0); // destroy
+    }
+
+    for (auto [t, s] : primed_args) {
+      times.push_back(t);
+      spins.push_back(s);
+      flags.push_back(1); // create
+    }
+
+    auto [sorted_times, sorted_spins, sorted_flags, sign] = sort_operators(times, spins, flags);
+
+    if (!verify_consecutive_terms_infinite_U(sorted_spins, sorted_flags, order)) { return 0.0; }
+
+    nda::matrix<double> op = this->rho0;
+    for (int i = 0; i < n_ops; ++i) {
+      if (sorted_flags[i] == 1) {
+        auto const &cmat = (sorted_spins[i] == 0 ? this->cdag_dn : this->cdag_up);
+        op *= cmat;
+      } else {
+        auto const &cmat = (sorted_spins[i] == 0 ? this->c_dn : this->c_up);
+        op *= cmat;
+      }
+
+      double G0_value = sign * trace(op);
+      return G0_value;
+    }
+  }
 } // namespace sc_expansion
