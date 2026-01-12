@@ -1,13 +1,13 @@
-// #include "../../c++/sc_expansion/diagram.hpp"
-// #include "../../c++/sc_expansion/hubbard_atom.hpp"
-// #include "../../c++/sc_expansion/cumulant.hpp"
-// #include "../../c++/sc_expansion/dimer_order_4.hpp"
+#include "../../c++/sc_expansion/diagram.hpp"
+#include "../../c++/sc_expansion/hubbard_atom.hpp"
+#include "../../c++/sc_expansion/cumulant.hpp"
+#include "../../c++/sc_expansion/dimer_order_4.hpp"
 
-// #include <fstream>
-// #include <iostream>
-// #include <nda/nda.hpp>
+#include <fstream>
+#include <iostream>
+#include <nda/nda.hpp>
 
-// using namespace sc_expansion;
+using namespace sc_expansion;
 
 // double dimer_Omega2a(auto ad, double beta, std::vector<double> tau) {
 
@@ -169,233 +169,252 @@
 //   }
 // };
 
-// int main() {
+int main() {
 
-//   double U    = 8.0;
-//   double beta = 1.0;
-//   double mu   = 2.0;
+  double U    = 8.0;
+  double beta = 1.0;
+  double mu   = 2.0;
 
-//   triqs::hilbert_space::fundamental_operator_set fops     = hubbard_atom::make_fops();
-//   triqs::operators::many_body_operator_generic<double> H0 = hubbard_atom::make_H0(U, mu);
-//   triqs::atom_diag::atom_diag<false> ad(H0, fops, {}); // atom_diag object
+  // triqs::hilbert_space::fundamental_operator_set fops     = hubbard_atom::make_fops();
+  // triqs::operators::many_body_operator_generic<double> H0 = hubbard_atom::make_H0(U, mu);
+  // triqs::atom_diag::atom_diag<false> ad(H0, fops, {}); // atom_diag object
 
-//   auto o4 = sc_expansion::order6(U, beta, mu);
+  auto atom                                      = sc_expansion::HubbardAtom(U, beta, mu);
+  sc_expansion::HubbardAtom::cumul_args unprimed = {{0.1, 0}, {0.2, 0}};
+  sc_expansion::HubbardAtom::cumul_args primed   = {{0.3, 0}, {0.4, 0}};
+  double res                                     = sc_expansion::compute_cumulant_decomposition(unprimed, primed, atom, false);
 
-//   std::vector<double> taus = {0.1, 0.2, 0.3, 0.4, 0.5, 0.6};
-//   auto start               = std::chrono::high_resolution_clock::now();
-//   int n_runs               = 100;
-//   for (int i = 0; i < n_runs; ++i) { o4.compute_sum_diagrams(taus); }
-//   auto end                           = std::chrono::high_resolution_clock::now();
-//   std::chrono::duration<double> diff = end - start;
-//   std::cout << "Average time per run: " << diff.count() / n_runs << " s" << std::endl;
+  std::cout << "Cumulant C({0.1,0.2}|{0.3,0.4}): " << res << std::endl;
 
-//   //double res = D.evaluate_at_points(x);
-//   //double res = D.evaluate_at_taus({0.1, 0.2, 0.3, 0.4, 0.5, 0.6});
-//   //std::cout << "Diagram evaluation at taus {0.1,0.2,0.3,0.4,0.5,0.6}: " << res << std::endl;
+  auto o6 = sc_expansion::order6(U, beta, mu);
+  auto o4 = sc_expansion::order4(U, beta, mu);
 
-//   // Diagram D({{0, 1}, {1, 0}}, U, beta, mu); // second order diagram
+  std::vector<double> taus1       = {0.1, 0.12, 0.4, 0.2};
+  std::vector<double> taus1_shift = {0.0, 0.12 - 0.1, 0.4 - 0.1, 0.2 - 0.1};
 
-//   // int grid_size = 20;
-//   // int order     = 4;
-//   // std::vector<std::vector<double>> grid;
+  std::cout << "Order 4 diagram sum at taus {0.1,0.12,0.4,0.2}: " << o4.compute_sum_diagrams(taus1) << std::endl;
+  std::cout << "Order 4 diagram sum at shifted taus {0.1+beta,0.12,0.4,0.2}: " << o4.compute_sum_diagrams(taus1_shift) << std::endl;
 
-//   // for (int i = 0; i < order; i++) {
-//   //   auto row = linspace(0, beta, grid_size + 2, true);
-//   //   row.pop_back();         // remove the endpoint 1.0
-//   //   row.erase(row.begin()); // remove the start point 0.0
-//   //   grid.push_back(row);
-//   // }
+  std::vector<double> taus2       = {0.09, 0.23, 0.4, 0.76, 0.33, 0.16};
+  std::vector<double> taus2_shift = {0.0, 0.23 - 0.09, 0.4 - 0.09, 0.76 - 0.09, 0.33 - 0.09, 0.16 - 0.09};
+  std::cout << "Order 6 diagram sum at taus {0.1,0.12,0.4,0.2,0.33,0.16}: " << o6.compute_sum_diagrams(taus2) << std::endl;
+  std::cout << "Order 6 diagram sum at shifted taus {0.1+beta,0.12,0.4,0.2,0.33,0.16}: " << o6.compute_sum_diagrams(taus2_shift) << std::endl;
 
-//   // // std::string directory = "/Users/louissharma/Desktop/tci_python/";
-//   // // std::string name      = "dimer_Omega2a_U" + std::to_string(int(U)) + "_mu" + std::to_string(int(mu)) + "_beta" + std::to_string(int(beta))
-//   // //    + std::to_string("_tdiff") + "_size" + std::to_string(grid_size);
+  std::vector<double> taus = {0.1, 0.2, 0.3, 0.4, 0.5, 0.6};
+  auto start               = std::chrono::high_resolution_clock::now();
+  int n_runs               = 1000;
+  for (int i = 0; i < n_runs; ++i) { o6.compute_sum_diagrams(taus); }
+  auto end                           = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double> diff = end - start;
+  std::cout << "Average time per run: " << diff.count() / n_runs << " s" << std::endl;
 
-//   // // std::ofstream outfile(directory + name);
-//   // // //double exact_integ = 0.0;
-//   // // nda::matrix<double> omega2a_mat(grid_size, grid_size);
-//   // // for (size_t i = 0; i < grid[0].size(); ++i) {
-//   // //   double x1 = grid[0][i];
-//   // //   for (size_t j = 0; j < grid[1].size(); ++j) {
-//   // //     double x2 = grid[1][j];
+  //double res = D.evaluate_at_points(x);
+  //double res = D.evaluate_at_taus({0.1, 0.2, 0.3, 0.4, 0.5, 0.6});
+  //std::cout << "Diagram evaluation at taus {0.1,0.2,0.3,0.4,0.5,0.6}: " << res << std::endl;
 
-//   // //     double tau1 = x1 + x2;
-//   // //     double tau2 = x2;
+  // Diagram D({{0, 1}, {1, 0}}, U, beta, mu); // second order diagram
 
-//   // //     // std::vector<double> x = {x1, x2};
-//   // //     // auto taus             = make_x_to_tau(beta)(x);
-//   // //     double val = D.evaluate_at_taus(ad, beta, {tau1, tau2});
+  // int grid_size = 20;
+  // int order     = 4;
+  // std::vector<std::vector<double>> grid;
 
-//   // //     omega2a_mat(i, j) = val;
-//   // //     //exact_integ += val * 1 / 50.0 * 1 / 50.0;
-//   // //   }
-//   // // }
-//   // // //std::cout << "Exact integration value for Omega2a: " << exact_integ << std::endl;
-//   // // save(directory + name, "omega2a", omega2a_mat);
+  // for (int i = 0; i < order; i++) {
+  //   auto row = linspace(0, beta, grid_size + 2, true);
+  //   row.pop_back();         // remove the endpoint 1.0
+  //   row.erase(row.begin()); // remove the start point 0.0
+  //   grid.push_back(row);
+  // }
 
-//   // // outfile.close();
+  // // std::string directory = "/Users/louissharma/Desktop/tci_python/";
+  // // std::string name      = "dimer_Omega2a_U" + std::to_string(int(U)) + "_mu" + std::to_string(int(mu)) + "_beta" + std::to_string(int(beta))
+  // //    + std::to_string("_tdiff") + "_size" + std::to_string(grid_size);
 
-//   // // double F2_new = dimer_Omega2_new(ad, beta, D, beta / 1000.0);
-//   // // std::cout << "Free energy 2nd order from Diagram class for U: " << U << ", mu: " << mu << ", beta: " << beta << " is " << F2_new * beta
-//   // //           << std::endl;
+  // // std::ofstream outfile(directory + name);
+  // // //double exact_integ = 0.0;
+  // // nda::matrix<double> omega2a_mat(grid_size, grid_size);
+  // // for (size_t i = 0; i < grid[0].size(); ++i) {
+  // //   double x1 = grid[0][i];
+  // //   for (size_t j = 0; j < grid[1].size(); ++j) {
+  // //     double x2 = grid[1][j];
 
-//   // // double delta = beta / 1000.0;
-//   // // double F2    = dimer_Omega2(ad, beta, delta);
-//   // // std::cout << "Free energy 2nd order for U: " << U << ", mu: " << mu << ", beta: " << beta << " is " << F2 * beta << std::endl;
+  // //     double tau1 = x1 + x2;
+  // //     double tau2 = x2;
 
-//   // adjmat D4a                    = {{0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}, {1, 0, 0, 0}}; //4-cycle
-//   // adjmat D4b                    = {{0, 1, 1}, {1, 0, 0}, {1, 0, 0}};                        //3-cycle with double lines
-//   // adjmat D4c                    = {{0, 2}, {2, 0}};                                         //2-cycle with double lines
-//   // std::vector<Diagram> diagrams = {Diagram(D4a, U, beta, mu), Diagram(D4b, U, beta, mu), Diagram(D4c, U, beta, mu)};
+  // //     // std::vector<double> x = {x1, x2};
+  // //     // auto taus             = make_x_to_tau(beta)(x);
+  // //     double val = D.evaluate_at_taus(ad, beta, {tau1, tau2});
 
-//   // // std::string name = "dimer_Omega4_U" + std::to_string(int(U)) + "_mu" + std::to_string(int(mu)) + "_beta" + std::to_string(int(beta)) + "_size"
-//   // //    + std::to_string(grid_size) + ".txt";
+  // //     omega2a_mat(i, j) = val;
+  // //     //exact_integ += val * 1 / 50.0 * 1 / 50.0;
+  // //   }
+  // // }
+  // // //std::cout << "Exact integration value for Omega2a: " << exact_integ << std::endl;
+  // // save(directory + name, "omega2a", omega2a_mat);
 
-//   // // std::ofstream outfile(directory + name);
+  // // outfile.close();
 
-//   // // outfile.precision(16);
+  // // double F2_new = dimer_Omega2_new(ad, beta, D, beta / 1000.0);
+  // // std::cout << "Free energy 2nd order from Diagram class for U: " << U << ", mu: " << mu << ", beta: " << beta << " is " << F2_new * beta
+  // //           << std::endl;
 
-//   // // nda::array<double, 4> omega4_arr(grid_size, grid_size, grid_size, grid_size);
+  // // double delta = beta / 1000.0;
+  // // double F2    = dimer_Omega2(ad, beta, delta);
+  // // std::cout << "Free energy 2nd order for U: " << U << ", mu: " << mu << ", beta: " << beta << " is " << F2 * beta << std::endl;
 
-//   // // for (size_t i = 0; i < grid[0].size(); ++i) {
-//   // //   double x1 = grid[0][i];
+  // adjmat D4a                    = {{0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}, {1, 0, 0, 0}}; //4-cycle
+  // adjmat D4b                    = {{0, 1, 1}, {1, 0, 0}, {1, 0, 0}};                        //3-cycle with double lines
+  // adjmat D4c                    = {{0, 2}, {2, 0}};                                         //2-cycle with double lines
+  // std::vector<Diagram> diagrams = {Diagram(D4a, U, beta, mu), Diagram(D4b, U, beta, mu), Diagram(D4c, U, beta, mu)};
 
-//   // //   // j index for tau2
-//   // //   for (size_t j = 0; j < grid[1].size(); ++j) {
-//   // //     double x2 = grid[1][j];
+  // // std::string name = "dimer_Omega4_U" + std::to_string(int(U)) + "_mu" + std::to_string(int(mu)) + "_beta" + std::to_string(int(beta)) + "_size"
+  // //    + std::to_string(grid_size) + ".txt";
 
-//   // //     // k index for tau3
-//   // //     for (size_t k = 0; k < grid[2].size(); ++k) {
-//   // //       double x3 = grid[2][k];
+  // // std::ofstream outfile(directory + name);
 
-//   // //       for (size_t l = 0; l < grid[3].size(); l++) {
+  // // outfile.precision(16);
 
-//   // //         double x4 = grid[3][l];
+  // // nda::array<double, 4> omega4_arr(grid_size, grid_size, grid_size, grid_size);
 
-//   // //         double tau1              = x1 + x2 + x3 + x4;
-//   // //         double tau2              = x2 + x3 + x4;
-//   // //         double tau3              = x3 + x4;
-//   // //         double tau4              = x4;
-//   // //         std::vector<double> taus = {tau1, tau2, tau3, tau4};
-//   // //         double sum_val           = 0.0;
-//   // //         for (size_t diag_idx = 0; diag_idx < diagrams.size(); diag_idx++) {
-//   // //           // Evaluate each diagram contribution
-//   // //           double val = diagrams[diag_idx].evaluate_at_taus(ad, beta, taus);
-//   // //           sum_val += val; // Sum the contributions
-//   // //         }
-//   // //         omega4_arr(i, j, k, l) = sum_val;
-//   // //       } //end l
-//   // //     } // end k
-//   // //   } // end j
-//   // // } // end i
+  // // for (size_t i = 0; i < grid[0].size(); ++i) {
+  // //   double x1 = grid[0][i];
 
-//   // // save(directory + name, "omega4", omega4_arr);
-//   // // outfile.close();
+  // //   // j index for tau2
+  // //   for (size_t j = 0; j < grid[1].size(); ++j) {
+  // //     double x2 = grid[1][j];
 
-//   // // std::string name = "dimer_Omega4_U_3tensor" + std::to_string(int(U)) + "_mu" + std::to_string(int(mu)) + "_beta" + std::to_string(int(beta))
-//   // //    + "_size" + std::to_string(grid_size) + ".txt";
+  // //     // k index for tau3
+  // //     for (size_t k = 0; k < grid[2].size(); ++k) {
+  // //       double x3 = grid[2][k];
 
-//   // // std::ofstream outfile(directory + name);
+  // //       for (size_t l = 0; l < grid[3].size(); l++) {
 
-//   // // outfile.precision(16);
+  // //         double x4 = grid[3][l];
 
-//   // // nda::array<double, 3> omega4_arr(grid_size, grid_size, grid_size);
+  // //         double tau1              = x1 + x2 + x3 + x4;
+  // //         double tau2              = x2 + x3 + x4;
+  // //         double tau3              = x3 + x4;
+  // //         double tau4              = x4;
+  // //         std::vector<double> taus = {tau1, tau2, tau3, tau4};
+  // //         double sum_val           = 0.0;
+  // //         for (size_t diag_idx = 0; diag_idx < diagrams.size(); diag_idx++) {
+  // //           // Evaluate each diagram contribution
+  // //           double val = diagrams[diag_idx].evaluate_at_taus(ad, beta, taus);
+  // //           sum_val += val; // Sum the contributions
+  // //         }
+  // //         omega4_arr(i, j, k, l) = sum_val;
+  // //       } //end l
+  // //     } // end k
+  // //   } // end j
+  // // } // end i
 
-//   // // for (size_t i = 0; i < grid[0].size(); ++i) {
-//   // //   double x1 = grid[0][i];
+  // // save(directory + name, "omega4", omega4_arr);
+  // // outfile.close();
 
-//   // //   // j index for tau2
-//   // //   for (size_t j = 0; j < grid[1].size(); ++j) {
-//   // //     double x2 = grid[1][j];
+  // // std::string name = "dimer_Omega4_U_3tensor" + std::to_string(int(U)) + "_mu" + std::to_string(int(mu)) + "_beta" + std::to_string(int(beta))
+  // //    + "_size" + std::to_string(grid_size) + ".txt";
 
-//   // //     // k index for tau3
-//   // //     for (size_t k = 0; k < grid[2].size(); ++k) {
-//   // //       double x3 = grid[2][k];
+  // // std::ofstream outfile(directory + name);
 
-//   // //       double tau1              = x1 + x2 + x3;
-//   // //       double tau2              = x2 + x3;
-//   // //       double tau3              = x3;
-//   // //       double tau4              = 0.0;
-//   // //       std::vector<double> taus = {tau1, tau2, tau3, tau4};
-//   // //       double sum_val           = 0.0;
-//   // //       for (size_t diag_idx = 0; diag_idx < diagrams.size(); diag_idx++) {
-//   // //         // Evaluate each diagram contribution
-//   // //         double val = diagrams[diag_idx].evaluate_at_taus(ad, beta, taus);
-//   // //         sum_val += val; // Sum the contributions
-//   // //       }
-//   // //       omega4_arr(i, j, k) = sum_val;
-//   // //     } // end k
-//   // //   } // end j
-//   // // } // end i
+  // // outfile.precision(16);
 
-//   // // save(directory + name, "omega4", omega4_arr);
-//   // // outfile.close();
+  // // nda::array<double, 3> omega4_arr(grid_size, grid_size, grid_size);
 
-//   // // double integ = 0.0;
-//   // // double delta = beta / grid_size;
-//   // // for (size_t i = 0; i < grid[0].size(); ++i) {
-//   // //   double tau1 = grid[0][i];
+  // // for (size_t i = 0; i < grid[0].size(); ++i) {
+  // //   double x1 = grid[0][i];
 
-//   // //   // j index for tau2
-//   // //   for (size_t j = 0; j < grid[1].size(); ++j) {
-//   // //     double tau2 = grid[1][j];
+  // //   // j index for tau2
+  // //   for (size_t j = 0; j < grid[1].size(); ++j) {
+  // //     double x2 = grid[1][j];
 
-//   // //     // k index for tau3
-//   // //     for (size_t k = 0; k < grid[2].size(); ++k) {
-//   // //       double tau3 = grid[2][k];
+  // //     // k index for tau3
+  // //     for (size_t k = 0; k < grid[2].size(); ++k) {
+  // //       double x3 = grid[2][k];
 
-//   // //       for (size_t l = 0; l < grid[3].size(); l++) {
+  // //       double tau1              = x1 + x2 + x3;
+  // //       double tau2              = x2 + x3;
+  // //       double tau3              = x3;
+  // //       double tau4              = 0.0;
+  // //       std::vector<double> taus = {tau1, tau2, tau3, tau4};
+  // //       double sum_val           = 0.0;
+  // //       for (size_t diag_idx = 0; diag_idx < diagrams.size(); diag_idx++) {
+  // //         // Evaluate each diagram contribution
+  // //         double val = diagrams[diag_idx].evaluate_at_taus(ad, beta, taus);
+  // //         sum_val += val; // Sum the contributions
+  // //       }
+  // //       omega4_arr(i, j, k) = sum_val;
+  // //     } // end k
+  // //   } // end j
+  // // } // end i
 
-//   // //         double tau4              = grid[3][l];
-//   // //         std::vector<double> taus = {tau1, tau2, tau3, tau4};
-//   // //         double sum_val           = 0.0;
-//   // //         for (size_t diag_idx = 0; diag_idx < diagrams.size(); diag_idx++) {
-//   // //           // Evaluate each diagram contribution
-//   // //           double val = diagrams[diag_idx].evaluate_at_taus(taus);
-//   // //           sum_val += val; // Sum the contributions
-//   // //         }
-//   // //         integ += sum_val * delta * delta * delta * delta;
-//   // //       } //end l
-//   // //     } // end k
-//   // //   } // end j
-//   // // } // end i
+  // // save(directory + name, "omega4", omega4_arr);
+  // // outfile.close();
 
-//   // // std::cout << "Free energy 4th order from Diagram class for U: " << U << ", mu: " << mu << ", beta: " << beta << " is " << integ * beta << std::endl;
+  // // double integ = 0.0;
+  // // double delta = beta / grid_size;
+  // // for (size_t i = 0; i < grid[0].size(); ++i) {
+  // //   double tau1 = grid[0][i];
 
-//   // // std::vector<double> tau_set = {0.22, 0.679, 0.709, 0.9};
+  // //   // j index for tau2
+  // //   for (size_t j = 0; j < grid[1].size(); ++j) {
+  // //     double tau2 = grid[1][j];
 
-//   // // // 2. Setup Indices
-//   // // // These represent the positions: (0, 1, 2, 3)
-//   // // std::vector<int> p(tau_set.size());
-//   // // std::iota(p.begin(), p.end(), 0); // Fills p with 0, 1, 2, 3...
+  // //     // k index for tau3
+  // //     for (size_t k = 0; k < grid[2].size(); ++k) {
+  // //       double tau3 = grid[2][k];
 
-//   // // // Map: Key = Result Value, Value = The Index Permutation
-//   // // std::map<double, std::vector<int>, NearLess> representatives;
+  // //       for (size_t l = 0; l < grid[3].size(); l++) {
 
-//   // // // 3. Permute Indices
-//   // // do {
-//   // //   // Construct the specific tau arguments based on current index permutation
-//   // //   std::vector<double> current_tau;
-//   // //   current_tau.reserve(p.size());
-//   // //   for (int index : p) { current_tau.push_back(tau_set[index]); }
+  // //         double tau4              = grid[3][l];
+  // //         std::vector<double> taus = {tau1, tau2, tau3, tau4};
+  // //         double sum_val           = 0.0;
+  // //         for (size_t diag_idx = 0; diag_idx < diagrams.size(); diag_idx++) {
+  // //           // Evaluate each diagram contribution
+  // //           double val = diagrams[diag_idx].evaluate_at_taus(taus);
+  // //           sum_val += val; // Sum the contributions
+  // //         }
+  // //         integ += sum_val * delta * delta * delta * delta;
+  // //       } //end l
+  // //     } // end k
+  // //   } // end j
+  // // } // end i
 
-//   // //   // Evaluate
-//   // //   double val = diagrams[2].evaluate_at_taus(current_tau);
+  // // std::cout << "Free energy 4th order from Diagram class for U: " << U << ", mu: " << mu << ", beta: " << beta << " is " << integ * beta << std::endl;
 
-//   // //   // Store if unique (stores the INDEX permutation 'p')
-//   // //   representatives.try_emplace(val, p);
+  // // std::vector<double> tau_set = {0.22, 0.679, 0.709, 0.9};
 
-//   // // } while (std::next_permutation(p.begin(), p.end()));
+  // // // 2. Setup Indices
+  // // // These represent the positions: (0, 1, 2, 3)
+  // // std::vector<int> p(tau_set.size());
+  // // std::iota(p.begin(), p.end(), 0); // Fills p with 0, 1, 2, 3...
 
-//   // // // 4. Display
-//   // // std::cout << "Found " << representatives.size() << " unique values." << std::endl;
-//   // // std::cout << "------------------------------------------------" << std::endl;
+  // // // Map: Key = Result Value, Value = The Index Permutation
+  // // std::map<double, std::vector<int>, NearLess> representatives;
 
-//   // // for (const auto &pair : representatives) {
-//   // //   double val                   = pair.first;
-//   // //   const std::vector<int> &perm = pair.second;
+  // // // 3. Permute Indices
+  // // do {
+  // //   // Construct the specific tau arguments based on current index permutation
+  // //   std::vector<double> current_tau;
+  // //   current_tau.reserve(p.size());
+  // //   for (int index : p) { current_tau.push_back(tau_set[index]); }
 
-//   // //   std::cout << "Value: " << val << "  |  Permutation: (";
-//   // //   for (size_t i = 0; i < perm.size(); i++) { std::cout << perm[i] << (i < perm.size() - 1 ? "," : ""); }
-//   // //   std::cout << ")" << std::endl;
-//   // // }
-// }
+  // //   // Evaluate
+  // //   double val = diagrams[2].evaluate_at_taus(current_tau);
+
+  // //   // Store if unique (stores the INDEX permutation 'p')
+  // //   representatives.try_emplace(val, p);
+
+  // // } while (std::next_permutation(p.begin(), p.end()));
+
+  // // // 4. Display
+  // // std::cout << "Found " << representatives.size() << " unique values." << std::endl;
+  // // std::cout << "------------------------------------------------" << std::endl;
+
+  // // for (const auto &pair : representatives) {
+  // //   double val                   = pair.first;
+  // //   const std::vector<int> &perm = pair.second;
+
+  // //   std::cout << "Value: " << val << "  |  Permutation: (";
+  // //   for (size_t i = 0; i < perm.size(); i++) { std::cout << perm[i] << (i < perm.size() - 1 ? "," : ""); }
+  // //   std::cout << ")" << std::endl;
+  // // }
+}
