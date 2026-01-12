@@ -15,12 +15,12 @@ namespace sc_expansion {
     double beta;
 
     order4(double U, double mu, double beta_)
-       : diagrams({Diagram(D4a, U, beta_, mu), Diagram(D4b, U, beta_, mu), Diagram(D4c, U, beta_, mu)}), beta(beta_) {}
+       : diagrams({Diagram(this->D4a, U, beta_, mu), Diagram(this->D4b, U, beta_, mu), Diagram(this->D4c, U, beta_, mu)}), beta(beta_) {}
 
     double compute_sum_diagrams(std::vector<double> taus) {
 
       double diagram_sum = 0.0;
-      for (auto const &diagram : diagrams) {
+      for (auto const &diagram : this->diagrams) {
         double val = diagram.evaluate_at_taus(taus);
         diagram_sum += val;
       }
@@ -36,12 +36,12 @@ namespace sc_expansion {
     std::vector<Diagram> diagrams;
     double beta;
 
-    order2(double U, double mu, double beta_) : diagrams({Diagram(D2a, U, beta_, mu)}), beta(beta_) {}
+    order2(double U, double mu, double beta_) : diagrams({Diagram(this->D2a, U, beta_, mu)}), beta(beta_) {}
 
     double compute_sum_diagrams(std::vector<double> taus) {
 
       double diagram_sum = 0.0;
-      for (auto const &diagram : diagrams) {
+      for (auto const &diagram : this->diagrams) {
         double val = diagram.evaluate_at_taus(taus);
         diagram_sum += val;
       }
@@ -64,18 +64,18 @@ namespace sc_expansion {
     double beta;
 
     order6(double U, double mu, double beta_)
-       : diagrams({Diagram(D6a, U, beta_, mu), Diagram(D6b, U, beta_, mu), Diagram(D6c, U, beta_, mu), Diagram(D6d, U, beta_, mu),
-                   Diagram(D6e, U, beta_, mu), Diagram(D6f, U, beta_, mu), Diagram(D6g, U, beta_, mu)}),
+       : diagrams({Diagram(this->D6a, U, beta_, mu), Diagram(this->D6b, U, beta_, mu), Diagram(this->D6c, U, beta_, mu), Diagram(this->D6d, U, beta_, mu),
+                   Diagram(this->D6e, U, beta_, mu), Diagram(this->D6f, U, beta_, mu), Diagram(this->D6g, U, beta_, mu)}),
          beta(beta_) {}
 
     double compute_sum_diagrams(std::vector<double> taus) {
 
       double diagram_sum = 0.0;
-      for (auto const &diagram : diagrams) {
+      for (auto const &diagram : this->diagrams) {
         double val = diagram.evaluate_at_taus(taus);
         diagram_sum += val;
       }
       return diagram_sum;
     }
   };
-}; // namespace sc_expansion
+} // namespace sc_expansion

@@ -57,6 +57,31 @@ namespace sc_expansion {
   double compute_cumulant_decomposition(HubbardAtom::cumul_args const &unprimed, HubbardAtom::cumul_args const &primed, HubbardAtom const &atom,
                                         bool verbose);
 
+  // Wrapper class for Python to easily compute cumulants for spin 0
+  class CumulantHelper {
+    HubbardAtom atom;
+
+    public:
+    CumulantHelper(double U, double beta, double mu) : atom(U, beta, mu) {}
+
+    double compute(std::vector<double> taus) {
+      if (taus.size() % 2 != 0) {
+        throw std::invalid_argument("CumulantHelper::compute: input vector must have even size (2n).");
+      }
+      size_t n = taus.size() / 2;
+
+      HubbardAtom::cumul_args u, p;
+      u.reserve(n);
+      p.reserve(n);
+
+      for (size_t i = 0; i < n; ++i) {
+        u.push_back({taus[i], 0});     // First n elements
+        p.push_back({taus[n + i], 0}); // Last n elements
+      }
+      return compute_cumulant_decomposition(u, p, atom, false);
+    }
+  };
+
 } // namespace sc_expansion
 
 #endif
