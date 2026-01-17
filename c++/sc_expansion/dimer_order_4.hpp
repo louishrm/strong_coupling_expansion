@@ -64,8 +64,9 @@ namespace sc_expansion {
     double beta;
 
     order6(double U, double mu, double beta_)
-       : diagrams({Diagram(this->D6a, U, beta_, mu), Diagram(this->D6b, U, beta_, mu), Diagram(this->D6c, U, beta_, mu), Diagram(this->D6d, U, beta_, mu),
-                   Diagram(this->D6e, U, beta_, mu), Diagram(this->D6f, U, beta_, mu), Diagram(this->D6g, U, beta_, mu)}),
+       : diagrams({Diagram(this->D6a, U, beta_, mu), Diagram(this->D6b, U, beta_, mu), Diagram(this->D6c, U, beta_, mu),
+                   Diagram(this->D6d, U, beta_, mu), Diagram(this->D6e, U, beta_, mu), Diagram(this->D6f, U, beta_, mu),
+                   Diagram(this->D6g, U, beta_, mu)}),
          beta(beta_) {}
 
     double compute_sum_diagrams(std::vector<double> taus) {
