@@ -34,14 +34,13 @@ class Configuration {
     return {w, s};
   }
 
-  std::pair<double, double> weight_and_sign() const { return weight_and_sign(this->state); }
-
-  void update_state(std::vector<double> const &new_state, double new_weight, double new_sign) {
-    this->state  = new_state;
+  // Fast commit method
+  void commit_update(double new_weight, double new_sign) {
     this->weight = new_weight;
     this->sign   = new_sign;
   }
 
+  std::pair<double, double> weight_and_sign() const { return weight_and_sign(this->state); }
   void set_reference_weight_function(std::function<double(std::vector<double> const &)> f) { reference_weight_func = f; }
 
   double get_reference_weight() const {
