@@ -185,7 +185,7 @@ namespace sc_expansion {
     return prod;
   }
 
-  double Diagram::evaluate_at_taus(std::vector<double> taus) const {
+  double Diagram::evaluate_at_taus(std::vector<double> const &taus) const {
 
     //evaluates a diagram at a given set of times, summing over all spin indices
     double spin_sum  = 0.0;
