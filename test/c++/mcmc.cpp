@@ -31,10 +31,13 @@ std::vector<sc_expansion::adjmat> diagram_mats_6() {
   sc_expansion::adjmat D6d = {{0, 1, 1, 0, 0}, {1, 0, 0, 0, 0}, {0, 0, 0, 1, 0}, {0, 0, 0, 0, 1}, {1, 0, 0, 0, 0}}; //square +digon
   sc_expansion::adjmat D6e = {{0, 1, 1, 0}, {1, 0, 0, 1}, {1, 0, 0, 0}, {0, 1, 0, 0}};                              //crab diagram
   sc_expansion::adjmat D6f = {{0, 2, 1}, {2, 0, 0}, {1, 0, 0}};                                                     //watermelon double + digon
-  return {D6a, D6b, D6c, D6d, D6e, D6f};
+  sc_expansion::adjmat D6g = {{0, 2, 0, 0}, {1, 0, 1, 0}, {0, 0, 0, 1}, {1, 0, 0, 0}};                              //square with one double line
+  return {D6a, D6b, D6c, D6d, D6e, D6f, D6g};
 }
 
 int main(int argc, char *argv[]) {
+
+  int n_cycles = std::stoi(argv[1]);
 
   // initialize mpi
   mpi::environment env(argc, argv);
@@ -44,9 +47,9 @@ int main(int argc, char *argv[]) {
   if (world.rank() == 0) std::cout << "Strong Coupling Monte Carlo" << std::endl;
 
   // Prepare the MC parameters
-  int n_cycles            = 100000;
+  //int n_cycles            = 50000;
   int length_cycle        = 1;
-  int n_warmup_cycles     = 1000;
+  int n_warmup_cycles     = 2000;
   std::string random_name = "";
   int random_seed         = 374982 + world.rank() * 273894;
   int verbosity           = (world.rank() == 0 ? 2 : 0);
@@ -64,22 +67,30 @@ int main(int argc, char *argv[]) {
   double U    = 8.0;
   double beta = 1.0;
   double mu   = 2.0;
-  int order   = 4;
+  int order   = 6;
 
-  double exact_result = -5.57770720e-03;
+  // double exact_result = -5.57770720e-03;
+
+  double exact_result = 2.74033646e-04;
 
   // construct configuration
-  Configuration config(U, beta, mu, mats4, order);
+  Configuration config(U, beta, mu, mats6, order);
 
   //construct the reference weight function
   auto o2 = sc_expansion::order2(U, mu, beta);
   auto o4 = sc_expansion::order4(U, mu, beta);
 
   //reference wieight for 4th order: o2*o2
-  auto compute_reference_weight = [&o2](std::vector<double> const &taus) {
-    return o2.compute_sum_diagrams({taus[0], taus[1]}) * o2.compute_sum_diagrams({taus[2], taus[3]});
+  // auto compute_reference_weight = [&o2](std::vector<double> const &taus) {
+  //   return o2.compute_sum_diagrams({taus[0], taus[1]}) * o2.compute_sum_diagrams({taus[2], taus[3]});
+  // };
+  // double reference_integral = -8.48378682e-02 * -8.48378682e-02;
+
+  //reference weight for 6th order: o2*o4
+  auto compute_reference_weight = [&o2, &o4](std::vector<double> const &taus) {
+    return -o2.compute_sum_diagrams({taus[0], taus[1]}) * -o4.compute_sum_diagrams({taus[2], taus[3], taus[4], taus[5]});
   };
-  double reference_integral = -8.48378682e-02 * -8.48378682e-02;
+  double reference_integral = (-8.48378682e-02) * (-5.57770720e-03);
 
   config.set_reference_weight_function(compute_reference_weight);
 
@@ -108,6 +119,16 @@ int main(int argc, char *argv[]) {
     // Access the shared nda::arrays
     for (auto s : signs) acc_sign << s;
     for (auto r : reference_vals) acc_ref << r;
+
+    double avg_sign = 0.0;
+    for (auto s : signs) avg_sign += s;
+    avg_sign /= signs.size();
+
+    double avg_ref = 0.0;
+    for (auto r : reference_vals) avg_ref += r;
+    avg_ref /= reference_vals.size();
+
+    std::cout << "Explicit Ratio Result: " << reference_integral * avg_sign / avg_ref << std::endl;
 
     auto result =
        triqs::stat::jackknife([reference_integral](double avg_sign, double measured_ref) { return avg_sign * reference_integral / measured_ref; },
