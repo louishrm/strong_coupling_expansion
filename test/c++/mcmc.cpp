@@ -97,6 +97,8 @@ int main(int argc, char *argv[]) {
   // Storage for measure
   std::vector<double> signs_vec;
   std::vector<double> refs_vec;
+  signs_vec.reserve(n_cycles);
+  refs_vec.reserve(n_cycles);
   nda::array<double, 1> signs;
   nda::array<double, 1> reference_vals;
 
