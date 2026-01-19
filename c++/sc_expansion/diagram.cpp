@@ -1,5 +1,16 @@
 #include "diagram.hpp"
 
+namespace square_lattice {
+  int manhattan_distance(std::pair<int, int> const &r) { return std::abs(r.first) + std::abs(r.second); }
+  bool prune(std::pair<int, int> const &r, int current_distance, int order) {
+
+    int min_required = manhattan_distance(r);
+    int remaining    = order - current_distance;
+
+    return (min_required > remaining);
+  }
+} // namespace square_lattice
+
 namespace sc_expansion {
 
   Diagram::Diagram(adjmat adjacency_matrix, double U, double beta, double mu) : atom(U, beta, mu) {
@@ -13,6 +24,10 @@ namespace sc_expansion {
       for (const auto &entry : row) { order += entry; }
     }
     this->n = order;
+
+    this->hopping_lines = this->compute_hopping_lines();
+    this->sign = (double)this->compute_diagram_sign();
+    this->symmetry_factor = (double)this->compute_symmetry_factor();
   }
 
   bool Diagram::is_particle_number_conserving() const {
@@ -67,11 +82,20 @@ namespace sc_expansion {
     return k * factorial(k - 1);
   }
 
-  int Diagram::diagram_sign() const {
+  int Diagram::compute_diagram_sign() const {
 
     int num_loops = 0;
     std::vector<bool> visited_lines(this->n, false);
-    auto lines = this->get_hopping_lines();
+    // Use the member hopping_lines if available, but during construction it might be safer to use the compute logic or just assume order of calls.
+    // However, compute_diagram_sign is called in constructor. If I use this->hopping_lines, it must be initialized first.
+    // In my constructor order, hopping_lines is initialized first. So I can use it.
+    auto lines = this->hopping_lines; 
+    // Wait, if I'm inside compute_diagram_sign, and it's called in constructor...
+    // Let's just use the logic to be safe or ensure order.
+    // Actually, to avoid circular dependency if I change order, I'll use the adjacency matrix directly or just rely on the fact that hopping_lines is computed first.
+    // But wait, compute_diagram_sign used `this->get_hopping_lines()` before.
+    // Now `get_hopping_lines` returns the member.
+    // So I should use `this->hopping_lines` which is populated.
 
     // Step 1: Build the pairing map (successor map)
     // For each line 'i', this map will tell you the index of the next line in its loop.
@@ -103,8 +127,13 @@ namespace sc_expansion {
     // Step 3: Determine the sign
     return (num_loops % 2 == 0) ? 1 : -1;
   }
+  
+  // Public accessor returning cached value
+  int Diagram::diagram_sign() const {
+      return (int)this->sign;
+  }
 
-  int Diagram::get_symmetry_factor() const {
+  int Diagram::compute_symmetry_factor() const {
 
     //get all V! permutations of vertices.
     std::vector<int> vertices(this->V);
@@ -131,7 +160,12 @@ namespace sc_expansion {
     return symmetry_count * factorial_product;
   }
 
-  std::vector<Diagram::Line> Diagram::get_hopping_lines() const {
+  // Public accessor returning cached value
+  int Diagram::get_symmetry_factor() const {
+      return (int)this->symmetry_factor;
+  }
+
+  std::vector<Diagram::Line> Diagram::compute_hopping_lines() const {
 
     std::vector<Line> hopping_lines;
     for (int i = 0; i < this->V; i++) {
@@ -147,11 +181,20 @@ namespace sc_expansion {
     }
     return hopping_lines;
   }
+  
+  // Public accessor returning cached value
+  std::vector<Diagram::Line> Diagram::get_hopping_lines() const {
+      return this->hopping_lines;
+  }
 
   double Diagram::evaluate_at_points(HubbardAtom::cumul_args const &args) const {
 
     //evaluates a diagram at a given set of time-spin args
-    auto hopping_lines = this->get_hopping_lines();
+    // Use cached hopping_lines
+    // auto hopping_lines = this->get_hopping_lines(); // This is now cheap, but we can access member directly.
+    // Use reference to avoid copy if possible, though Line is small.
+    const auto& lines = this->hopping_lines;
+    
     std::vector<HubbardAtom::cumul_args> unprimed_args_per_vertex(this->V);
     std::vector<HubbardAtom::cumul_args> primed_args_per_vertex(this->V);
 
@@ -159,9 +202,9 @@ namespace sc_expansion {
     // delta, 2*delta, 3*delta, ...
     //constexpr double DELTA = 1.0e-12;
 
-    for (size_t line_idx = 0; line_idx < hopping_lines.size(); line_idx++) { //loop through each hopping line
+    for (size_t line_idx = 0; line_idx < lines.size(); line_idx++) { //loop through each hopping line
 
-      auto line = hopping_lines[line_idx]; //get the destroy and create vertices for this line
+      auto line = lines[line_idx]; //get the destroy and create vertices for this line
 
       // Unprimed (Annihilation): Shift by 2*i * delta
       auto arg_unprimed = args[line_idx];
@@ -200,10 +243,9 @@ namespace sc_expansion {
       spin_sum += this->evaluate_at_points(args);
     }
 
-    double symmetry_factor   = (double)this->get_symmetry_factor();
-    double diagram_sign      = (double)this->diagram_sign();
     double free_multiplicity = 1.0; //assume 1 for now, can be modified later if needed
-    return diagram_sign * spin_sum * free_multiplicity / symmetry_factor;
+    // Use cached values
+    return this->sign * spin_sum * free_multiplicity / this->symmetry_factor;
   }
 
 } // namespace sc_expansion
