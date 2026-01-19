@@ -157,7 +157,7 @@ namespace sc_expansion {
 
     // Monotonic shift to enforce strict ordering and uniqueness
     // delta, 2*delta, 3*delta, ...
-    constexpr double DELTA = 1.0e-12;
+    //constexpr double DELTA = 1.0e-12;
 
     for (size_t line_idx = 0; line_idx < hopping_lines.size(); line_idx++) { //loop through each hopping line
 
@@ -165,13 +165,13 @@ namespace sc_expansion {
 
       // Unprimed (Annihilation): Shift by 2*i * delta
       auto arg_unprimed = args[line_idx];
-      arg_unprimed.first += (2 * line_idx) * DELTA;
+      // arg_unprimed.first += (2 * line_idx) * DELTA;
       unprimed_args_per_vertex[line.from_vertex].push_back(arg_unprimed);
 
       // Primed (Creation): Shift by (2*i + 1) * delta
       // Ensures Creation > Annihilation (Normal Ordering)
       auto arg_primed = args[line_idx];
-      arg_primed.first += (2 * line_idx + 1) * DELTA;
+      // arg_primed.first += (2 * line_idx + 1) * DELTA;
       primed_args_per_vertex[line.to_vertex].push_back(arg_primed);
     }
     double prod = 1.0;
