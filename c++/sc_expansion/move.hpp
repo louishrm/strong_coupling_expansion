@@ -58,5 +58,9 @@ struct move {
     // REVERT the state
     config->state[changed_index] = old_tau;
     // No need to revert weight/sign as we didn't commit them to config
+    
+    // We must revert the local cached values to match the restored config
+    current_weight = config->weight;
+    current_sign   = config->sign;
   }
 };
