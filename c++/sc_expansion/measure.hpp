@@ -36,18 +36,30 @@ struct measure {
     double sum_refs  = mpi::reduce(average_ref, c);
     int total_count  = mpi::reduce(count, c);
 
-    // Convert local vectors to nda::array for reduction
+    // Convert local vectors to nda::array for gathering
     nda::array<double, 1> local_signs(signs_vec.size());
     std::copy(signs_vec.begin(), signs_vec.end(), local_signs.begin());
 
     nda::array<double, 1> local_refs(refs_vec.size());
     std::copy(refs_vec.begin(), refs_vec.end(), local_refs.begin());
 
-    // Reduce to rank 0 and store in shared result arrays
-    signs          = mpi::reduce(local_signs, c);
-    reference_vals = mpi::reduce(local_refs, c);
+    // Gather to rank 0 and store in shared result arrays
+    auto gathered_signs = mpi::gather(local_signs, c, 0);
+    auto gathered_refs  = mpi::gather(local_refs, c, 0);
+
+    nda::array<double, 1> all_signs;
+    nda::array<double, 1> all_refs;
+
+    all_signs = gathered_signs;
+    all_refs  = gathered_refs;
 
     if (c.rank() == 0) {
+
+      this->signs          = all_signs;
+      this->reference_vals = all_refs;
+
+      std::cout << "Size " << all_signs.size() << " " << all_refs.size() << std::endl;
+
       double final_average_sign = sum_signs / total_count;
       double final_average_ref  = sum_refs / total_count;
       std::cout << "Average Sign: " << final_average_sign << std::endl;

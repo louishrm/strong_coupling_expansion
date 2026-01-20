@@ -49,11 +49,11 @@ int main(int argc, char *argv[]) {
   // Prepare the MC parameters
   //int n_cycles            = 50000;
   int length_cycle        = 1;
-  int n_warmup_cycles     = 2000;
+  int n_warmup_cycles     = 10000;
   std::string random_name = "";
   int random_seed         = 374982 + world.rank() * 273894;
   int verbosity           = (world.rank() == 0 ? 2 : 0);
-  int n_bins              = 1000;
+  int n_bins              = 50; // Initial default, will be overridden for analysis
 
   //diagram mats
   auto mats2 = diagram_mats_2();
@@ -109,14 +109,28 @@ int main(int argc, char *argv[]) {
 
   // Run and collect results
   StrongCouplingMC.warmup_and_accumulate(n_warmup_cycles, n_cycles, length_cycle, triqs::utility::clock_callback(-1));
+
+  if (world.rank() == 0) std::cout << "Collecting results..." << std::endl;
   StrongCouplingMC.collect_results(world);
 
   if (world.rank() == 0) {
     std::cout << "Chain completed successfully." << std::endl;
     std::cout << "Exact Result: " << exact_result << std::endl;
+
+    // Dynamic binning logic
+    long total_samples = signs.size();
+    long block_size    = 2000;                                          // Heuristic for correlation time
+    if (total_samples < block_size * 2) block_size = total_samples / 5; // Fallback for small runs
+    if (block_size < 1) block_size = 1;
+
+    long calculated_n_bins = total_samples / block_size;
+
+    std::cout << "Analysis: Total Samples = " << total_samples << ", Block Size = " << block_size << ", Bins = " << calculated_n_bins << std::endl;
+
     // Use shared storage to populate accumulators
-    triqs::stat::accumulator<double> acc_sign(0.0, 0, n_bins, 1000);
-    triqs::stat::accumulator<double> acc_ref(0.0, 0, n_bins, 1000);
+    // capacity_per_bin must be sufficient to hold block_size
+    triqs::stat::accumulator<double> acc_sign(0.0, 0, calculated_n_bins, block_size + 100);
+    triqs::stat::accumulator<double> acc_ref(0.0, 0, calculated_n_bins, block_size + 100);
 
     // Access the shared nda::arrays
     for (auto s : signs) acc_sign << s;
