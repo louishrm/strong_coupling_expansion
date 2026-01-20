@@ -38,23 +38,31 @@ class Configuration {
   void commit_update(double new_weight, double new_sign) {
     this->weight = new_weight;
     this->sign   = new_sign;
+    this->ref_weight_calced = false;
   }
 
   std::pair<double, double> weight_and_sign() const { return weight_and_sign(this->state); }
   void set_reference_weight_function(std::function<double(std::vector<double> const &)> f) { reference_weight_func = f; }
 
   double get_reference_weight() const {
-    if (reference_weight_func) return reference_weight_func(this->state);
-    return 1.0;
+    if (!reference_weight_func) return 1.0;
+    if (!ref_weight_calced) {
+      cached_ref_weight = reference_weight_func(this->state);
+      ref_weight_calced = true;
+    }
+    return cached_ref_weight;
   }
 
   private:
   std::function<double(std::vector<double> const &)> reference_weight_func;
+  mutable double cached_ref_weight;
+  mutable bool ref_weight_calced = false;
 
   void recompute_weight_and_sign() {
     auto [w, s]  = this->weight_and_sign();
     this->weight = w;
     this->sign   = s;
+    this->ref_weight_calced = false;
   }
 
   double U;
