@@ -53,7 +53,7 @@ int main(int argc, char *argv[]) {
   std::string random_name = "";
   int random_seed         = 374982 + world.rank() * 273894;
   int verbosity           = (world.rank() == 0 ? 2 : 0);
-  int n_bins              = 200;
+  int n_bins              = 1000;
 
   //diagram mats
   auto mats2 = diagram_mats_2();
@@ -115,8 +115,8 @@ int main(int argc, char *argv[]) {
     std::cout << "Chain completed successfully." << std::endl;
     std::cout << "Exact Result: " << exact_result << std::endl;
     // Use shared storage to populate accumulators
-    triqs::stat::accumulator<double> acc_sign(0.0, 0, n_bins, 1);
-    triqs::stat::accumulator<double> acc_ref(0.0, 0, n_bins, 1);
+    triqs::stat::accumulator<double> acc_sign(0.0, 0, n_bins, 1000);
+    triqs::stat::accumulator<double> acc_ref(0.0, 0, n_bins, 1000);
 
     // Access the shared nda::arrays
     for (auto s : signs) acc_sign << s;
@@ -132,9 +132,8 @@ int main(int argc, char *argv[]) {
 
     std::cout << "Explicit Ratio Result: " << reference_integral * avg_sign / avg_ref << std::endl;
 
-    auto result =
-       triqs::stat::jackknife([reference_integral](double avg_sign, double measured_ref) { return avg_sign * reference_integral / measured_ref; },
-                              acc_sign.linear_bins(), acc_ref.linear_bins());
+    auto result = triqs::stat::jackknife(
+       [reference_integral](double avg_sign, double measured_ref) { return avg_sign * reference_integral / measured_ref; }, acc_sign, acc_ref);
 
     std::cout << "Jackknife mean: " << std::get<0>(result) << std::endl;
     std::cout << "Jackknife error: " << std::get<1>(result) << std::endl;
