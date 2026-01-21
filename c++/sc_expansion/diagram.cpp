@@ -1,16 +1,5 @@
 #include "diagram.hpp"
 
-namespace square_lattice {
-  int manhattan_distance(std::pair<int, int> const &r) { return std::abs(r.first) + std::abs(r.second); }
-  bool prune(std::pair<int, int> const &r, int current_distance, int order) {
-
-    int min_required = manhattan_distance(r);
-    int remaining    = order - current_distance;
-
-    return (min_required > remaining);
-  }
-} // namespace square_lattice
-
 namespace sc_expansion {
 
   Diagram::Diagram(adjmat adjacency_matrix, double U, double beta, double mu) : atom(U, beta, mu) {
@@ -25,8 +14,8 @@ namespace sc_expansion {
     }
     this->n = order;
 
-    this->hopping_lines = this->compute_hopping_lines();
-    this->sign = (double)this->compute_diagram_sign();
+    this->hopping_lines   = this->compute_hopping_lines();
+    this->sign            = (double)this->compute_diagram_sign();
     this->symmetry_factor = (double)this->compute_symmetry_factor();
   }
 
@@ -86,19 +75,7 @@ namespace sc_expansion {
 
     int num_loops = 0;
     std::vector<bool> visited_lines(this->n, false);
-    // Use the member hopping_lines if available, but during construction it might be safer to use the compute logic or just assume order of calls.
-    // However, compute_diagram_sign is called in constructor. If I use this->hopping_lines, it must be initialized first.
-    // In my constructor order, hopping_lines is initialized first. So I can use it.
-    auto lines = this->hopping_lines; 
-    // Wait, if I'm inside compute_diagram_sign, and it's called in constructor...
-    // Let's just use the logic to be safe or ensure order.
-    // Actually, to avoid circular dependency if I change order, I'll use the adjacency matrix directly or just rely on the fact that hopping_lines is computed first.
-    // But wait, compute_diagram_sign used `this->get_hopping_lines()` before.
-    // Now `get_hopping_lines` returns the member.
-    // So I should use `this->hopping_lines` which is populated.
-
-    // Step 1: Build the pairing map (successor map)
-    // For each line 'i', this map will tell you the index of the next line in its loop.
+    auto lines = this->hopping_lines;
     std::vector<int> successor_map(this->n);
     for (int v = 0; v < this->V; ++v) {
       std::vector<int> incoming_indices;
@@ -127,11 +104,9 @@ namespace sc_expansion {
     // Step 3: Determine the sign
     return (num_loops % 2 == 0) ? 1 : -1;
   }
-  
+
   // Public accessor returning cached value
-  int Diagram::diagram_sign() const {
-      return (int)this->sign;
-  }
+  int Diagram::diagram_sign() const { return (int)this->sign; }
 
   int Diagram::compute_symmetry_factor() const {
 
@@ -161,9 +136,7 @@ namespace sc_expansion {
   }
 
   // Public accessor returning cached value
-  int Diagram::get_symmetry_factor() const {
-      return (int)this->symmetry_factor;
-  }
+  int Diagram::get_symmetry_factor() const { return (int)this->symmetry_factor; }
 
   std::vector<Diagram::Line> Diagram::compute_hopping_lines() const {
 
@@ -181,11 +154,9 @@ namespace sc_expansion {
     }
     return hopping_lines;
   }
-  
+
   // Public accessor returning cached value
-  std::vector<Diagram::Line> Diagram::get_hopping_lines() const {
-      return this->hopping_lines;
-  }
+  std::vector<Diagram::Line> Diagram::get_hopping_lines() const { return this->hopping_lines; }
 
   double Diagram::evaluate_at_points(HubbardAtom::cumul_args const &args) const {
 
@@ -193,8 +164,8 @@ namespace sc_expansion {
     // Use cached hopping_lines
     // auto hopping_lines = this->get_hopping_lines(); // This is now cheap, but we can access member directly.
     // Use reference to avoid copy if possible, though Line is small.
-    const auto& lines = this->hopping_lines;
-    
+    const auto &lines = this->hopping_lines;
+
     std::vector<HubbardAtom::cumul_args> unprimed_args_per_vertex(this->V);
     std::vector<HubbardAtom::cumul_args> primed_args_per_vertex(this->V);
 
@@ -248,4 +219,105 @@ namespace sc_expansion {
     return this->sign * spin_sum * free_multiplicity / this->symmetry_factor;
   }
 
+  void next_step(adjmat &A, std::vector<int> &sequence, int vertex, int V, int order) {
+
+    if (sequence.size() == order + 1) { return; }
+    for (int j = 0; j < V; j++) {
+      if (A[vertex][j] > 0) {
+        sequence.push_back(j);
+        A[vertex][j]--;
+        next_step(A, sequence, j, V, order);
+      }
+    }
+  }
+
+  std::vector<int> generate_walk_sequence(adjmat A, int order) {
+
+    int V = A.size();
+    std::vector<int> sequence;
+    sequence.push_back(0); // Start from vertex 0
+    next_step(A, sequence, 0, V, order);
+    return sequence;
+  }
+
+  Point::Point() : x(0), y(0) {}
+
+  Point::Point(int x_, int y_) : x(x_), y(y_) {}
+
+  SquareLattice::SquareLattice() {}
+
+  std::vector<Point> SquareLattice::get_neighbors(Point const &r) const {
+    return {Point(r.x + 1, r.y), Point(r.x - 1, r.y), Point(r.x, r.y + 1), Point(r.x, r.y - 1)};
+  }
+  int SquareLattice::manhattan_distance(Point const &r) const { return std::abs(r.x) + std::abs(r.y); }
+
+  bool SquareLattice::prune(Point const &r, int current_distance, int order) const {
+
+    int remaining_steps = order - current_distance;
+    int dist            = this->manhattan_distance(r);
+    return dist > remaining_steps;
+  }
+
+  bool SquareLattice::is_neighbor(Point const &r1, Point const &r2) const { return (std::abs(r1.x - r2.x) + std::abs(r1.y - r2.y)) == 1; }
+
+  void place_next_vertex(std::unordered_map<int, Point> &placed_vertices, SquareLattice const &lattice, std::vector<int> const &sequence,
+                         int current_vertex_index, int order, int &free_multiplicity, int hopping_count) {
+
+    /* Place the next vertex in the non self-avoiding lattice walk. 
+
+    Args: place_vertices: a map whose keys are vertex index and values are their position. 
+          lattice: the lattice object to get neighbors and prune positions.
+          sequence: the sequence of vertex indices in the walk.
+          current_vertex_index: the index of the last placed vertex in the sequence.
+          order: total number of hopping lines (length of the walk).
+          free_multiplicity: reference to the count of valid placements found so far.
+          hopping_count: reference to the count of hopping lines placed so far.
+
+    Start on vertex 0.
+
+    1. Base case: check if the hopping count is equal to the order. If yes, increment free multiplicity and stop. 
+
+    2. Check if the next vertex in the sequence is already placed. If yes, make sure it is a neighbor of the last placed vertex. If yes, recurse to place the next vertex stop. 
+
+    3. If not placed, get the neighbors of the last placed vertex. For each neighbor, check if placing the next vertex there is valid (not pruned). If valid, place the vertex and recurse. After recursion, remove the vertex to backtrack.
+    */
+
+    if (hopping_count == order) {
+      free_multiplicity++;
+      return;
+    }
+
+    Point last_position          = placed_vertices[current_vertex_index];
+    std::vector<Point> neighbors = lattice.get_neighbors(last_position);
+
+    int next_vertex_index = sequence[hopping_count + 1];
+    if (placed_vertices.find(next_vertex_index) != placed_vertices.end()) {
+
+      Point neighbor = placed_vertices[next_vertex_index];
+      if (lattice.is_neighbor(last_position, neighbor)) {
+        place_next_vertex(placed_vertices, lattice, sequence, next_vertex_index, order, free_multiplicity, hopping_count + 1);
+      }
+      return;
+    }
+
+    for (auto const &neighbor : neighbors) {
+      if (lattice.prune(neighbor, hopping_count + 1, order)) { continue; }
+      placed_vertices[next_vertex_index] = neighbor;
+      place_next_vertex(placed_vertices, lattice, sequence, next_vertex_index, order, free_multiplicity, hopping_count + 1);
+      placed_vertices.erase(next_vertex_index);
+    }
+  }
+
+  int compute_free_multiplicity(adjmat A, int order) {
+
+    SquareLattice lattice;
+    std::vector<int> sequence = generate_walk_sequence(A, order);
+
+    std::unordered_map<int, Point> placed_vertices;
+    placed_vertices[0] = Point(0, 0); //place the first vertex at origin
+
+    int free_multiplicity = 0;
+    place_next_vertex(placed_vertices, lattice, sequence, 0, order, free_multiplicity, 0);
+    return free_multiplicity;
+  }
 } // namespace sc_expansion
