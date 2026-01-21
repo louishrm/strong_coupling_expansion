@@ -158,7 +158,7 @@ int main(int argc, char *argv[]) {
     auto end_time                         = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> elapsed = end_time - start_time;
     double total_time                     = elapsed.count();
-    long total_steps                      = n_warmup_cycles + n_cycles;
+    long total_steps                      = (long)(n_warmup_cycles + n_cycles) * world.size();
     double time_per_step                  = total_time / total_steps;
 
     std::cout << "Total runtime: " << total_time << " s" << std::endl;
