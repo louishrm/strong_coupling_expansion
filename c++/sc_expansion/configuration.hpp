@@ -1,6 +1,6 @@
 #pragma once
 
-#include "./diagram.hpp"
+#include "sc_expansion/diagram.hpp"
 #include <./triqs/mc_tools/random_generator.hpp>
 #include <functional>
 
@@ -36,8 +36,8 @@ class Configuration {
 
   // Fast commit method
   void commit_update(double new_weight, double new_sign) {
-    this->weight = new_weight;
-    this->sign   = new_sign;
+    this->weight            = new_weight;
+    this->sign              = new_sign;
     this->ref_weight_calced = false;
   }
 
@@ -59,9 +59,9 @@ class Configuration {
   mutable bool ref_weight_calced = false;
 
   void recompute_weight_and_sign() {
-    auto [w, s]  = this->weight_and_sign();
-    this->weight = w;
-    this->sign   = s;
+    auto [w, s]             = this->weight_and_sign();
+    this->weight            = w;
+    this->sign              = s;
     this->ref_weight_calced = false;
   }
 
