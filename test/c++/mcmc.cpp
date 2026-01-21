@@ -51,7 +51,7 @@ int main(int argc, char *argv[]) {
   int length_cycle        = 1;
   int n_warmup_cycles     = 10000;
   std::string random_name = "";
-  int random_seed         = 374982 + world.rank() * 273894;
+  int random_seed         = 321865 + world.rank() * 786512;
   int verbosity           = (world.rank() == 0 ? 2 : 0);
   int n_bins              = 50; // Initial default, will be overridden for analysis
 
