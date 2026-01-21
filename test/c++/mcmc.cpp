@@ -164,5 +164,6 @@ int main(int argc, char *argv[]) {
     std::cout << "Total runtime: " << total_time << " s" << std::endl;
     std::cout << "Total MC steps (warmup + cycles): " << total_steps << std::endl;
     std::cout << "Time per step: " << time_per_step << " s" << std::endl;
+    std::cout << "Steps per second: " << 1.0 / time_per_step << std::endl;
   }
 }
