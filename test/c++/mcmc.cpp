@@ -7,6 +7,7 @@
 #include <triqs/utility/callbacks.hpp>
 #include <triqs/stat/accumulator.hpp>
 #include <triqs/stat/jackknife.hpp>
+#include <chrono>
 
 std::vector<sc_expansion::adjmat> diagram_mats_2() {
 
@@ -45,6 +46,8 @@ int main(int argc, char *argv[]) {
 
   // greeting
   if (world.rank() == 0) std::cout << "Strong Coupling Monte Carlo" << std::endl;
+
+  auto start_time = std::chrono::high_resolution_clock::now();
 
   // Prepare the MC parameters
   //int n_cycles            = 50000;
@@ -151,5 +154,15 @@ int main(int argc, char *argv[]) {
 
     std::cout << "Jackknife mean: " << std::get<0>(result) << std::endl;
     std::cout << "Jackknife error: " << std::get<1>(result) << std::endl;
+
+    auto end_time                         = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> elapsed = end_time - start_time;
+    double total_time                     = elapsed.count();
+    long total_steps                      = n_warmup_cycles + n_cycles;
+    double time_per_step                  = total_time / total_steps;
+
+    std::cout << "Total runtime: " << total_time << " s" << std::endl;
+    std::cout << "Total MC steps (warmup + cycles): " << total_steps << std::endl;
+    std::cout << "Time per step: " << time_per_step << " s" << std::endl;
   }
 }
