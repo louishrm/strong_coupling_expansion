@@ -45,7 +45,10 @@ int main(int argc, char *argv[]) {
   mpi::communicator world;
 
   // greeting
-  if (world.rank() == 0) std::cout << "Strong Coupling Monte Carlo" << std::endl;
+  if (world.rank() == 0) {
+    std::cout << "Strong Coupling Monte Carlo" << std::endl;
+    std::cout << "Number of MPI processes: " << world.size() << std::endl;
+  }
 
   auto start_time = std::chrono::high_resolution_clock::now();
 
