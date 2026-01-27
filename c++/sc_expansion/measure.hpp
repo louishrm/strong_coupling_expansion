@@ -1,69 +1,65 @@
 #pragma once
 #include "configuration.hpp"
 #include <triqs/arrays.hpp>
-#include <vector>
-#include <algorithm>
+#include <triqs/stat/accumulator.hpp>
+//#include <triqs/stat.hpp>
+#include "myjackknife.hpp"
+#include <iostream>
 
 struct measure {
 
   Configuration *config;
-  double average_sign;
-  double average_ref;
-  int count;
 
-  // Storage for accumulation (references to external)
-  std::vector<double> &signs_vec;
-  std::vector<double> &refs_vec;
+  // TRIQS Accumulators
+  // These replace the huge vectors. They store the binned statistics
+  // required for the Jackknife automatically.
+  triqs::stat::accumulator<double> acc_sign;
+  triqs::stat::accumulator<double> acc_ref;
+  double reference_integral;
 
-  // Storage for results (references to external, rank 0)
-  nda::array<double, 1> &signs;
-  nda::array<double, 1> &reference_vals;
+  // Constructor
+  // We need n_bins (stat quality) and block_size (capacity per bin).
+  // Typically n_bins ~ 100-500 is sufficient.
+  // block_size should be total_mc_steps / n_bins.
+  measure(Configuration *config_, double reference_integral_, int n_bins, int block_size)
+     : config(config_),
+       acc_sign(0.0, 0, n_bins, block_size + 100), // +100 buffer for safety
+       acc_ref(0.0, 0, n_bins, block_size + 100),
+       reference_integral(reference_integral_) {}
 
-  measure(Configuration *config_, std::vector<double> &s_vec, std::vector<double> &r_vec, nda::array<double, 1> &s, nda::array<double, 1> &r)
-     : config(config_), average_sign(0.0), average_ref(0.0), count(0), signs_vec(s_vec), refs_vec(r_vec), signs(s), reference_vals(r) {}
-
+  // Accumulate is now O(1) memory and very fast
   void accumulate(double) {
-    average_sign += config->sign;
-    average_ref += config->get_reference_weight() / config->weight;
-    signs_vec.push_back(config->sign);
-    refs_vec.push_back(config->get_reference_weight() / config->weight);
-    count++;
+    // Calculate the ratio quantity
+    double current_ref_val = config->get_reference_weight() / config->weight;
+
+    // Push directly to accumulators
+    acc_sign << config->sign;
+    acc_ref << current_ref_val;
   }
 
+  // Perform the distributed Jackknife
+  // We pass 'reference_integral' here as it is needed for the final calculation
   void collect_results(mpi::communicator c) {
 
-    double sum_signs = mpi::reduce(average_sign, c);
-    double sum_refs  = mpi::reduce(average_ref, c);
-    int total_count  = mpi::reduce(count, c);
+    // Define the function f(avg_sign, avg_ref) -> physical_result
+    auto ratio_func = [this](double avg_sign, double avg_ref) { return avg_sign * this->reference_integral / avg_ref; };
 
-    // Convert local vectors to nda::array for gathering
-    nda::array<double, 1> local_signs(signs_vec.size());
-    std::copy(signs_vec.begin(), signs_vec.end(), local_signs.begin());
-
-    nda::array<double, 1> local_refs(refs_vec.size());
-    std::copy(refs_vec.begin(), refs_vec.end(), local_refs.begin());
-
-    // Gather to rank 0 and store in shared result arrays
-    auto gathered_signs = mpi::gather(local_signs, c, 0);
-    auto gathered_refs  = mpi::gather(local_refs, c, 0);
-
-    nda::array<double, 1> all_signs;
-    nda::array<double, 1> all_refs;
-
-    all_signs = gathered_signs;
-    all_refs  = gathered_refs;
+    // triqs::stat::jackknife_mpi automatically:
+    // 1. Reduces the accumulators across all MPI nodes
+    // 2. Performs the Jackknife resampling
+    // 3. Returns the Mean and Error
+    auto result = triqs::stat::local::jackknife_mpi(c, ratio_func, acc_sign, acc_ref);
 
     if (c.rank() == 0) {
+      std::cout << "--- Measurement Results ---" << std::endl;
 
-      this->signs          = all_signs;
-      this->reference_vals = all_refs;
+      // Optional: Check total samples used
+      // We reduce the count just for display purposes
+      //long total_samples = mpi::reduce(acc_sign.count(), c);
+      //std::cout << "Total Samples:   " << total_samples << std::endl;
 
-      std::cout << "Size " << all_signs.size() << " " << all_refs.size() << std::endl;
-
-      double final_average_sign = sum_signs / total_count;
-      double final_average_ref  = sum_refs / total_count;
-      std::cout << "Average Sign: " << final_average_sign << std::endl;
-      std::cout << "Average Ref: " << final_average_ref << std::endl;
+      std::cout << "Jackknife Mean:  " << std::get<0>(result) << std::endl;
+      std::cout << "Jackknife Error: " << std::get<1>(result) << std::endl;
     }
   }
 };
