@@ -9,6 +9,16 @@
 #include <triqs/stat/jackknife.hpp>
 #include <chrono>
 
+double Zat(double U, double beta, double mu) { return 1 + 2.0 * std::exp(beta * mu) + std::exp(beta * (2.0 * mu - U)); }
+
+double order2_exact(double U, double beta, double mu) {
+  double Z_at = Zat(U, beta, mu);
+  double fact = std::exp(beta * mu) / (Z_at * Z_at);
+  double A    = (beta * beta / 2.0) * (1 + std::exp(-beta * (U - 2.0 * mu)));
+  double B    = (2.0 * beta / U) * std::exp(-beta * (U / 2.0 - mu)) * std::sinh(beta * U / 2.0);
+  return 2.0 * fact * (A + B); // factor 2 for spin and 2 for sites!
+}
+
 std::vector<sc_expansion::adjmat> diagram_mats_2() {
 
   sc_expansion::adjmat D2a = {{0, 1}, {1, 0}}; //2-cycle
@@ -39,6 +49,9 @@ std::vector<sc_expansion::adjmat> diagram_mats_6() {
 int main(int argc, char *argv[]) {
 
   int n_cycles = std::stoi(argv[1]);
+  double U     = std::stoi(argv[2]);
+  double beta  = std::stod(argv[3]);
+  double mu    = std::stod(argv[4]);
 
   // initialize mpi
   mpi::environment env(argc, argv);
@@ -68,38 +81,35 @@ int main(int argc, char *argv[]) {
   triqs::mc_tools::mc_generic<double> StrongCouplingMC(random_name, random_seed, verbosity);
 
   // parameters of the model
-  double U    = 8.0;
-  double beta = 1.0;
-  double mu   = 2.0;
-  int order   = 6;
+  int order = 4;
 
-  // double exact_result = -5.57770720e-03;
-
-  double exact_result = 2.74033646e-04;
+  //double exact_result = -6.39023919e-02;
 
   // construct configuration
-  Configuration config(U, beta, mu, mats6, order);
+  Configuration config(U, beta, mu, mats4, order);
 
   //construct the reference weight function
   auto o2 = sc_expansion::order2(U, mu, beta);
   auto o4 = sc_expansion::order4(U, mu, beta);
 
   //reference wieight for 4th order: o2*o2
-  // auto compute_reference_weight = [&o2](std::vector<double> const &taus) {
-  //   return o2.compute_sum_diagrams({taus[0], taus[1]}) * o2.compute_sum_diagrams({taus[2], taus[3]});
-  // };
+  auto compute_reference_weight = [&o2, beta](std::vector<double> const &taus) {
+    return o2.compute_sum_diagrams({taus[0], taus[1]}) * o2.compute_sum_diagrams({taus[2], taus[3]});
+  };
   // double reference_integral = -8.48378682e-02 * -8.48378682e-02;
 
+  double reference_integral = order2_exact(U, beta, mu) * order2_exact(U, beta, mu);
+
   //reference weight for 6th order: o2*o4
-  auto compute_reference_weight = [&o2, &o4](std::vector<double> const &taus) {
-    return -o2.compute_sum_diagrams({taus[0], taus[1]}) * -o4.compute_sum_diagrams({taus[2], taus[3], taus[4], taus[5]});
-  };
-  double reference_integral = (-8.48378682e-02) * (-5.57770720e-03);
+  // auto compute_reference_weight = [&o2, &o4](std::vector<double> const &taus) {
+  //   return -o2.compute_sum_diagrams({taus[0], taus[1]}) * -o4.compute_sum_diagrams({taus[2], taus[3], taus[4], taus[5]});
+  // };
+  // double reference_integral = (-8.48378682e-02) * (-5.57770720e-03);
 
   config.set_reference_weight_function(compute_reference_weight);
 
   long total_cycles = n_cycles * world.size(); // Total samples across all cores
-  int n_bins        = 20;                      // Standard choice for Jackknife
+  int n_bins        = 50;                      // Standard choice for Jackknife
   int block_size    = (n_cycles / n_bins) + 1;
 
   //add moves and measures
@@ -124,6 +134,6 @@ int main(int argc, char *argv[]) {
     std::cout << "Time per step (s): " << time_per_step << std::endl;
     std::cout << "Steps per second (d): " << 1.0 / time_per_step << std::endl;
 
-    std::cout << "Exact result: " << exact_result << std::endl;
+    //std::cout << "Exact result: " << exact_result << std::endl;
   }
 }
