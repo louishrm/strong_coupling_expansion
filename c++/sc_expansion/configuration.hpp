@@ -82,14 +82,7 @@ template <typename Logic> class Configuration2 {
   std::vector<double> state;
 
   Configuration2(Logic logic_, double U_, double beta_, double mu_, int order_, long seed_, std::vector<sc_expansion::adjmat> diagram_mats_)
-     : logic(logic_),
-       beta(beta_),
-       state(order_),
-       U(U_),
-       mu(mu_),
-       order(order_),
-       seed(seed_),
-       diagram_mats(diagram_mats_) {
+     : logic(logic_), beta(beta_), state(order_), U(U_), mu(mu_), order(order_), seed(seed_), diagram_mats(diagram_mats_) {
 
     triqs::mc_tools::random_generator RNG("mt19937", this->seed);
     for (int i = 0; i < this->order; i++) { this->state[i] = RNG(this->beta); }
