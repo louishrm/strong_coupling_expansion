@@ -188,6 +188,7 @@ namespace sc_expansion {
       // arg_primed.first += (2 * line_idx + 1) * DELTA;
       primed_args_per_vertex[line.to_vertex].push_back(arg_primed);
     }
+
     double prod = 1.0;
     for (int vertex = 0; vertex < this->V; vertex++) {
 
@@ -196,12 +197,13 @@ namespace sc_expansion {
       HubbardAtom::cumul_args primed_args = primed_args_per_vertex[vertex];
       prod *= compute_cumulant_decomposition(unprimed_args, primed_args, this->atom, false);
     }
+
     return prod;
   }
 
   double Diagram::evaluate_at_taus(std::vector<double> const &taus) const {
 
-    //evaluates a diagram at a given set of times, summing over all spin indices
+    //evaluates a diagram at a given set of time-spin args
     double spin_sum  = 0.0;
     long num_configs = 1 << this->n;                        //2^n spin configurations
     for (long config = 0; config < num_configs; config++) { //TODO: only consider spin-conserving configs
