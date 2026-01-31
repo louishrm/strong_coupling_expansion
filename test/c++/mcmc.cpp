@@ -7,6 +7,7 @@
 #include <triqs/utility/callbacks.hpp>
 #include <triqs/stat/accumulator.hpp>
 #include <triqs/stat/jackknife.hpp>
+#include <h5/h5.hpp>
 #include <chrono>
 
 double Zat(double U, double beta, double mu) { return 1 + 2.0 * std::exp(beta * mu) + std::exp(beta * (2.0 * mu - U)); }
@@ -93,7 +94,7 @@ int main(int argc, char *argv[]) {
   auto o4 = sc_expansion::order4(U, mu, beta);
 
   //reference wieight for 4th order: o2*o2
-  auto compute_reference_weight = [&o2, beta](std::vector<double> const &taus) {
+  auto compute_reference_weight = [&o2](std::vector<double> const &taus) {
     return o2.compute_sum_diagrams({taus[0], taus[1]}) * o2.compute_sum_diagrams({taus[2], taus[3]});
   };
   // double reference_integral = -8.48378682e-02 * -8.48378682e-02;
@@ -113,7 +114,7 @@ int main(int argc, char *argv[]) {
   int block_size    = (n_cycles / n_bins) + 1;
 
   //add moves and measures
-  measure my_measure(&config, reference_integral, n_bins, block_size);
+  measure my_measure(&config, reference_integral, n_bins, block_size, mu);
   StrongCouplingMC.add_move(move(&config, StrongCouplingMC.get_rng()), "time_swap");
   StrongCouplingMC.add_measure(my_measure, "measure sign");
 

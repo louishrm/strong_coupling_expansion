@@ -5,6 +5,8 @@
 //#include <triqs/stat.hpp>
 #include "myjackknife.hpp"
 #include <iostream>
+#include <h5/h5.hpp>
+#include <fstream>
 
 struct measure {
 
@@ -16,16 +18,18 @@ struct measure {
   triqs::stat::accumulator<double> acc_sign;
   triqs::stat::accumulator<double> acc_ref;
   double reference_integral;
+  double mu;
 
   // Constructor
   // We need n_bins (stat quality) and block_size (capacity per bin).
   // Typically n_bins ~ 100-500 is sufficient.
   // block_size should be total_mc_steps / n_bins.
-  measure(Configuration *config_, double reference_integral_, int n_bins, int block_size)
+  measure(Configuration *config_, double reference_integral_, int n_bins, int block_size, double mu_)
      : config(config_),
        acc_sign(0.0, 0, n_bins, block_size + 100), // +100 buffer for safety
        acc_ref(0.0, 0, n_bins, block_size + 100),
-       reference_integral(reference_integral_) {}
+       reference_integral(reference_integral_),
+       mu(mu_) {}
 
   // Accumulate is now O(1) memory and very fast
   void accumulate(double) {
@@ -60,6 +64,14 @@ struct measure {
 
       std::cout << "Jackknife Mean:  " << std::get<0>(result) << std::endl;
       std::cout << "Jackknife Error: " << std::get<1>(result) << std::endl;
+
+      {
+        std::string filename = "../src/results/data_mu_" + std::to_string(mu) + ".h5";
+        h5::file file(filename, 'w'); // 'w' is safe now, we are the only owner of this file!
+        h5_write(file, "mean", std::get<0>(result));
+        h5_write(file, "error", std::get<1>(result));
+        h5_write(file, "mu", mu);
+      }
     }
   }
 };
