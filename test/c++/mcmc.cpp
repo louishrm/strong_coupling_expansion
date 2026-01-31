@@ -50,7 +50,7 @@ std::vector<sc_expansion::adjmat> diagram_mats_6() {
 int main(int argc, char *argv[]) {
 
   int n_cycles = std::stoi(argv[1]);
-  double U     = std::stoi(argv[2]);
+  double U     = std::stod(argv[2]);
   double beta  = std::stod(argv[3]);
   double mu    = std::stod(argv[4]);
 
