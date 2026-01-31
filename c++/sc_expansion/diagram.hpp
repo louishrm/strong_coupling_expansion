@@ -33,6 +33,7 @@ namespace sc_expansion {
 
     int diagram_sign() const;
     int get_symmetry_factor() const;
+    int get_free_multiplicity() const;
 
     private:
     int compute_symmetry_factor() const;

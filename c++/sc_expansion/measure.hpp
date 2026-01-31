@@ -66,7 +66,7 @@ struct measure {
       std::cout << "Jackknife Error: " << std::get<1>(result) << std::endl;
 
       {
-        std::string filename = "results/data_mu_" + std::to_string(mu) + ".h5";
+        std::string filename = "results/full_lattice_data_mu_" + std::to_string(mu) + ".h5";
         h5::file file(filename, 'w'); // 'w' is safe now, we are the only owner of this file!
         h5_write(file, "mean", std::get<0>(result));
         h5_write(file, "error", std::get<1>(result));

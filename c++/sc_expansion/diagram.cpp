@@ -17,6 +17,7 @@ namespace sc_expansion {
     this->hopping_lines   = this->compute_hopping_lines();
     this->sign            = (double)this->compute_diagram_sign();
     this->symmetry_factor = (double)this->compute_symmetry_factor();
+    this->fm              = (double)this->compute_free_multiplicity();
   }
 
   bool Diagram::is_particle_number_conserving() const {
@@ -135,6 +136,11 @@ namespace sc_expansion {
     return symmetry_count * factorial_product;
   }
 
+  int Diagram::compute_free_multiplicity() const { return sc_expansion::compute_free_multiplicity(this->adjacency_matrix, this->n); }
+
+  // Public accessor returning cached value
+  int Diagram::get_free_multiplicity() const { return (int)this->fm; }
+
   // Public accessor returning cached value
   int Diagram::get_symmetry_factor() const { return (int)this->symmetry_factor; }
 
@@ -216,9 +222,9 @@ namespace sc_expansion {
       spin_sum += this->evaluate_at_points(args);
     }
 
-    double free_multiplicity = 1.0; //assume 1 for now, can be modified later if needed
+    //double free_multiplicity = 1.0; //assume 1 for now, can be modified later if needed
     // Use cached values
-    return this->sign * spin_sum * free_multiplicity / this->symmetry_factor;
+    return this->sign * spin_sum * this->fm / this->symmetry_factor;
   }
 
   void next_step(adjmat &A, std::vector<int> &sequence, int vertex, int V, int order) {

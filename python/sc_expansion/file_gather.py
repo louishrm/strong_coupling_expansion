@@ -3,13 +3,13 @@ import glob
 import numpy as np
 import os
 
-filename = "./results/final_results.h5"
+filename = "./results/full_lattice_final_results.h5"
 
 # Creates the folder path if it's missing
 os.makedirs(os.path.dirname(filename), exist_ok=True)
 
 # 1. Find all the tiny files
-files = glob.glob("results/data_mu_*.h5")
+files = glob.glob("results/full_lattice_data_mu_*.h5")
 files.sort() # Ensure sorted order
 
 # 2. Create the master file
