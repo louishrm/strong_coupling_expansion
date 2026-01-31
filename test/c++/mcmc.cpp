@@ -17,7 +17,7 @@ double order2_exact(double U, double beta, double mu) {
   double fact = std::exp(beta * mu) / (Z_at * Z_at);
   double A    = (beta * beta / 2.0) * (1 + std::exp(-beta * (U - 2.0 * mu)));
   double B    = (2.0 * beta / U) * std::exp(-beta * (U / 2.0 - mu)) * std::sinh(beta * U / 2.0);
-  return 2.0 * fact * (A + B) * 4.0; // factor 2 for spin and 2 for sites 4 for free multiplicity
+  return fact * (A + B) * 4.0; // factor 2 for spin and 2 for sites 4 for free multiplicity
 }
 
 std::vector<sc_expansion::adjmat> diagram_mats_2() {
