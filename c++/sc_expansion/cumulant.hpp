@@ -33,6 +33,9 @@ namespace sc_expansion {
     const ArgList &master_unprimed;
     const ArgList &master_primed;
     const HubbardAtom &atom;
+    bool infinite_U = false;
+
+    double (HubbardAtom::*bare_propagator)(const ArgList &, const ArgList &) const;
 
     // Memoization Table
     std::unordered_map<CacheKey, double, KeyHasher> memo;
@@ -42,7 +45,7 @@ namespace sc_expansion {
     uint64_t master_spin_mask_p = 0;
 
     public:
-    CumulantSolver(const ArgList &u, const ArgList &p, const HubbardAtom &a);
+    CumulantSolver(const ArgList &u, const ArgList &p, const HubbardAtom &a, bool infinite_U);
 
     mutable int cache_hits   = 0;
     mutable int cache_misses = 0;
@@ -55,7 +58,7 @@ namespace sc_expansion {
   };
 
   double compute_cumulant_decomposition(HubbardAtom::cumul_args const &unprimed, HubbardAtom::cumul_args const &primed, HubbardAtom const &atom,
-                                        bool verbose);
+                                        bool infinite_U = false, bool verbose = false);
 
   // Wrapper class for Python to easily compute cumulants for spin 0
   class CumulantHelper {
@@ -65,9 +68,7 @@ namespace sc_expansion {
     CumulantHelper(double U, double beta, double mu) : atom(U, beta, mu) {}
 
     double compute(std::vector<double> taus) {
-      if (taus.size() % 2 != 0) {
-        throw std::invalid_argument("CumulantHelper::compute: input vector must have even size (2n).");
-      }
+      if (taus.size() % 2 != 0) { throw std::invalid_argument("CumulantHelper::compute: input vector must have even size (2n)."); }
       size_t n = taus.size() / 2;
 
       HubbardAtom::cumul_args u, p;
@@ -78,7 +79,7 @@ namespace sc_expansion {
         u.push_back({taus[i], 0});     // First n elements
         p.push_back({taus[n + i], 0}); // Last n elements
       }
-      return compute_cumulant_decomposition(u, p, atom, false);
+      return compute_cumulant_decomposition(u, p, atom);
     }
   };
 

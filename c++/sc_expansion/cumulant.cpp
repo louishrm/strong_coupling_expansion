@@ -59,33 +59,12 @@ namespace {
     return (inversions % 2 == 0) ? 1 : -1;
   }
 
-  bool is_spin_conserving(sc_expansion::HubbardAtom::cumul_args const &unprimed, sc_expansion::HubbardAtom::cumul_args const &primed) {
-    int up_count_unprimed   = 0;
-    int down_count_unprimed = 0;
-    for (const auto &arg : unprimed) {
-      if (arg.second == 0)
-        up_count_unprimed++;
-      else
-        down_count_unprimed++;
-    }
-
-    int up_count_primed   = 0;
-    int down_count_primed = 0;
-    for (const auto &arg : primed) {
-      if (arg.second == 0)
-        up_count_primed++;
-      else
-        down_count_primed++;
-    }
-
-    return (up_count_unprimed == up_count_primed) && (down_count_unprimed == down_count_primed);
-  }
-
 } // namespace
 
 namespace sc_expansion {
 
-  CumulantSolver::CumulantSolver(const ArgList &u, const ArgList &p, const HubbardAtom &a) : master_unprimed(u), master_primed(p), atom(a) {
+  CumulantSolver::CumulantSolver(const ArgList &u, const ArgList &p, const HubbardAtom &a, bool infinite_U_)
+     : master_unprimed(u), master_primed(p), atom(a), infinite_U(infinite_U_) {
     // Pre-calculate spin patterns for fast checks
     // Assuming Arg.second is the spin (0 or 1)
     for (size_t i = 0; i < u.size(); ++i) {
@@ -93,6 +72,12 @@ namespace sc_expansion {
     }
     for (size_t i = 0; i < p.size(); ++i) {
       if (p[i].second == 1) this->master_spin_mask_p |= (1ULL << i);
+    }
+
+    if (infinite_U) {
+      this->bare_propagator = &HubbardAtom::G0_infinite_U;
+    } else {
+      this->bare_propagator = &HubbardAtom::G0;
     }
   }
 
@@ -116,12 +101,18 @@ namespace sc_expansion {
     std::vector<int> global_map_u;
     std::vector<int> global_map_p;
 
-    // Extract set bits to create the mapping
-    for (int i = 0; i < 64; ++i) {
-      if ((mask_u >> i) & 1) global_map_u.push_back(i);
+    uint64_t temp_u = mask_u;
+    while (temp_u) {
+      int i = __builtin_ctzll(temp_u); // Find index of first set bit
+      global_map_u.push_back(i);
+      temp_u &= ~(1ULL << i); // Flip that bit to 0
     }
-    for (int i = 0; i < 64; ++i) {
-      if ((mask_p >> i) & 1) global_map_p.push_back(i);
+
+    uint64_t temp_p = mask_p;
+    while (temp_p) {
+      int i = __builtin_ctzll(temp_p);
+      global_map_p.push_back(i);
+      temp_p &= ~(1ULL << i);
     }
 
     // 4. Base Case: Order 1
@@ -129,7 +120,7 @@ namespace sc_expansion {
       // Reconstruct temp vectors for the atom call
       ArgList args_u         = {this->master_unprimed[global_map_u[0]]};
       ArgList args_p         = {this->master_primed[global_map_p[0]]};
-      return this->memo[key] = this->atom.G0(args_u, args_p);
+      return this->memo[key] = (this->atom.*bare_propagator)(args_u, args_p);
     }
 
     // 5. Compute G0_n (First term)
@@ -140,7 +131,7 @@ namespace sc_expansion {
     for (int idx : global_map_u) current_args_u.push_back(this->master_unprimed[idx]);
     for (int idx : global_map_p) current_args_p.push_back(this->master_primed[idx]);
 
-    double G0n = this->atom.G0(current_args_u, current_args_p);
+    double G0n = (this->atom.*bare_propagator)(current_args_u, current_args_p);
 
     // 6. Subtraction Term Logic
     double low_order_cumulants = 0.0;
@@ -219,12 +210,12 @@ namespace sc_expansion {
   }
 
   double compute_cumulant_decomposition(HubbardAtom::cumul_args const &unprimed, HubbardAtom::cumul_args const &primed, HubbardAtom const &atom,
-                                        bool verbose) {
+                                        bool infinite_U, bool verbose) {
     if (unprimed.size() != primed.size())
       throw std::invalid_argument("CumulantSolver::compute_cumulant_decomposition: unprimed and primed lists must have the same size.");
     if (unprimed.empty()) throw std::invalid_argument("CumulantSolver::compute_cumulant_decomposition: unprimed and primed lists cannot be empty.");
 
-    CumulantSolver solver(unprimed, primed, atom);
+    CumulantSolver solver(unprimed, primed, atom, infinite_U);
 
     double result = solver.compute_cumulant_decomposition();
 

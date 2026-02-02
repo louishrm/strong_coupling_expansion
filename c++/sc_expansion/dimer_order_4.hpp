@@ -17,11 +17,11 @@ namespace sc_expansion {
     order4(double U, double mu, double beta_)
        : diagrams({Diagram(this->D4a, U, beta_, mu), Diagram(this->D4b, U, beta_, mu), Diagram(this->D4c, U, beta_, mu)}), beta(beta_) {}
 
-    double compute_sum_diagrams(std::vector<double> const &taus) {
+    double compute_sum_diagrams(std::vector<double> const &taus, bool infinite_U) {
 
       double diagram_sum = 0.0;
       for (auto const &diagram : this->diagrams) {
-        double val = diagram.evaluate_at_taus(taus);
+        double val = diagram.evaluate_at_taus(taus, infinite_U);
         diagram_sum += val;
       }
       return diagram_sum;
@@ -38,11 +38,11 @@ namespace sc_expansion {
 
     order2(double U, double mu, double beta_) : diagrams({Diagram(this->D2a, U, beta_, mu)}), beta(beta_) {}
 
-    double compute_sum_diagrams(std::vector<double> const &taus) {
+    double compute_sum_diagrams(std::vector<double> const &taus, bool infinite_U) {
 
       double diagram_sum = 0.0;
       for (auto const &diagram : this->diagrams) {
-        double val = diagram.evaluate_at_taus(taus);
+        double val = diagram.evaluate_at_taus(taus, infinite_U);
         diagram_sum += val;
       }
       return diagram_sum;
@@ -69,11 +69,11 @@ namespace sc_expansion {
                    Diagram(this->D6g, U, beta_, mu)}),
          beta(beta_) {}
 
-    double compute_sum_diagrams(std::vector<double> const &taus) {
+    double compute_sum_diagrams(std::vector<double> const &taus, bool infinite_U) {
 
       double diagram_sum = 0.0;
       for (auto const &diagram : this->diagrams) {
-        double val = diagram.evaluate_at_taus(taus);
+        double val = diagram.evaluate_at_taus(taus, infinite_U);
         diagram_sum += val;
       }
       return diagram_sum;

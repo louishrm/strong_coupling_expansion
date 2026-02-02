@@ -21,7 +21,7 @@ double compute_4th_order_diagrams(std::vector<double> const &taus, std::vector<D
   double diagram_sum = 0.0;
   for (auto const &diagram : diagrams) {
 
-    double val = diagram.evaluate_at_taus(taus);
+    double val = diagram.evaluate_at_taus(taus, false);
     diagram_sum += val;
   }
   return diagram_sum;

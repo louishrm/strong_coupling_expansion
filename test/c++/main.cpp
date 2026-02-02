@@ -9,10 +9,10 @@
 
 using namespace sc_expansion;
 
-double dimer_Omega2a(auto ad, double beta, std::vector<double> tau) {
+double dimer_Omega2a(auto atom, double beta, std::vector<double> tau) {
 
-  double G0_12 = compute_cumulant_decomposition({{tau[0], 0}}, {{tau[1], 0}}, ad, beta); //G(1|2)
-  double G0_21 = compute_cumulant_decomposition({{tau[1], 0}}, {{tau[0], 0}}, ad, beta); //G(2|1)
+  double G0_12 = compute_cumulant_decomposition({{tau[0], 0}}, {{tau[1], 0}}, atom); //G(1|2)
+  double G0_21 = compute_cumulant_decomposition({{tau[1], 0}}, {{tau[0], 0}}, atom); //G(2|1)
 
   double sign              = 1.0;
   double symmetry_factor   = 1 / 2.0;
@@ -23,7 +23,7 @@ double dimer_Omega2a(auto ad, double beta, std::vector<double> tau) {
   return prefactor * G0_12 * G0_21;
 }
 
-double dimer_Omega2(auto ad, double beta, double delta) {
+double dimer_Omega2(auto atom, double beta, double delta) {
 
   double result = 0.0;
 
@@ -31,18 +31,18 @@ double dimer_Omega2(auto ad, double beta, double delta) {
 
     std::vector<double> tau = {0, tau2};
 
-    double result_a = dimer_Omega2a(ad, beta, tau);
+    double result_a = dimer_Omega2a(atom, beta, tau);
     result += result_a * delta;
   }
   return result;
 }
 
-double dimer_Omega4a(auto ad, double beta, std::vector<double> tau) {
+double dimer_Omega4a(auto atom, double beta, std::vector<double> tau) {
 
-  double G01_14 = compute_cumulant_decomposition({{tau[0], 0}}, {{tau[3], 0}}, ad, beta); //G(1|4)
-  double G01_21 = compute_cumulant_decomposition({{tau[1], 0}}, {{tau[0], 0}}, ad, beta); //G(2|1)
-  double G01_32 = compute_cumulant_decomposition({{tau[2], 0}}, {{tau[1], 0}}, ad, beta); //G(3|2)
-  double G01_43 = compute_cumulant_decomposition({{tau[3], 0}}, {{tau[2], 0}}, ad, beta); //G(4|3)
+  double G01_14 = compute_cumulant_decomposition({{tau[0], 0}}, {{tau[3], 0}}, atom); //G(1|4)
+  double G01_21 = compute_cumulant_decomposition({{tau[1], 0}}, {{tau[0], 0}}, atom); //G(2|1)
+  double G01_32 = compute_cumulant_decomposition({{tau[2], 0}}, {{tau[1], 0}}, atom); //G(3|2)
+  double G01_43 = compute_cumulant_decomposition({{tau[3], 0}}, {{tau[2], 0}}, atom); //G(4|3)
 
   double sign              = -1.0;
   double symmetry_factor   = 1 / 4.0;
@@ -53,19 +53,19 @@ double dimer_Omega4a(auto ad, double beta, std::vector<double> tau) {
   return prefactor * G01_14 * G01_21 * G01_32 * G01_43;
 }
 
-double dimer_Omega4b(auto ad, double beta, std::vector<double> tau) {
+double dimer_Omega4b(auto atom, double beta, std::vector<double> tau) {
   double result = 0.0;
 
-  double C02_up = compute_cumulant_decomposition({{tau[1], 0}, {tau[3], 0}}, {{tau[0], 0}, {tau[2], 0}}, ad, beta); //C(2 4 | 1 3)
+  double C02_up = compute_cumulant_decomposition({{tau[1], 0}, {tau[3], 0}}, {{tau[0], 0}, {tau[2], 0}}, atom); //C(2 4 | 1 3)
 
-  double G01_14_up = compute_cumulant_decomposition({{tau[0], 0}}, {{tau[1], 0}}, ad, beta);
-  double G01_32_up = compute_cumulant_decomposition({{tau[2], 0}}, {{tau[3], 0}}, ad, beta);
+  double G01_14_up = compute_cumulant_decomposition({{tau[0], 0}}, {{tau[1], 0}}, atom);
+  double G01_32_up = compute_cumulant_decomposition({{tau[2], 0}}, {{tau[3], 0}}, atom);
   result += 2 * C02_up * G01_14_up * G01_32_up;
 
-  double C02_updown = compute_cumulant_decomposition({{tau[1], 0}, {tau[3], 1}}, {{tau[0], 0}, {tau[2], 1}}, ad, beta); //C(2 4 | 1 3)
+  double C02_updown = compute_cumulant_decomposition({{tau[1], 0}, {tau[3], 1}}, {{tau[0], 0}, {tau[2], 1}}, atom); //C(2 4 | 1 3)
 
-  double G01_14_up_2 = compute_cumulant_decomposition({{tau[0], 0}}, {{tau[1], 0}}, ad, beta); //G(1|4)
-  double G01_32_down = compute_cumulant_decomposition({{tau[2], 1}}, {{tau[3], 1}}, ad, beta); //G(3|2)
+  double G01_14_up_2 = compute_cumulant_decomposition({{tau[0], 0}}, {{tau[1], 0}}, atom); //G(1|4)
+  double G01_32_down = compute_cumulant_decomposition({{tau[2], 1}}, {{tau[3], 1}}, atom); //G(3|2)
 
   result += 2 * C02_updown * G01_14_up_2 * G01_32_down;
 
@@ -77,18 +77,18 @@ double dimer_Omega4b(auto ad, double beta, std::vector<double> tau) {
   return prefactor * result;
 }
 
-double dimer_Omega4c(auto ad, double beta, std::vector<double> tau) {
+double dimer_Omega4c(auto atom, double beta, std::vector<double> tau) {
 
   double result = 0.0;
 
-  result += 2 * compute_cumulant_decomposition({{tau[1], 0}, {tau[3], 0}}, {{tau[0], 0}, {tau[2], 0}}, ad, beta)
-     * compute_cumulant_decomposition({{tau[0], 0}, {tau[2], 0}}, {{tau[1], 0}, {tau[3], 0}}, ad, beta);
+  result += 2 * compute_cumulant_decomposition({{tau[1], 0}, {tau[3], 0}}, {{tau[0], 0}, {tau[2], 0}}, atom)
+     * compute_cumulant_decomposition({{tau[0], 0}, {tau[2], 0}}, {{tau[1], 0}, {tau[3], 0}}, atom);
 
-  result += 2 * compute_cumulant_decomposition({{tau[1], 0}, {tau[3], 1}}, {{tau[0], 0}, {tau[2], 1}}, ad, beta)
-     * compute_cumulant_decomposition({{tau[0], 0}, {tau[2], 1}}, {{tau[1], 0}, {tau[3], 1}}, ad, beta);
+  result += 2 * compute_cumulant_decomposition({{tau[1], 0}, {tau[3], 1}}, {{tau[0], 0}, {tau[2], 1}}, atom)
+     * compute_cumulant_decomposition({{tau[0], 0}, {tau[2], 1}}, {{tau[1], 0}, {tau[3], 1}}, atom);
 
-  result += 2 * compute_cumulant_decomposition({{tau[1], 1}, {tau[3], 0}}, {{tau[0], 0}, {tau[2], 1}}, ad, beta)
-     * compute_cumulant_decomposition({{tau[0], 0}, {tau[2], 1}}, {{tau[1], 1}, {tau[3], 0}}, ad, beta);
+  result += 2 * compute_cumulant_decomposition({{tau[1], 1}, {tau[3], 0}}, {{tau[0], 0}, {tau[2], 1}}, atom)
+     * compute_cumulant_decomposition({{tau[0], 0}, {tau[2], 1}}, {{tau[1], 1}, {tau[3], 0}}, atom);
 
   double sign              = 1.0;
   double symmetry_factor   = 1 / 8.0;
@@ -98,8 +98,8 @@ double dimer_Omega4c(auto ad, double beta, std::vector<double> tau) {
   return prefactor * result;
 }
 
-double dimer_Omega4(auto ad, double beta, std::vector<double> tau) {
-  return dimer_Omega4a(ad, beta, tau) + dimer_Omega4b(ad, beta, tau) + dimer_Omega4c(ad, beta, tau);
+double dimer_Omega4(auto atom, double beta, std::vector<double> tau) {
+  return dimer_Omega4a(atom, beta, tau) + dimer_Omega4b(atom, beta, tau) + dimer_Omega4c(atom, beta, tau);
 }
 
 std::vector<double> linspace(double start, double end, int num, bool endpoint) {
@@ -160,11 +160,7 @@ int main(int argc, char *argv[]) {
   double beta = 1.0;
   double mu   = 2.0;
 
-  triqs::hilbert_space::fundamental_operator_set fops = hubbard_atom::make_fops();
-
-  triqs::operators::many_body_operator_generic<double> H0 = hubbard_atom::make_H0(U, mu);
-
-  triqs::atom_diag::atom_diag<false> ad(H0, fops, {}); // atom_diag object
+  HubbardAtom atom(U, beta, mu);
 
   std::vector<std::vector<double>> grid;
   for (int i = 0; i < order; i++) {
@@ -182,7 +178,7 @@ int main(int argc, char *argv[]) {
   //   auto [x, w_x] = wx;
   //   auto [y, w_y] = wy;
   //   auto taus     = make_x_to_tau(beta)({x, y});
-  //   sum += dimer_Omega2a(ad, beta, taus) * w_x * w_y;
+  //   sum += dimer_Omega2a(atom, beta, taus) * w_x * w_y;
   // }
 
   double sum = 0.0;
@@ -194,12 +190,12 @@ int main(int argc, char *argv[]) {
     auto [x4, w_x4] = wx4;
 
     auto taus = make_x_to_tau(beta)({x1, x2, x3, x4});
-    sum += dimer_Omega4(ad, beta, taus) * w_x1 * w_x2 * w_x3 * w_x4;
+    sum += dimer_Omega4(atom, beta, taus) * w_x1 * w_x2 * w_x3 * w_x4;
   }
 
   std::cout << "Result from direct summation: " << sum * std::pow(beta, order) << std::endl;
 
-  auto omega2a_adaptator = [&beta, &ad, &weights, &grid](std::vector<double> xs) -> double {
+  auto omega2a_adaptator = [&beta, &atom, &weights, &grid](std::vector<double> xs) -> double {
     std::vector<double> taus = make_x_to_tau(beta)(xs);
     double weight            = 1.0;
     for (auto [i, x_i] : itertools::enumerate(xs)) {
@@ -210,10 +206,10 @@ int main(int argc, char *argv[]) {
         }
       }
     }
-    return dimer_Omega2a(ad, beta, taus) * weight;
+    return dimer_Omega2a(atom, beta, taus) * weight;
   };
 
-  auto omega4_adaptator = [&beta, &ad, &weights, &grid](std::vector<double> xs) -> double {
+  auto omega4_adaptator = [&beta, &atom, &weights, &grid](std::vector<double> xs) -> double {
     std::vector<double> taus = make_x_to_tau(beta)(xs);
     double weight            = 1.0;
     for (auto [i, x_i] : itertools::enumerate(xs)) {
@@ -224,7 +220,7 @@ int main(int argc, char *argv[]) {
         }
       }
     }
-    double res = dimer_Omega4(ad, beta, taus) * weight;
+    double res = dimer_Omega4(atom, beta, taus) * weight;
     if (std::isnan(res)) {
       std::cout << "NaN encountered for taus: ";
       for (auto t : taus) { std::cout << t << " "; }
@@ -261,7 +257,7 @@ int main(int argc, char *argv[]) {
   double sum_result = sum_TCI(TCI2_func, grid) * std::pow(beta, order);
   std::cout << "Result from TCI2: " << sum_result << std::endl;
 
-  double exact = dimer_Omega2(ad, beta, beta / 500.0) * beta;
+  double exact = dimer_Omega2(atom, beta, beta / 500.0) * beta;
   std::cout << "Exact result: " << exact << std::endl;
 }
 

@@ -29,7 +29,7 @@ c = class_(
 
 c.add_constructor("""(double U, double mu, double beta)""", doc = r"""""")
 
-c.add_method("""double compute_sum_diagrams(std::vector<double> taus)""", doc = r""" """)
+c.add_method("""double compute_sum_diagrams(std::vector<double> taus, bool infinite_U)""", doc = r""" """)
 
 module.add_class(c)
 
@@ -42,7 +42,7 @@ c = class_(
 
 c.add_constructor("""(double U, double mu, double beta)""", doc = r"""""")
 
-c.add_method("""double compute_sum_diagrams(std::vector<double> taus)""", doc = r""" """)
+c.add_method("""double compute_sum_diagrams(std::vector<double> taus, bool infinite_U)""", doc = r""" """)
 
 module.add_class(c)
 
@@ -55,7 +55,7 @@ c = class_(
 
 c.add_constructor("""(std::vector<std::vector<int>> adjacency_matrix, double U, double beta, double mu)""", doc = r"""""")
 
-c.add_method("""double evaluate_at_taus(std::vector<double> taus)""", doc = r""" """)
+c.add_method("""double evaluate_at_taus(std::vector<double> taus, bool infinite_U)""", doc = r""" """)
 
 module.add_class(c)
 
@@ -69,7 +69,7 @@ c = class_(
 
 c.add_constructor("""(double U, double mu, double beta)""", doc = r"""""")
 
-c.add_method("""double compute_sum_diagrams(std::vector<double> taus)""", doc = r""" """)
+c.add_method("""double compute_sum_diagrams(std::vector<double> taus, bool infinite_U)""", doc = r""" """)
 
 module.add_class(c)
 

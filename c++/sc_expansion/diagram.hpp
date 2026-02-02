@@ -27,9 +27,9 @@ namespace sc_expansion {
     };
     std::vector<Line> get_hopping_lines() const;
 
-    double evaluate_at_points(HubbardAtom::cumul_args const &args) const;
+    double evaluate_at_points(HubbardAtom::cumul_args const &args, bool infinite_U) const;
 
-    double evaluate_at_taus(std::vector<double> const &taus) const;
+    double evaluate_at_taus(std::vector<double> const &taus, bool infinite_U) const;
 
     int diagram_sign() const;
     int get_symmetry_factor() const;

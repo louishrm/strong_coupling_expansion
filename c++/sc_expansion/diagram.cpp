@@ -164,7 +164,7 @@ namespace sc_expansion {
   // Public accessor returning cached value
   std::vector<Diagram::Line> Diagram::get_hopping_lines() const { return this->hopping_lines; }
 
-  double Diagram::evaluate_at_points(HubbardAtom::cumul_args const &args) const {
+  double Diagram::evaluate_at_points(HubbardAtom::cumul_args const &args, bool infinite_U) const {
 
     //evaluates a diagram at a given set of time-spin args
     // Use cached hopping_lines
@@ -201,13 +201,16 @@ namespace sc_expansion {
       HubbardAtom::cumul_args unprimed_args = unprimed_args_per_vertex[vertex];
 
       HubbardAtom::cumul_args primed_args = primed_args_per_vertex[vertex];
-      prod *= compute_cumulant_decomposition(unprimed_args, primed_args, this->atom, false);
+      double new_factor                   = compute_cumulant_decomposition(unprimed_args, primed_args, this->atom, infinite_U);
+
+      if (new_factor == 0.0) { return 0.0; } //early exit if any vertex contribution is zero
+      prod *= new_factor;
     }
 
     return prod;
   }
 
-  double Diagram::evaluate_at_taus(std::vector<double> const &taus) const {
+  double Diagram::evaluate_at_taus(std::vector<double> const &taus, bool infinite_U) const {
 
     //evaluates a diagram at a given set of time-spin args
     double spin_sum  = 0.0;
@@ -219,12 +222,12 @@ namespace sc_expansion {
         int spin = (config & (1 << i)) ? 1 : 0; //extract spin from bit representation
         args.push_back({taus[i], spin});
       }
-      spin_sum += this->evaluate_at_points(args);
+      spin_sum += this->evaluate_at_points(args, infinite_U);
     }
 
     //double free_multiplicity = 1.0; //assume 1 for now, can be modified later if needed
     // Use cached values
-    return this->sign * spin_sum * this->fm / this->symmetry_factor;
+    return this->sign * spin_sum / this->symmetry_factor * this->fm;
   }
 
   void next_step(adjmat &A, std::vector<int> &sequence, int vertex, int V, int order) {
