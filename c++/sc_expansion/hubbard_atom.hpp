@@ -20,6 +20,7 @@ namespace sc_expansion {
     double U;
     double beta;
     double mu;
+    double Z_infinite_U;
     triqs::operators::many_body_operator_generic<double> H;
     triqs::atom_diag::atom_diag<false> ad;
     nda::matrix<double> rho0;
@@ -38,7 +39,7 @@ namespace sc_expansion {
     static std::tuple<std::vector<double>, std::vector<int>, std::vector<int>, int>
     sort_operators(const std::vector<double> &times, const std::vector<int> &spins, const std::vector<int> &flags);
 
-    static bool verify_consecutive_terms(const std::vector<int> &sorted_spins, const std::vector<int> &sorted_flags, int n_ops);
+    static bool verify_consecutive_terms(const std::vector<int> &sorted_spins, const std::vector<int> &sorted_flags);
 
     static bool verify_consecutive_terms_infinite_U(const std::vector<int> &sorted_spins, const std::vector<int> &sorted_flags, int n_ops);
 

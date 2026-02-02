@@ -5,14 +5,15 @@ namespace sc_expansion {
   using namespace triqs::operators;
 
   HubbardAtom::HubbardAtom(double U, double beta, double mu) : U(U), beta(beta), mu(mu) {
-    auto fops     = make_fops();
-    this->H       = make_H0(U, mu);
-    this->ad      = triqs::atom_diag::atom_diag<false>(this->H, fops, {});
-    this->rho0    = triqs::atom_diag::atomic_density_matrix(this->ad, beta)[0];
-    this->c_dn    = this->ad.c_matrix(0, 0);
-    this->c_up    = this->ad.c_matrix(1, 0);
-    this->cdag_dn = this->ad.cdag_matrix(0, 0);
-    this->cdag_up = this->ad.cdag_matrix(1, 0);
+    this->Z_infinite_U = 1 + 2 * std::exp(beta * mu); //Partition function at infinite U
+    auto fops          = make_fops();
+    this->H            = make_H0(U, mu);
+    this->ad           = triqs::atom_diag::atom_diag<false>(this->H, fops, {});
+    this->rho0         = triqs::atom_diag::atomic_density_matrix(this->ad, beta)[0];
+    this->c_dn         = this->ad.c_matrix(0, 0);
+    this->c_up         = this->ad.c_matrix(1, 0);
+    this->cdag_dn      = this->ad.cdag_matrix(0, 0);
+    this->cdag_up      = this->ad.cdag_matrix(1, 0);
   }
 
   triqs::hilbert_space::fundamental_operator_set HubbardAtom::make_fops() {
@@ -63,18 +64,33 @@ namespace sc_expansion {
     return {sorted_times, sorted_spins, sorted_flags, sign};
   }
 
-  bool HubbardAtom::verify_consecutive_terms(const std::vector<int> &sorted_spins, const std::vector<int> &sorted_flags, int n_ops) {
-    for (int i = 0; i < 2 * n_ops - 2; ++i) {
+  bool HubbardAtom::verify_consecutive_terms(const std::vector<int> &sorted_spins, const std::vector<int> &sorted_flags) {
+    // Vectors to store flags for each spin sector
+    std::vector<int> flags_up;
+    std::vector<int> flags_down;
 
-      if (sorted_flags[i] == sorted_flags[i + 1] && sorted_flags[i + 1] == sorted_flags[i + 2]) {
-        return false;
-      } //Three consecutive creates or destroys
+    // 1. Separate the stream by spin
+    for (size_t i = 0; i < sorted_spins.size(); ++i) {
+      if (sorted_spins[i] == 1) { // Assuming 1 is UP
+        flags_up.push_back(sorted_flags[i]);
+      } else { // Assuming 0 or -1 is DOWN
+        flags_down.push_back(sorted_flags[i]);
+      }
     }
-    for (int i = 0; i < 2 * n_ops - 1; ++i) {
-      if (sorted_flags[i] == sorted_flags[i + 1] && sorted_spins[i] == sorted_spins[i + 1]) {
-        return false;
-      } //Two consecutive creates or destroys with same spin
-    }
+
+    // 2. Helper lambda to check for strict alternation in a single sector
+    auto is_invalid_sector = [](const std::vector<int> &flags) {
+      for (size_t i = 0; i + 1 < flags.size(); ++i) {
+        // If two consecutive flags are identical (1,1 or 0,0), it's invalid
+        if (flags[i] == flags[i + 1]) { return true; }
+      }
+      return false;
+    };
+
+    // 3. Verify both sectors
+    if (is_invalid_sector(flags_up)) return false;
+    if (is_invalid_sector(flags_down)) return false;
+
     return true;
   }
 
@@ -127,7 +143,7 @@ namespace sc_expansion {
     }
 
     auto [sorted_times, sorted_spins, sorted_flags, sign] = sort_operators(times, spins, flags);
-    if (!verify_consecutive_terms(sorted_spins, sorted_flags, order)) { return 0.0; }
+    if (!verify_consecutive_terms(sorted_spins, sorted_flags)) { return 0.0; }
 
     nda::matrix<double> op = this->rho0;
 
@@ -144,9 +160,20 @@ namespace sc_expansion {
   }
 
   bool HubbardAtom::verify_consecutive_terms_infinite_U(const std::vector<int> &sorted_spins, const std::vector<int> &sorted_flags, int n_ops) {
-    for (int i = 0; i < 2 * n_ops - 1; ++i) {
-      if (sorted_flags[i] == sorted_flags[i + 1]) { return false; } //Two consecutive creates or destroys (no double occupancy)
+    int total_ops = 2 * n_ops;
+    for (int i = 0; i < total_ops - 1; ++i) {
+      if (sorted_flags[i] == sorted_flags[i + 1]) { return false; } //Two consecutive creates or destroys (violates alternation/no double occupancy)
+
+      if (sorted_flags[i] == 0 && sorted_flags[i + 1] == 1) {
+        if (sorted_spins[i] != sorted_spins[i + 1]) return false;
+      } //Destroying a particle with different spin than the one created at the previous (later) time
     }
+
+    // Check boundary condition for trace: if it starts with a create, it must end with a destroy of the same spin
+    if (sorted_flags[0] == 1) {
+      if (sorted_spins[0] != sorted_spins[total_ops - 1]) return false;
+    }
+
     return true;
   }
 
@@ -179,18 +206,11 @@ namespace sc_expansion {
 
     if (!verify_consecutive_terms_infinite_U(sorted_spins, sorted_flags, order)) { return 0.0; }
 
-    nda::matrix<double> op = this->rho0;
-    for (int i = 0; i < n_ops; ++i) {
-      if (sorted_flags[i] == 1) {
-        auto const &cmat = (sorted_spins[i] == 0 ? this->cdag_dn : this->cdag_up);
-        op *= cmat;
-      } else {
-        auto const &cmat = (sorted_spins[i] == 0 ? this->c_dn : this->c_up);
-        op *= cmat;
-      }
-
-      double G0_value = sign * trace(op);
-      return G0_value;
-    }
+    if (sorted_flags[0] == 1) {
+      return sign * std::exp(this->beta * this->mu) / this->Z_infinite_U;
+    } //First operator is create
+    else {
+      return sign * 1.0 / this->Z_infinite_U;
+    } //First operator is destroy
   }
 } // namespace sc_expansion
