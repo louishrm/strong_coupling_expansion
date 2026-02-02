@@ -9,6 +9,8 @@
 #include <triqs/stat/jackknife.hpp>
 #include <h5/h5.hpp>
 #include <chrono>
+#include <numeric>
+#include <algorithm>
 
 double Zat(double U, double beta, double mu) { return 1 + 2.0 * std::exp(beta * mu) + std::exp(beta * (2.0 * mu - U)); }
 
@@ -17,7 +19,20 @@ double order2_exact(double U, double beta, double mu) {
   double fact = std::exp(beta * mu) / (Z_at * Z_at);
   double A    = (beta * beta / 2.0) * (1 + std::exp(-beta * (U - 2.0 * mu)));
   double B    = (2.0 * beta / U) * std::exp(-beta * (U / 2.0 - mu)) * std::sinh(beta * U / 2.0);
-  return fact * (A + B) * 4.0; // factor 2 for spin and 2 for sites 4 for free multiplicity
+  return 2 * fact * (A + B) * 4.0;
+}
+
+template <typename Order> double compute_exact_integral_infinite_U(Order &o, int n, double beta) {
+  std::vector<double> taus(n);
+  std::iota(taus.begin(), taus.end(), 0.0);
+
+  double sum = 0.0;
+  do { sum += o.compute_sum_diagrams(taus, true); } while (std::next_permutation(taus.begin(), taus.end()));
+
+  double fact = 1.0;
+  for (int i = 1; i <= n; ++i) fact *= i;
+
+  return (std::pow(beta, n) / fact) * sum;
 }
 
 std::vector<sc_expansion::adjmat> diagram_mats_2() {
@@ -70,7 +85,7 @@ int main(int argc, char *argv[]) {
   int length_cycle        = 1;
   int n_warmup_cycles     = 2000;
   std::string random_name = "";
-  int random_seed         = 321865 + world.rank() * 786512;
+  int random_seed         = 32186222 + world.rank() * 786512;
   int verbosity           = (world.rank() == 0 ? 2 : 0);
 
   //diagram mats
@@ -93,13 +108,19 @@ int main(int argc, char *argv[]) {
   auto o2 = sc_expansion::order2(U, mu, beta);
   auto o4 = sc_expansion::order4(U, mu, beta);
 
-  //reference wieight for 4th order: o2*o2
+  bool infinite_U = true;
+
+  //reference weight for 4th order: o2*o2
   auto compute_reference_weight = [&o2](std::vector<double> const &taus) {
-    return o2.compute_sum_diagrams({taus[0], taus[1]}) * o2.compute_sum_diagrams({taus[2], taus[3]});
+    return o2.compute_sum_diagrams({taus[0], taus[1]}, false) * o2.compute_sum_diagrams({taus[2], taus[3]}, false);
   };
-  // double reference_integral = -8.48378682e-02 * -8.48378682e-02;
 
   double reference_integral = order2_exact(U, beta, mu) * order2_exact(U, beta, mu);
+
+  //reference weight for 4th order: U infinite solution for order 4
+  // auto compute_reference_weight = [&o4, infinite_U](std::vector<double> const &taus) { return o4.compute_sum_diagrams(taus, infinite_U); };
+
+  // double reference_integral = compute_exact_integral_infinite_U(o4, 4, beta);
 
   //reference weight for 6th order: o2*o4
   // auto compute_reference_weight = [&o2, &o4](std::vector<double> const &taus) {
@@ -134,6 +155,9 @@ int main(int argc, char *argv[]) {
     std::cout << "Total time (s): " << total_time << std::endl;
     std::cout << "Time per step (s): " << time_per_step << std::endl;
     std::cout << "Steps per second (d): " << 1.0 / time_per_step << std::endl;
+
+    double exact_infinite_U = compute_exact_integral_infinite_U(o4, 4, beta);
+    std::cout << "Exact result (Infinite U, Order 4): " << exact_infinite_U << std::endl;
 
     //std::cout << "Exact result: " << exact_result << std::endl;
   }

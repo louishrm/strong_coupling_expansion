@@ -28,7 +28,7 @@ class Configuration {
   std::pair<double, double> weight_and_sign(std::vector<double> const &st) const {
     double res = 0.0;
 
-    for (auto const &diagram : this->diagrams) { res -= diagram.evaluate_at_taus(st); }
+    for (auto const &diagram : this->diagrams) { res -= diagram.evaluate_at_taus(st, false); }
     double w = std::abs(res);
     double s = (res < 0) ? -1.0 : 1.0;
     return {w, s};
@@ -96,7 +96,7 @@ template <typename Logic> class Configuration2 {
   double recompute_integrand() {
     double res = 0.0;
 
-    for (auto const &diagram : this->diagrams) { res -= diagram.evaluate_at_taus(this->state); }
+    for (auto const &diagram : this->diagrams) { res -= diagram.evaluate_at_taus(this->state, false); }
     this->integrand = res;
     return this->integrand;
   }
