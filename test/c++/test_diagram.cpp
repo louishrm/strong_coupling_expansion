@@ -54,3 +54,26 @@ TEST_F(DiagramTest, DiagramFreeMultiplicityIsCorrect) {
   EXPECT_EQ(free_multiplicity_b, 16);
   EXPECT_EQ(free_multiplicity_c, 4);
 }
+
+TEST_F(DiagramTest, InfiniteUDiagramConstantInSimplex) {
+
+  adjmat D4a = {{0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}, {1, 0, 0, 0}}; //4-cycle
+  Diagram diagram_4a(D4a, U, beta, mu);
+
+  std::vector<double> taus_41 = {0.1, 0.2, 0.3, 0.4};
+  std::vector<double> taus_42 = {0.15, 0.23, 0.31, 0.76};
+
+  double val_41 = diagram_4a.evaluate_at_taus(taus_41, true);
+  double val_42 = diagram_4a.evaluate_at_taus(taus_42, true);
+
+  adjmat D6c = {{0, 1, 1, 1}, {1, 0, 0, 0}, {1, 0, 0, 0}, {1, 0, 0, 0}};
+  Diagram diagram_6c(D6c, U, beta, mu);
+
+  std::vector<double> taus_61 = {0.1, 0.2, 0.3, 0.4, 0.5, 0.6};
+  std::vector<double> taus_62 = {0.15, 0.23, 0.31, 0.45, 0.52, 0.78};
+
+  double val_61 = diagram_6c.evaluate_at_taus(taus_61, true);
+  double val_62 = diagram_6c.evaluate_at_taus(taus_62, true);
+  EXPECT_DOUBLE_EQ(val_61, val_62);
+  EXPECT_DOUBLE_EQ(val_41, val_42);
+}

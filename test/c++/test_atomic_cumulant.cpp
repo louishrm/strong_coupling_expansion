@@ -24,7 +24,7 @@ TEST_F(HubbardAtomTest, CumulantOrderOneMatchesExactResult) {
   HubbardAtom::cumul_args primed   = {{0, 0}};
 
   double G01 = atom->G0(unprimed, primed);
-  double C01 = compute_cumulant_decomposition(unprimed, primed, *atom, false);
+  double C01 = compute_cumulant_decomposition(unprimed, primed, *atom);
 
   // EXPECT_NEAR is better than 'abs > 1e-10' because it handles output formatting
   EXPECT_NEAR(G01, C01, 1e-12);
@@ -44,7 +44,7 @@ TEST_F(HubbardAtomTest, CumulantOrderTwoMatchesExactResult) {
 
   double C02_exact = G02 - G0_11 * G0_22 + G0_12 * G0_21;
 
-  double C02 = compute_cumulant_decomposition(unprimed_args, primed_args, *atom, false);
+  double C02 = compute_cumulant_decomposition(unprimed_args, primed_args, *atom);
 
   EXPECT_NEAR(C02, C02_exact, 1e-12);
 }
@@ -55,31 +55,31 @@ TEST_F(HubbardAtomTest, CumulantOrderThreeMatchesExactResult) {
   HubbardAtom::cumul_args primed_args   = {{0.0, 0}, {0.3, 0}, {0.65, 0}};
   double G03                            = atom->G0(unprimed_args, primed_args); //G03
 
-  double C12_12_C33 = -compute_cumulant_decomposition({unprimed_args[0], unprimed_args[1]}, {primed_args[0], primed_args[1]}, *atom, false)
+  double C12_12_C33 = -compute_cumulant_decomposition({unprimed_args[0], unprimed_args[1]}, {primed_args[0], primed_args[1]}, *atom)
      * atom->G0({unprimed_args[2]}, {primed_args[2]}); //-C(1,2|1',2')*G(3|3')
 
-  double C12_13_C32 = compute_cumulant_decomposition({unprimed_args[0], unprimed_args[1]}, {primed_args[0], primed_args[2]}, *atom, false)
+  double C12_13_C32 = compute_cumulant_decomposition({unprimed_args[0], unprimed_args[1]}, {primed_args[0], primed_args[2]}, *atom)
      * atom->G0({unprimed_args[2]}, {primed_args[1]}); //C(1,2|1',3')*G(3|2')
 
-  double C12_23_C31 = -compute_cumulant_decomposition({unprimed_args[0], unprimed_args[1]}, {primed_args[1], primed_args[2]}, *atom, false)
+  double C12_23_C31 = -compute_cumulant_decomposition({unprimed_args[0], unprimed_args[1]}, {primed_args[1], primed_args[2]}, *atom)
      * atom->G0({unprimed_args[2]}, {primed_args[0]}); //-C(1,2|2',3')*G(3|1')
 
-  double C13_12_C32 = compute_cumulant_decomposition({unprimed_args[0], unprimed_args[2]}, {primed_args[0], primed_args[1]}, *atom, false)
+  double C13_12_C32 = compute_cumulant_decomposition({unprimed_args[0], unprimed_args[2]}, {primed_args[0], primed_args[1]}, *atom)
      * atom->G0({unprimed_args[1]}, {primed_args[2]}); //C(1,3|1',2')*G(2|3')
 
-  double C13_23_C21 = compute_cumulant_decomposition({unprimed_args[0], unprimed_args[2]}, {primed_args[1], primed_args[2]}, *atom, false)
+  double C13_23_C21 = compute_cumulant_decomposition({unprimed_args[0], unprimed_args[2]}, {primed_args[1], primed_args[2]}, *atom)
      * atom->G0({unprimed_args[1]}, {primed_args[0]}); //C(1,3|2',3')*G(2|1')
 
-  double C13_13_C22 = -compute_cumulant_decomposition({unprimed_args[0], unprimed_args[2]}, {primed_args[0], primed_args[2]}, *atom, false)
+  double C13_13_C22 = -compute_cumulant_decomposition({unprimed_args[0], unprimed_args[2]}, {primed_args[0], primed_args[2]}, *atom)
      * atom->G0({unprimed_args[1]}, {primed_args[1]}); //-C(1,3|1',3')*G(2|2')
 
-  double C23_12_C13 = -compute_cumulant_decomposition({unprimed_args[1], unprimed_args[2]}, {primed_args[0], primed_args[1]}, *atom, false)
+  double C23_12_C13 = -compute_cumulant_decomposition({unprimed_args[1], unprimed_args[2]}, {primed_args[0], primed_args[1]}, *atom)
      * atom->G0({unprimed_args[0]}, {primed_args[2]}); //-C(2,3|1',2')*G(1|3')
 
-  double C23_23_C11 = -compute_cumulant_decomposition({unprimed_args[1], unprimed_args[2]}, {primed_args[1], primed_args[2]}, *atom, false)
+  double C23_23_C11 = -compute_cumulant_decomposition({unprimed_args[1], unprimed_args[2]}, {primed_args[1], primed_args[2]}, *atom)
      * atom->G0({unprimed_args[0]}, {primed_args[0]}); //-C(2,3|2',3')*G(1|1')
 
-  double C23_13_C12 = compute_cumulant_decomposition({unprimed_args[1], unprimed_args[2]}, {primed_args[0], primed_args[2]}, *atom, false)
+  double C23_13_C12 = compute_cumulant_decomposition({unprimed_args[1], unprimed_args[2]}, {primed_args[0], primed_args[2]}, *atom)
      * atom->G0({unprimed_args[0]}, {primed_args[1]}); //C(2,3|1',3')*G(1|2')
 
   double C02C01_terms = C12_12_C33 + C12_13_C32 + C12_23_C31 + C13_12_C32 + C13_23_C21 + C13_13_C22 + C23_12_C13 + C23_23_C11 + C23_13_C12;
@@ -106,7 +106,7 @@ TEST_F(HubbardAtomTest, CumulantOrderThreeMatchesExactResult) {
 
   double C03_exact = G03 + C02C01_terms + G1G1G1_terms;
 
-  double C03 = compute_cumulant_decomposition(unprimed_args, primed_args, *atom, true);
+  double C03 = compute_cumulant_decomposition(unprimed_args, primed_args, *atom, false, true);
 
   EXPECT_NEAR(C03, C03_exact, 1e-12);
 }
@@ -116,13 +116,37 @@ TEST_F(HubbardAtomTest, SpinConservationOfCumulant) {
   HubbardAtom::cumul_args unprimed_args1 = {{0.5, 1}, {0.8, 1}};
   HubbardAtom::cumul_args primed_args1   = {{0.0, 0}, {0.3, 0}};
 
-  double C02_1 = compute_cumulant_decomposition(unprimed_args1, primed_args1, *atom, false);
+  double C02_1 = compute_cumulant_decomposition(unprimed_args1, primed_args1, *atom);
 
   EXPECT_NEAR(C02_1, 0.0, 1e-12);
 
   HubbardAtom::cumul_args unprimed_args2 = {{0.5, 1}, {0.8, 0}};
   HubbardAtom::cumul_args primed_args2   = {{0.0, 0}, {0.3, 0}};
 
-  double C02_2 = compute_cumulant_decomposition(unprimed_args2, primed_args2, *atom, false);
+  double C02_2 = compute_cumulant_decomposition(unprimed_args2, primed_args2, *atom);
   EXPECT_NEAR(C02_2, 0.0, 1e-12);
+}
+
+TEST_F(HubbardAtomTest, InfiniteUCumulantOrder2MatchesExactResult) {
+
+  HubbardAtom::cumul_args unprimed_args = {{0.8, 0}, {0.4, 0}};
+  HubbardAtom::cumul_args primed_args   = {{0.6, 0}, {0.2, 0}};
+  double G02                            = atom->G0_infinite_U(unprimed_args, primed_args); //G0(1,2|1',2')
+
+  double G0_11 = atom->G0_infinite_U({unprimed_args[0]}, {primed_args[0]}); //G(1|3)
+  double G0_22 = atom->G0_infinite_U({unprimed_args[1]}, {primed_args[1]}); //G(2|4)
+
+  double G0_12 = atom->G0_infinite_U({unprimed_args[0]}, {primed_args[1]}); //G(1|4)
+  double G0_21 = atom->G0_infinite_U({unprimed_args[1]}, {primed_args[0]}); //G(2|3)
+
+  double C02_exact = G02 - G0_11 * G0_22 + G0_12 * G0_21;
+
+  double C02 = compute_cumulant_decomposition(unprimed_args, primed_args, *atom, true);
+
+  EXPECT_NEAR(C02, C02_exact, 1e-12);
+}
+
+int main(int argc, char **argv) {
+  ::testing::InitGoogleTest(&argc, argv);
+  return RUN_ALL_TESTS();
 }
