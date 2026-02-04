@@ -57,7 +57,7 @@ struct measure {
       // Ensure directory exists (basic check, usually handled by build system or user)
       // For now, we assume 'results' directory exists or we write to current dir if needed.
       try {
-        std::string filename = "./results/results_mu_" + std::to_string(mu) + ".h5";
+        std::string filename = "./results/full_lattice_data_mu_" + std::to_string(mu) + ".h5";
         h5::file file(filename, 'w');
         h5_write(file, "mean", std::get<0>(result));
         h5_write(file, "error", std::get<1>(result));

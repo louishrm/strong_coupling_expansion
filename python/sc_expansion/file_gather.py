@@ -6,7 +6,7 @@ import argparse
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument('order ', type=int, help='Expansion order')
+parser.add_argument('order', type=int, help='Expansion order')
 parser.add_argument('U', type=float, help='Interaction strength U')
 parser.add_argument('beta', type=float, help='Inverse temperature beta')
 parser.add_argument('alpha', type=float, help='Alpha parameter for mcmc')
