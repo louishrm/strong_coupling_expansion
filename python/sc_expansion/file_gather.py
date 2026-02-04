@@ -6,17 +6,20 @@ import argparse
 
 parser = argparse.ArgumentParser()
 
+parser.add_argument('order ', type=int, help='Expansion order')
 parser.add_argument('U', type=float, help='Interaction strength U')
 parser.add_argument('beta', type=float, help='Inverse temperature beta')
 parser.add_argument('alpha', type=float, help='Alpha parameter for mcmc')
 
 args = parser.parse_args()
+
+order = args.order
 U = args.U
 beta = args.beta
 alpha = args.alpha
 
 
-filename = f"./results/full_lattice_Omega_scan_mu_U={U}_beta={beta}_alpha={alpha}.h5"
+filename = f"./results/full_lattice_Omega_order_{order}_scan_mu_U={U}_beta={beta}_alpha={alpha}.h5"
 
 # Creates the folder path if it's missing
 os.makedirs(os.path.dirname(filename), exist_ok=True)
@@ -61,5 +64,5 @@ with h5py.File(filename, "w") as master:
             print(f"Error deleting {fname}: {e}")
             
     print("Cleanup complete.")
-    
-print("Successfully merged files into final_results.h5")
+
+print(f"Successfully merged files into {filename}")
