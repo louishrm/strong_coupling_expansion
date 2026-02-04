@@ -16,7 +16,7 @@ struct measure {
   // We want to estimate I = I_ref * <integrand/W> / <reference_integrand/W>
   triqs::stat::accumulator<double> acc_integrand;
   triqs::stat::accumulator<double> acc_reference;
-  
+
   double reference_integral;
   double mu;
 
@@ -29,7 +29,7 @@ struct measure {
 
   void accumulate(double) {
     double W = config->metropolis_weight;
-    
+
     // Safety check for W=0, though MC should not visit such states
     if (W > 0.0) {
       acc_integrand << (config->integrand / W);
@@ -40,9 +40,9 @@ struct measure {
   void collect_results(mpi::communicator c) {
 
     // The ratio estimator: I = I_ref * (avg(integrand/W) / avg(ref_integrand/W))
-    auto ratio_func = [this](double avg_int, double avg_ref) { 
+    auto ratio_func = [this](double avg_int, double avg_ref) {
       if (std::abs(avg_ref) < 1e-18) return 0.0;
-      return (avg_int / avg_ref) * this->reference_integral; 
+      return (avg_int / avg_ref) * this->reference_integral;
     };
 
     // Perform Jackknife on the ratio of the two accumulators
@@ -57,15 +57,13 @@ struct measure {
       // Ensure directory exists (basic check, usually handled by build system or user)
       // For now, we assume 'results' directory exists or we write to current dir if needed.
       try {
-        std::string filename = "results_mu_" + std::to_string(mu) + ".h5";
+        std::string filename = "./results/results_mu_" + std::to_string(mu) + ".h5";
         h5::file file(filename, 'w');
         h5_write(file, "mean", std::get<0>(result));
         h5_write(file, "error", std::get<1>(result));
         h5_write(file, "mu", mu);
         h5_write(file, "reference_integral", reference_integral);
-      } catch (...) {
-        std::cerr << "Warning: Could not write HDF5 results file." << std::endl;
-      }
+      } catch (...) { std::cerr << "Warning: Could not write HDF5 results file." << std::endl; }
     }
   }
 };
