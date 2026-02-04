@@ -4,3 +4,5 @@ doc/cpp2rst_generated
 ./.vscode/
 /analytical/__pycache__
 /results/
+GEMINI.md
+TODO.md
