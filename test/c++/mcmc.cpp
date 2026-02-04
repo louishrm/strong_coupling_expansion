@@ -19,7 +19,7 @@ double order2_exact(double U, double beta, double mu) {
   double fact = std::exp(beta * mu) / (Z_at * Z_at);
   double A    = (beta * beta / 2.0) * (1 + std::exp(-beta * (U - 2.0 * mu)));
   double B    = (2.0 * beta / U) * std::exp(-beta * (U / 2.0 - mu)) * std::sinh(beta * U / 2.0);
-  return 2 * fact * (A + B) * 4.0;
+  return -2.0 / beta * fact * (A + B); //* 4.0;
 }
 
 template <typename Order> double compute_exact_integral_infinite_U(Order &o, int n, double beta) {
@@ -111,16 +111,16 @@ int main(int argc, char *argv[]) {
   bool infinite_U = true;
 
   //reference weight for 4th order: o2*o2
-  auto compute_reference_weight = [&o2](std::vector<double> const &taus) {
-    return o2.compute_sum_diagrams({taus[0], taus[1]}, false) * o2.compute_sum_diagrams({taus[2], taus[3]}, false);
-  };
+  // auto compute_reference_weight = [&o2](std::vector<double> const &taus) {
+  //   return o2.compute_sum_diagrams({taus[0], taus[1]}, false) * o2.compute_sum_diagrams({taus[2], taus[3]}, false);
+  // };
 
-  double reference_integral = order2_exact(U, beta, mu) * order2_exact(U, beta, mu);
+  // double reference_integral = order2_exact(U, beta, mu) * order2_exact(U, beta, mu);
 
   //reference weight for 4th order: U infinite solution for order 4
-  // auto compute_reference_weight = [&o4, infinite_U](std::vector<double> const &taus) { return o4.compute_sum_diagrams(taus, infinite_U); };
+  auto compute_reference_weight = [&o4, infinite_U](std::vector<double> const &taus) { return o4.compute_sum_diagrams(taus, infinite_U); };
 
-  // double reference_integral = compute_exact_integral_infinite_U(o4, 4, beta);
+  double reference_integral = compute_exact_integral_infinite_U(o4, 4, beta);
 
   //reference weight for 6th order: o2*o4
   // auto compute_reference_weight = [&o2, &o4](std::vector<double> const &taus) {

@@ -227,7 +227,7 @@ namespace sc_expansion {
 
     //double free_multiplicity = 1.0; //assume 1 for now, can be modified later if needed
     // Use cached values
-    return this->sign * spin_sum / this->symmetry_factor * this->fm;
+    return (-1.0 / this->atom.beta) * this->sign * spin_sum / this->symmetry_factor; //* this->fm;
   }
 
   void next_step(adjmat &A, std::vector<int> &sequence, int vertex, int V, int order) {
