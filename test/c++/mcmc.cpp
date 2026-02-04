@@ -14,14 +14,6 @@
 
 double Zat(double U, double beta, double mu) { return 1 + 2.0 * std::exp(beta * mu) + std::exp(beta * (2.0 * mu - U)); }
 
-double order2_exact(double U, double beta, double mu) {
-  double Z_at = Zat(U, beta, mu);
-  double fact = std::exp(beta * mu) / (Z_at * Z_at);
-  double A    = (beta * beta / 2.0) * (1 + std::exp(-beta * (U - 2.0 * mu)));
-  double B    = (2.0 * beta / U) * std::exp(-beta * (U / 2.0 - mu)) * std::sinh(beta * U / 2.0);
-  return -2.0 / beta * fact * (A + B); //* 4.0;
-}
-
 template <typename Order> double compute_exact_integral_infinite_U(Order &o, int n, double beta) {
   std::vector<double> taus(n);
   std::iota(taus.begin(), taus.end(), 0.0);
@@ -35,39 +27,25 @@ template <typename Order> double compute_exact_integral_infinite_U(Order &o, int
   return (std::pow(beta, n) / fact) * sum;
 }
 
-std::vector<sc_expansion::adjmat> diagram_mats_2() {
-
-  sc_expansion::adjmat D2a = {{0, 1}, {1, 0}}; //2-cycle
-  return {D2a};
-}
-
 std::vector<sc_expansion::adjmat> diagram_mats_4() {
-
   sc_expansion::adjmat D4a = {{0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}, {1, 0, 0, 0}}; //4-cycle
   sc_expansion::adjmat D4b = {{0, 1, 1}, {1, 0, 0}, {1, 0, 0}};                        //3-cycle with double lines
   sc_expansion::adjmat D4c = {{0, 2}, {2, 0}};                                         //2-cycle with double lines
   return {D4a, D4b, D4c};
 }
 
-std::vector<sc_expansion::adjmat> diagram_mats_6() {
-
-  sc_expansion::adjmat D6a = {{0, 1, 0, 0, 0, 0}, {0, 0, 1, 0, 0, 0}, {0, 0, 0, 1, 0, 0},
-                              {0, 0, 0, 0, 1, 0}, {0, 0, 0, 0, 0, 1}, {1, 0, 0, 0, 0, 0}};                          //6-cycle
-  sc_expansion::adjmat D6b = {{0, 3}, {3, 0}};                                                                      //watermelon triple
-  sc_expansion::adjmat D6c = {{0, 1, 1, 1}, {1, 0, 0, 0}, {1, 0, 0, 0}, {1, 0, 0, 0}};                              //petal with 4 vertice
-  sc_expansion::adjmat D6d = {{0, 1, 1, 0, 0}, {1, 0, 0, 0, 0}, {0, 0, 0, 1, 0}, {0, 0, 0, 0, 1}, {1, 0, 0, 0, 0}}; //square +digon
-  sc_expansion::adjmat D6e = {{0, 1, 1, 0}, {1, 0, 0, 1}, {1, 0, 0, 0}, {0, 1, 0, 0}};                              //crab diagram
-  sc_expansion::adjmat D6f = {{0, 2, 1}, {2, 0, 0}, {1, 0, 0}};                                                     //watermelon double + digon
-  sc_expansion::adjmat D6g = {{0, 2, 0, 0}, {1, 0, 1, 0}, {0, 0, 0, 1}, {1, 0, 0, 0}};                              //square with one double line
-  return {D6a, D6b, D6c, D6d, D6e, D6f, D6g};
-}
-
 int main(int argc, char *argv[]) {
+
+  if (argc < 5) {
+    if (mpi::communicator().rank() == 0) { std::cerr << "Usage: " << argv[0] << " n_cycles U beta mu [alpha]" << std::endl; }
+    return 1;
+  }
 
   int n_cycles = std::stoi(argv[1]);
   double U     = std::stod(argv[2]);
   double beta  = std::stod(argv[3]);
   double mu    = std::stod(argv[4]);
+  double alpha = (argc > 5 ? std::stod(argv[5]) : 0.5);
 
   // initialize mpi
   mpi::environment env(argc, argv);
@@ -77,6 +55,7 @@ int main(int argc, char *argv[]) {
   if (world.rank() == 0) {
     std::cout << "Strong Coupling Monte Carlo" << std::endl;
     std::cout << "Number of MPI processes: " << world.size() << std::endl;
+    std::cout << "U=" << U << " beta=" << beta << " mu=" << mu << " alpha=" << alpha << std::endl;
   }
 
   auto start_time = std::chrono::high_resolution_clock::now();
@@ -88,56 +67,28 @@ int main(int argc, char *argv[]) {
   int random_seed         = 32186222 + world.rank() * 786512;
   int verbosity           = (world.rank() == 0 ? 2 : 0);
 
-  //diagram mats
-  auto mats2 = diagram_mats_2();
-  auto mats4 = diagram_mats_4();
-  auto mats6 = diagram_mats_6();
-
   // Construct a Monte Carlo loop
   triqs::mc_tools::mc_generic<double> StrongCouplingMC(random_name, random_seed, verbosity);
 
   // parameters of the model
-  int order = 4;
-
-  //double exact_result = -6.39023919e-02;
+  int order  = 4;
+  auto mats4 = diagram_mats_4();
 
   // construct configuration
-  Configuration config(U, beta, mu, mats4, order);
+  Configuration config(U, beta, mu, order, alpha, mats4);
 
-  //construct the reference weight function
-  auto o2 = sc_expansion::order2(U, mu, beta);
-  auto o4 = sc_expansion::order4(U, mu, beta);
-
-  bool infinite_U = true;
-
-  //reference weight for 4th order: o2*o2
-  // auto compute_reference_weight = [&o2](std::vector<double> const &taus) {
-  //   return o2.compute_sum_diagrams({taus[0], taus[1]}, false) * o2.compute_sum_diagrams({taus[2], taus[3]}, false);
-  // };
-
-  // double reference_integral = order2_exact(U, beta, mu) * order2_exact(U, beta, mu);
-
-  //reference weight for 4th order: U infinite solution for order 4
-  auto compute_reference_weight = [&o4, infinite_U](std::vector<double> const &taus) { return o4.compute_sum_diagrams(taus, infinite_U); };
-
+  // Reference integral for normalization (Infinite U, Order 4)
+  auto o4                   = sc_expansion::order4(U, mu, beta);
   double reference_integral = compute_exact_integral_infinite_U(o4, 4, beta);
-
-  //reference weight for 6th order: o2*o4
-  // auto compute_reference_weight = [&o2, &o4](std::vector<double> const &taus) {
-  //   return -o2.compute_sum_diagrams({taus[0], taus[1]}) * -o4.compute_sum_diagrams({taus[2], taus[3], taus[4], taus[5]});
-  // };
-  // double reference_integral = (-8.48378682e-02) * (-5.57770720e-03);
-
-  config.set_reference_weight_function(compute_reference_weight);
 
   long total_cycles = n_cycles * world.size(); // Total samples across all cores
   int n_bins        = 50;                      // Standard choice for Jackknife
   int block_size    = (n_cycles / n_bins) + 1;
 
-  //add moves and measures
+  // add moves and measures
   measure my_measure(&config, reference_integral, n_bins, block_size, mu);
   StrongCouplingMC.add_move(move(&config, StrongCouplingMC.get_rng()), "time_swap");
-  StrongCouplingMC.add_measure(my_measure, "measure sign");
+  StrongCouplingMC.add_measure(my_measure, "defensive_measure");
 
   // Run and collect results
   StrongCouplingMC.warmup_and_accumulate(n_warmup_cycles, n_cycles, length_cycle, triqs::utility::clock_callback(-1));
@@ -145,7 +96,6 @@ int main(int argc, char *argv[]) {
   StrongCouplingMC.collect_results(world);
 
   if (world.rank() == 0) {
-
     auto end_time                         = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> elapsed = end_time - start_time;
     double total_time                     = elapsed.count();
@@ -154,11 +104,11 @@ int main(int argc, char *argv[]) {
 
     std::cout << "Total time (s): " << total_time << std::endl;
     std::cout << "Time per step (s): " << time_per_step << std::endl;
-    std::cout << "Steps per second (d): " << 1.0 / time_per_step << std::endl;
+    std::cout << "Steps per second: " << 1.0 / time_per_step << std::endl;
 
     double exact_infinite_U = compute_exact_integral_infinite_U(o4, 4, beta);
     std::cout << "Exact result (Infinite U, Order 4): " << exact_infinite_U << std::endl;
-
-    //std::cout << "Exact result: " << exact_result << std::endl;
   }
+
+  return 0;
 }

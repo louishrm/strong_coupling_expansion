@@ -5,7 +5,11 @@
 // Optimized Move Struct
 struct move {
   double current_weight;
-  double current_sign;
+
+  // Proposed values
+  double proposed_weight;
+  double proposed_integrand;
+  double proposed_ref_integrand;
 
   // Store only what is needed to revert the move, not the whole state
   int changed_index;
@@ -17,14 +21,13 @@ struct move {
 
   move(Configuration *config_, triqs::mc_tools::random_generator &RNG_) : config(config_), RNG(RNG_) {
     // Cache initial weight
-    current_weight = config->weight;
-    current_sign   = config->sign;
+    current_weight = config->metropolis_weight;
   }
 
   double attempt() {
     // 1. Pick random change
-    changed_index = RNG(config->order);
-    new_tau       = RNG(0.0, config->beta);
+    changed_index = RNG(config->state.size());
+    new_tau       = RNG(config->beta);
 
     // 2. Save old value for potential revert
     old_tau = config->state[changed_index];
@@ -32,35 +35,33 @@ struct move {
     // 3. APPLY CHANGE DIRECTLY (No vector copy)
     config->state[changed_index] = new_tau;
 
-    // 4. Calculate new weight
-    // Optimization: If possible, create a function that computes
-    // weight ratio based on the change, rather than full recompute.
-    auto [new_weight, new_sign] = config->weight_and_sign();
+    // 4. Calculate new integrands
+    auto [new_finite, new_infinite] = config->get_integrands();
+    proposed_integrand              = new_finite;
+    proposed_ref_integrand          = new_infinite;
 
-    // Store potential new values
-    // We don't overwrite config->weight yet, only on accept
-    double acceptance_ratio = new_weight / current_weight;
+    // 5. Calculate new weight
+    proposed_weight = config->calculate_weight(proposed_integrand, proposed_ref_integrand);
 
-    // Update temp values for accept() to use
-    current_weight = new_weight;
-    current_sign   = new_sign;
+    // 6. Return acceptance ratio
+    if (current_weight == 0.0) {
+      // If current weight is 0, we accept any proposal with non-zero weight
+      return (proposed_weight > 0.0) ? 1.0e100 : 1.0;
+    }
 
-    return acceptance_ratio;
+    return proposed_weight / current_weight;
   }
 
   double accept() {
-    // State is already updated in attempt(), just commit the weight/sign
-    config->commit_update(current_weight, current_sign);
+    // State is already updated in attempt(), just commit the values
+    config->commit_update(proposed_integrand, proposed_ref_integrand);
+    current_weight = proposed_weight;
     return 1.0;
   }
 
   void reject() {
     // REVERT the state
     config->state[changed_index] = old_tau;
-    // No need to revert weight/sign as we didn't commit them to config
-    
-    // We must revert the local cached values to match the restored config
-    current_weight = config->weight;
-    current_sign   = config->sign;
+    // No need to revert weight in config as we didn't commit it
   }
 };

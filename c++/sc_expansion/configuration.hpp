@@ -1,121 +1,66 @@
 #pragma once
 
+#include <vector>
+#include <cmath>
+#include <utility>
 #include "diagram.hpp"
 #include <./triqs/mc_tools/random_generator.hpp>
-#include <functional>
 
 class Configuration {
 
   public:
   double beta;
-  int order;
-  double weight;
-  double sign;
-  std::vector<double> state;
+  std::vector<double> state; //set of imaginary times
+  double metropolis_weight;  //|alpha Uinf+ (1-alpha) Ufin|
 
-  Configuration(double U_, double beta_, double mu_, std::vector<sc_expansion::adjmat> diagram_mats_, int order_)
-     : beta(beta_), order(order_), state(order_), U(U_), mu(mu_), diagram_mats(diagram_mats_) {
+  double integrand;           //Omega(configuration)
+  double reference_integrand; //Omega_infinite_U(configuration)
 
+  Configuration(double U_, double beta_, double mu_, int order_, double alpha_, std::vector<sc_expansion::adjmat> const &diagram_mats_)
+     : beta(beta_), U(U_), mu(mu_), order(order_), alpha(alpha_), diagram_mats(diagram_mats_) {
+
+    this->state.resize(this->order);
     triqs::mc_tools::random_generator RNG("mt19937", 23432);
     for (int i = 0; i < this->order; i++) { this->state[i] = RNG(this->beta); }
 
-    this->diagrams.reserve(this->diagram_mats.size());
-    for (auto const &mat : this->diagram_mats) { this->diagrams.push_back(sc_expansion::Diagram(mat, this->U, this->beta, this->mu)); }
+    for (auto const &mat : diagram_mats) { diagrams.push_back(sc_expansion::Diagram(mat, U, beta, mu)); }
 
-    recompute_weight_and_sign();
+    this->recompute_integrands();
+    this->metropolis_weight = this->get_metropolis_weight();
   }
 
-  std::pair<double, double> weight_and_sign(std::vector<double> const &st) const {
-    double res = 0.0;
+  std::pair<double, double> get_integrands() {
 
-    for (auto const &diagram : this->diagrams) { res += diagram.evaluate_at_taus(st, false); }
-    double w = std::abs(res);
-    double s = (res < 0) ? -1.0 : 1.0;
-    return {w, s};
-  }
-
-  // Fast commit method
-  void commit_update(double new_weight, double new_sign) {
-    this->weight            = new_weight;
-    this->sign              = new_sign;
-    this->ref_weight_calced = false;
-  }
-
-  std::pair<double, double> weight_and_sign() const { return weight_and_sign(this->state); }
-  void set_reference_weight_function(std::function<double(std::vector<double> const &)> f) { reference_weight_func = f; }
-
-  double get_reference_weight() const {
-    if (!reference_weight_func) return 1.0;
-    if (!ref_weight_calced) {
-      cached_ref_weight = reference_weight_func(this->state);
-      ref_weight_calced = true;
+    double finite_U   = 0.0;
+    double infinite_U = 0.0;
+    for (auto const &diagram : this->diagrams) {
+      finite_U += diagram.evaluate_at_taus(this->state, false);
+      infinite_U += diagram.evaluate_at_taus(this->state, true);
     }
-    return cached_ref_weight;
+    return {finite_U, infinite_U};
   }
 
-  private:
-  std::function<double(std::vector<double> const &)> reference_weight_func;
-  mutable double cached_ref_weight;
-  mutable bool ref_weight_calced = false;
+  double calculate_weight(double finite_U, double infinite_U) const { return std::abs(alpha * infinite_U + (1 - alpha) * finite_U); }
 
-  void recompute_weight_and_sign() {
-    auto [w, s]             = this->weight_and_sign();
-    this->weight            = w;
-    this->sign              = s;
-    this->ref_weight_calced = false;
-  }
+  double get_metropolis_weight() { return std::abs(alpha * this->reference_integrand + (1 - alpha) * this->integrand); }
 
-  double U;
-  double mu;
-  std::vector<sc_expansion::adjmat> diagram_mats;
-  std::vector<sc_expansion::Diagram> diagrams;
-};
-
-template <typename Logic> class Configuration2 {
-
-  public:
-  Logic logic;
-  double beta;
-  double integrand;
-  double reference_integrand;
-  double metropolis_weight;
-  std::vector<double> state;
-
-  Configuration2(Logic logic_, double U_, double beta_, double mu_, int order_, long seed_, std::vector<sc_expansion::adjmat> diagram_mats_)
-     : logic(logic_), beta(beta_), state(order_), U(U_), mu(mu_), order(order_), seed(seed_), diagram_mats(diagram_mats_) {
-
-    triqs::mc_tools::random_generator RNG("mt19937", this->seed);
-    for (int i = 0; i < this->order; i++) { this->state[i] = RNG(this->beta); }
-
-    this->diagrams.reserve(this->diagram_mats.size());
-    for (auto const &mat : this->diagram_mats) { this->diagrams.push_back(sc_expansion::Diagram(mat, this->U, this->beta, this->mu)); }
-
-    recompute_integrand();
-  }
-
-  double recompute_integrand() {
-    double res = 0.0;
-
-    for (auto const &diagram : this->diagrams) { res += diagram.evaluate_at_taus(this->state, false); }
-    this->integrand = res;
-    return this->integrand;
-  }
-
-  double compute_reference_integrand() {
-    this->reference_integrand = this->logic.get_reference_integrand(this->state);
-    return this->reference_integrand;
-  }
-
-  void commit_update(double new_integrand, double new_ref_integrand) {
+  void commit_update(double new_integrand, double new_reference_integrand) {
     this->integrand           = new_integrand;
-    this->reference_integrand = new_ref_integrand;
+    this->reference_integrand = new_reference_integrand;
+    this->metropolis_weight   = this->get_metropolis_weight();
   }
 
   private:
   double U;
   double mu;
   int order;
-  long seed;
+  double alpha;
   std::vector<sc_expansion::adjmat> diagram_mats;
   std::vector<sc_expansion::Diagram> diagrams;
+
+  void recompute_integrands() {
+    auto [finite_U, infinite_U] = this->get_integrands();
+    this->integrand             = finite_U;
+    this->reference_integrand   = infinite_U;
+  }
 };
