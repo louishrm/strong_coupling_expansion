@@ -34,18 +34,32 @@ std::vector<sc_expansion::adjmat> diagram_mats_4() {
   return {D4a, D4b, D4c};
 }
 
+std::vector<sc_expansion::adjmat> diagram_mats_6() {
+
+  sc_expansion::adjmat D6a = {{0, 1, 0, 0, 0, 0}, {0, 0, 1, 0, 0, 0}, {0, 0, 0, 1, 0, 0},
+                              {0, 0, 0, 0, 1, 0}, {0, 0, 0, 0, 0, 1}, {1, 0, 0, 0, 0, 0}};                          //6-cycle
+  sc_expansion::adjmat D6b = {{0, 3}, {3, 0}};                                                                      //watermelon triple
+  sc_expansion::adjmat D6c = {{0, 1, 1, 1}, {1, 0, 0, 0}, {1, 0, 0, 0}, {1, 0, 0, 0}};                              //petal with 4 vertice
+  sc_expansion::adjmat D6d = {{0, 1, 1, 0, 0}, {1, 0, 0, 0, 0}, {0, 0, 0, 1, 0}, {0, 0, 0, 0, 1}, {1, 0, 0, 0, 0}}; //square +digon
+  sc_expansion::adjmat D6e = {{0, 1, 1, 0}, {1, 0, 0, 1}, {1, 0, 0, 0}, {0, 1, 0, 0}};                              //crab diagram
+  sc_expansion::adjmat D6f = {{0, 2, 1}, {2, 0, 0}, {1, 0, 0}};                                                     //watermelon double + digon
+  sc_expansion::adjmat D6g = {{0, 2, 0, 0}, {1, 0, 1, 0}, {0, 0, 0, 1}, {1, 0, 0, 0}};                              //square with one double line
+  return {D6a, D6b, D6c, D6d, D6e, D6f, D6g};
+}
+
 int main(int argc, char *argv[]) {
 
-  if (argc < 5) {
-    if (mpi::communicator().rank() == 0) { std::cerr << "Usage: " << argv[0] << " n_cycles U beta mu [alpha]" << std::endl; }
+  if (argc < 6) {
+    if (mpi::communicator().rank() == 0) { std::cerr << "Usage: " << argv[0] << " order n_cycles U beta mu [alpha]" << std::endl; }
     return 1;
   }
 
-  int n_cycles = std::stoi(argv[1]);
-  double U     = std::stod(argv[2]);
-  double beta  = std::stod(argv[3]);
-  double mu    = std::stod(argv[4]);
-  double alpha = (argc > 5 ? std::stod(argv[5]) : 0.5);
+  int order    = std::stoi(argv[1]);
+  int n_cycles = std::stoi(argv[2]);
+  double U     = std::stod(argv[3]);
+  double beta  = std::stod(argv[4]);
+  double mu    = std::stod(argv[5]);
+  double alpha = (argc > 6 ? std::stod(argv[6]) : 0.5);
 
   // initialize mpi
   mpi::environment env(argc, argv);
@@ -71,15 +85,24 @@ int main(int argc, char *argv[]) {
   triqs::mc_tools::mc_generic<double> StrongCouplingMC(random_name, random_seed, verbosity);
 
   // parameters of the model
-  int order  = 4;
-  auto mats4 = diagram_mats_4();
+  std::vector<sc_expansion::adjmat> mats;
+  double reference_integral = 0;
+
+  if (order == 4) {
+    mats = diagram_mats_4();
+    sc_expansion::order4 o(U, mu, beta);
+    reference_integral = compute_exact_integral_infinite_U(o, 4, beta);
+  } else if (order == 6) {
+    mats = diagram_mats_6();
+    sc_expansion::order6 o(U, mu, beta);
+    reference_integral = compute_exact_integral_infinite_U(o, 6, beta);
+  } else {
+    if (world.rank() == 0) { std::cerr << "Error: Only order 4 and 6 are implemented." << std::endl; }
+    return 1;
+  }
 
   // construct configuration
-  Configuration config(U, beta, mu, order, alpha, mats4);
-
-  // Reference integral for normalization (Infinite U, Order 4)
-  auto o4                   = sc_expansion::order4(U, mu, beta);
-  double reference_integral = compute_exact_integral_infinite_U(o4, 4, beta);
+  Configuration config(U, beta, mu, order, alpha, mats);
 
   long total_cycles = n_cycles * world.size(); // Total samples across all cores
   int n_bins        = 50;                      // Standard choice for Jackknife
@@ -106,8 +129,7 @@ int main(int argc, char *argv[]) {
     std::cout << "Time per step (s): " << time_per_step << std::endl;
     std::cout << "Steps per second: " << 1.0 / time_per_step << std::endl;
 
-    double exact_infinite_U = compute_exact_integral_infinite_U(o4, 4, beta);
-    std::cout << "Exact result (Infinite U, Order 4): " << exact_infinite_U << std::endl;
+    std::cout << "Exact result (Infinite U, Order " << order << "): " << reference_integral << std::endl;
   }
 
   return 0;
