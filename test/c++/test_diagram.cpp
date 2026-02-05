@@ -27,6 +27,9 @@ TEST_F(DiagramTest, SymmetryFactorOfDiagramIsCorrect) {
   Diagram diagram_b(D4b, U, beta, mu);
   Diagram diagram_c(D4c, U, beta, mu);
 
+  auto lines = diagram_b.get_hopping_lines();
+  for (const auto &line : lines) { std::cout << "Line from vertex " << line.from_vertex << " to vertex " << line.to_vertex << std::endl; }
+
   EXPECT_EQ(diagram_a.get_symmetry_factor(), 4);
   EXPECT_EQ(diagram_b.get_symmetry_factor(), 2);
   EXPECT_EQ(diagram_c.get_symmetry_factor(), 8);

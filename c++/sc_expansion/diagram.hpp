@@ -40,7 +40,7 @@ namespace sc_expansion {
     int compute_diagram_sign() const;
     int compute_free_multiplicity() const;
     std::vector<Line> compute_hopping_lines() const;
-    std::vector<std::vector<int>> compute_valid_spin_configurations() const;
+    std::vector<long> compute_valid_spin_configurations() const;
 
     int n; //order= number of hopping lines
     int V; //number of vertices
@@ -51,7 +51,7 @@ namespace sc_expansion {
     double symmetry_factor;
     double fm; //free multiplicity on inifnite 2d square lattice.
     std::vector<Line> hopping_lines;
-    std::vector<std::vector<int>> valid_spin_configurations;
+    std::vector<long> valid_spin_configurations;
   };
 
   struct Point {

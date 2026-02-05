@@ -18,6 +18,7 @@ namespace sc_expansion {
     this->sign            = (double)this->compute_diagram_sign();
     this->symmetry_factor = (double)this->compute_symmetry_factor();
     this->fm              = (double)this->compute_free_multiplicity();
+    this->valid_spin_configurations = this->compute_valid_spin_configurations();
   }
 
   bool Diagram::is_particle_number_conserving() const {
@@ -164,6 +165,46 @@ namespace sc_expansion {
   // Public accessor returning cached value
   std::vector<Diagram::Line> Diagram::get_hopping_lines() const { return this->hopping_lines; }
 
+  std::vector<long> Diagram::compute_valid_spin_configurations() const {
+    std::vector<long> valid_configs;
+    long num_configs = 1L << this->n;
+
+    for (long config = 0; config < num_configs; ++config) {
+      
+      // Check spin conservation
+      // We only track the flow of UP spins. Since total particle number is conserved (checked elsewhere),
+      // if UP spin flow is conserved, DOWN spin flow is also conserved.
+      std::vector<int> spin_balance(this->V, 0);
+      for (int i = 0; i < this->n; ++i) {
+        if ((config >> i) & 1) { // if spin is UP
+             spin_balance[this->hopping_lines[i].to_vertex]++;
+             spin_balance[this->hopping_lines[i].from_vertex]--;
+        }
+      }
+
+      bool valid = true;
+      for (int b : spin_balance) {
+        if (b != 0) {
+          valid = false;
+          break;
+        }
+      }
+
+      if (valid) {
+        // Spin Inversion Symmetry:
+        // The Hubbard model (with B=0) is symmetric under spin inversion (UP <-> DOWN).
+        // If 'config' is valid, then 'inverted' (bitwise NOT of config) is also valid 
+        // and yields the same diagram value.
+        // We store only the representative (lexicographically smaller) to save computation.
+        long inverted = (~config) & (num_configs - 1);
+        if (config <= inverted) {
+            valid_configs.push_back(config);
+        }
+      }
+    }
+    return valid_configs;
+  }
+
   double Diagram::evaluate_at_points(HubbardAtom::cumul_args const &args, bool infinite_U) const {
 
     //evaluates a diagram at a given set of time-spin args
@@ -214,15 +255,26 @@ namespace sc_expansion {
 
     //evaluates a diagram at a given set of time-spin args
     double spin_sum  = 0.0;
-    long num_configs = 1 << this->n;                        //2^n spin configurations
-    for (long config = 0; config < num_configs; config++) { //TODO: only consider spin-conserving configs
+    
+    for (long config : this->valid_spin_configurations) {
 
       HubbardAtom::cumul_args args;
       for (int i = 0; i < this->n; i++) {
-        int spin = (config & (1 << i)) ? 1 : 0; //extract spin from bit representation
+        int spin = (config & (1L << i)) ? 1 : 0; //extract spin from bit representation
         args.push_back({taus[i], spin});
       }
-      spin_sum += this->evaluate_at_points(args, infinite_U);
+      
+      double val = this->evaluate_at_points(args, infinite_U);
+
+      // Symmetry: if config != ~config, we count it twice (for config and ~config)
+      // If config == ~config (only for n=0), count once.
+      // Since valid_spin_configurations only stores the canonical representative (smaller one),
+      // we check if it is self-inverse.
+      long inverted = (~config) & ((1L << this->n) - 1);
+      if (config != inverted) {
+          val *= 2.0;
+      }
+      spin_sum += val;
     }
 
     //double free_multiplicity = 1.0; //assume 1 for now, can be modified later if needed
