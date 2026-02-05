@@ -44,6 +44,9 @@ namespace sc_expansion {
     uint64_t master_spin_mask_u = 0;
     uint64_t master_spin_mask_p = 0;
 
+    double distribute_primed(const std::vector<uint64_t> &u_partition_masks, int u_idx, uint64_t current_p_pool, const std::vector<int> &global_map_u,
+                             const std::vector<int> &global_map_p);
+
     public:
     CumulantSolver(const ArgList &u, const ArgList &p, const HubbardAtom &a, bool infinite_U);
 

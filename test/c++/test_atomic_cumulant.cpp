@@ -51,8 +51,8 @@ TEST_F(HubbardAtomTest, CumulantOrderTwoMatchesExactResult) {
 
 TEST_F(HubbardAtomTest, CumulantOrderThreeMatchesExactResult) {
 
-  HubbardAtom::cumul_args unprimed_args = {{0.5, 0}, {0.8, 0}, {0.11, 0}};
-  HubbardAtom::cumul_args primed_args   = {{0.0, 0}, {0.3, 0}, {0.65, 0}};
+  HubbardAtom::cumul_args unprimed_args = {{0.2, 0}, {0.56, 0}, {0.32, 0}};
+  HubbardAtom::cumul_args primed_args   = {{0.07, 0}, {0.262, 0}, {0.651, 0}};
   double G03                            = atom->G0(unprimed_args, primed_args); //G03
 
   double C12_12_C33 = -compute_cumulant_decomposition({unprimed_args[0], unprimed_args[1]}, {primed_args[0], primed_args[1]}, *atom)
