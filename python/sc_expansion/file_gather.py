@@ -31,10 +31,8 @@ if not files:
     exit()
 
 # 2. Process and Merge
-# Mode "a" opens for reading and writing, creating it if it doesn't exist.
 with h5py.File(filename, "a") as master:
     
-    # Storage for the current batch of data
     new_mus = []
     new_means = []
     new_errors = []
@@ -46,37 +44,47 @@ with h5py.File(filename, "a") as master:
             new_means.append(f["mean"][()])
             new_errors.append(f["error"][()])
 
-    # Helper function to handle the HDF5 logic
     def update_dataset(name, data_list):
         new_data = np.array(data_list)
         
         if name in master:
-            # APPEND LOGIC
             dset = master[name]
+            
+            # --- AUTO-REPAIR LOGIC ---
+            # Check if dataset is resizable. If dset.chunks is None, it's fixed-size.
+            if dset.chunks is None:
+                print(f"⚠️ Dataset '{name}' is not resizable. Migrating to chunked format...")
+                old_data = dset[()] # Read existing data
+                del master[name]    # Delete fixed-size dataset
+                # Re-create with maxshape and chunks
+                master.create_dataset(
+                    name, 
+                    data=old_data, 
+                    maxshape=(None,), 
+                    chunks=True
+                )
+                dset = master[name] # Re-bind reference
+            # -------------------------
+
             curr_size = dset.shape[0]
-            # Expand the dataset to fit new data
             dset.resize((curr_size + len(new_data),))
-            # Write new data starting at the old end-point
             dset[curr_size:] = new_data
-            print(f"Appended {len(new_data)} items to {name}.")
+            print(f"✅ Appended {len(new_data)} items to {name}.")
         else:
-            # CREATE LOGIC
-            # maxshape=(None,) makes the dimension resizable
             master.create_dataset(
                 name, 
                 data=new_data, 
                 maxshape=(None,), 
                 chunks=True
             )
-            print(f"Created new dataset {name} with {len(new_data)} items.")
+            print(f"✨ Created new resizable dataset {name} with {len(new_data)} items.")
 
-    # Apply to all three datasets
     update_dataset("mu_list", new_mus)
     update_dataset("mean_list", new_means)
     update_dataset("error_list", new_errors)
 
     # 3. Cleanup
-    print("Cleaning up temporary files...")
+    print("\nCleaning up temporary files...")
     for fname in files:
         try:
             os.remove(fname)
@@ -85,4 +93,4 @@ with h5py.File(filename, "a") as master:
             
     print("Cleanup complete.")
 
-print(f"Successfully updated master file: {filename}")
+print(f"\nSuccessfully updated master file: {filename}")
