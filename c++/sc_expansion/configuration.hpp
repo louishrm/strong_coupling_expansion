@@ -6,6 +6,17 @@
 #include "diagram.hpp"
 #include <./triqs/mc_tools/random_generator.hpp>
 
+struct VertexCaches {
+  int V;
+  std::vector<std::unordered_map<long long, double>> cache;
+
+  VertexCaches(int V_) : V(V_) { cache.resize(V); }
+
+  void clear() {
+    for (int i = 0; i < V; i++) { cache[i].clear(); }
+  }
+};
+
 class Configuration {
 
   public:

@@ -126,27 +126,65 @@ def pade_approx(f, pade_orders, tol=1e-14):
         a = a/b[0]
         b = b/b[0]
     
-        #  Exact numerator, denominator degrees.
+        # Exact numerator, denominator degrees.
         mu = len(a)
         nu = len(b)
         
         def r(U):
-            val_a = 0
-            val_b = 0
-            for a_ in range(len(a)):
-                val_a += a[a_]*U**a_
-            for b_ in range(len(b)):
-                val_b += b[b_]*U**b_    
-            return val_a/val_b    
+            """Evaluate the Pade approximant at U."""
+            # Use Horner's method via np.polyval for efficiency and native array support.
+            # a and b are stored as [c0, c1, ...], while np.polyval expects [cn, ..., c0].
+            return np.polyval(a[::-1], U) / np.polyval(b[::-1], U)
         
         # Compute zeros if requested.
-        zeros = np.roots(a[::-1]);        
+        zeros = np.roots(a[::-1])        
         
         # Compute poles if requested.
         poles = np.roots(b[::-1])
 
         # Estimate residues.
-        t = max(tol, 1e-7);  # Perturbation for residue estimate.
-        residues = t*(r(poles + t) - r(poles - t))/2
+        t = max(tol, 1e-7)  # Perturbation for residue estimate.
+        residues = t * (r(poles + t) - r(poles - t)) / 2
 
     return r, a, b, mu, nu, zeros, poles, residues
+
+
+def pade_approx_batch(f_batch, pade_orders, tol=1e-14):
+    """
+    Compute Pade approximations for a batch of coefficient sets (e.g., mu-dependent)
+    and return a callable evaluator.
+    
+    Parameters:
+    -----------
+    f_batch : ndarray
+        Coefficient array of shape (N_coeffs, N_batch) or similar.
+    pade_orders : list or tuple
+        Desired (m, n) degrees.
+    tol : float
+        Tolerance for robust SVD-based rank detection.
+        
+    Returns:
+    --------
+    evaluator : callable
+        A function `func(x)` that evaluates all Padé approximants at `x`.
+        If `x` is scalar, returns array of shape (N_batch,).
+        If `x` is array, returns array of shape (N_batch, len(x)).
+    """
+    f_batch = np.asarray(f_batch)
+    
+    if f_batch.ndim == 1:
+        # Handle single series as a batch of 1
+        # pade_approx returns (r, a, b, ...) - we only keep r (index 0)
+        approximants = [pade_approx(f_batch, pade_orders, tol)[0]]
+    else:
+        # Iterate over the last dimension (batch dimension)
+        # We pre-compute the Padé approximant function 'r' for each column
+        approximants = [pade_approx(f_batch[:, i], pade_orders, tol)[0] for i in range(f_batch.shape[1])]
+    
+    def evaluator(U):
+        # Evaluate each r(U) and stack results
+        # If U is scalar, result is shape (N_batch,)
+        # If U is 1D array, result is shape (N_batch, len(U))
+        return np.array([r(U) for r in approximants])
+        
+    return evaluator

@@ -36,6 +36,7 @@ with h5py.File(filename, "a") as master:
     new_mus = []
     new_means = []
     new_errors = []
+    new_infinite_U_coeffs = []
 
     print(f"Reading {len(files)} subfiles...")
     for fname in files:
@@ -43,6 +44,7 @@ with h5py.File(filename, "a") as master:
             new_mus.append(f["mu"][()])
             new_means.append(f["mean"][()])
             new_errors.append(f["error"][()])
+            new_infinite_U_coeffs.append(f["reference_integral"][()])
 
     def update_dataset(name, data_list):
         new_data = np.array(data_list)
@@ -82,6 +84,7 @@ with h5py.File(filename, "a") as master:
     update_dataset("mu_list", new_mus)
     update_dataset("mean_list", new_means)
     update_dataset("error_list", new_errors)
+    update_dataset("reference_integral", new_infinite_U_coeffs)
 
     # 3. Cleanup
     print("\nCleaning up temporary files...")
