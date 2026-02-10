@@ -60,7 +60,7 @@ namespace sc_expansion {
     /*Check if a graph is connected
     if it is, canonicalize and check it hasn't been visited
     if it hasn't, add it to the hash table*/
-    if (!graph.get_connectivity()) return; //discard disconnected graphs
+    if ((!graph.get_connectivity()) || (!graph.get_bipartite())) return; //discard disconnected or non-bipartite graphs
 
     std::vector<uint8_t> canonical = graph.get_canonical_form();
     if (this->unique_graphs.find(canonical) == this->unique_graphs.end()) { this->unique_graphs.insert(canonical); }
