@@ -137,7 +137,17 @@ namespace sc_expansion {
     return symmetry_count * factorial_product;
   }
 
-  int Diagram::compute_free_multiplicity() const { return sc_expansion::compute_free_multiplicity(this->adjacency_matrix, this->n); }
+  int Diagram::compute_free_multiplicity() const {
+    // Convert adjmat (vector<vector<int>>) to flat vector<uint8_t> for Graph
+    std::vector<uint8_t> flat_adjmat;
+    flat_adjmat.reserve(this->V * this->V);
+    for (const auto &row : this->adjacency_matrix) {
+      for (int val : row) { flat_adjmat.push_back((uint8_t)val); }
+    }
+
+    Graph g(flat_adjmat, this->V);
+    return (int)g.get_free_multiplicity();
+  }
 
   // Public accessor returning cached value
   int Diagram::get_free_multiplicity() const { return (int)this->fm; }
@@ -278,105 +288,4 @@ namespace sc_expansion {
     return (-1.0 / this->atom.beta) * this->sign * spin_sum / this->symmetry_factor * this->fm;
   }
 
-  void next_step(adjmat &A, std::vector<int> &sequence, int vertex, int V, int order) {
-
-    if (sequence.size() == order + 1) { return; }
-    for (int j = 0; j < V; j++) {
-      if (A[vertex][j] > 0) {
-        sequence.push_back(j);
-        A[vertex][j]--;
-        next_step(A, sequence, j, V, order);
-      }
-    }
-  }
-
-  std::vector<int> generate_walk_sequence(adjmat A, int order) {
-
-    int V = A.size();
-    std::vector<int> sequence;
-    sequence.push_back(0); // Start from vertex 0
-    next_step(A, sequence, 0, V, order);
-    return sequence;
-  }
-
-  Point::Point() : x(0), y(0) {}
-
-  Point::Point(int x_, int y_) : x(x_), y(y_) {}
-
-  SquareLattice::SquareLattice() {}
-
-  std::vector<Point> SquareLattice::get_neighbors(Point const &r) const {
-    return {Point(r.x + 1, r.y), Point(r.x - 1, r.y), Point(r.x, r.y + 1), Point(r.x, r.y - 1)};
-  }
-  int SquareLattice::manhattan_distance(Point const &r) const { return std::abs(r.x) + std::abs(r.y); }
-
-  bool SquareLattice::prune(Point const &r, int current_distance, int order) const {
-
-    int remaining_steps = order - current_distance;
-    int dist            = this->manhattan_distance(r);
-    return dist > remaining_steps;
-  }
-
-  bool SquareLattice::is_neighbor(Point const &r1, Point const &r2) const { return (std::abs(r1.x - r2.x) + std::abs(r1.y - r2.y)) == 1; }
-
-  void place_next_vertex(std::unordered_map<int, Point> &placed_vertices, SquareLattice const &lattice, std::vector<int> const &sequence,
-                         int current_vertex_index, int order, int &free_multiplicity, int hopping_count) {
-
-    /* Place the next vertex in the non self-avoiding lattice walk. 
-
-    Args: place_vertices: a map whose keys are vertex index and values are their position. 
-          lattice: the lattice object to get neighbors and prune positions.
-          sequence: the sequence of vertex indices in the walk.
-          current_vertex_index: the index of the last placed vertex in the sequence.
-          order: total number of hopping lines (length of the walk).
-          free_multiplicity: reference to the count of valid placements found so far.
-          hopping_count: reference to the count of hopping lines placed so far.
-
-    Start on vertex 0.
-
-    1. Base case: check if the hopping count is equal to the order. If yes, increment free multiplicity and stop. 
-
-    2. Check if the next vertex in the sequence is already placed. If yes, make sure it is a neighbor of the last placed vertex. If yes, recurse to place the next vertex stop. 
-
-    3. If not placed, get the neighbors of the last placed vertex. For each neighbor, check if placing the next vertex there is valid (not pruned). If valid, place the vertex and recurse. After recursion, remove the vertex to backtrack.
-    */
-
-    if (hopping_count == order) {
-      free_multiplicity++;
-      return;
-    }
-
-    Point last_position          = placed_vertices[current_vertex_index];
-    std::vector<Point> neighbors = lattice.get_neighbors(last_position);
-
-    int next_vertex_index = sequence[hopping_count + 1];
-    if (placed_vertices.find(next_vertex_index) != placed_vertices.end()) {
-
-      Point neighbor = placed_vertices[next_vertex_index];
-      if (lattice.is_neighbor(last_position, neighbor)) {
-        place_next_vertex(placed_vertices, lattice, sequence, next_vertex_index, order, free_multiplicity, hopping_count + 1);
-      }
-      return;
-    }
-
-    for (auto const &neighbor : neighbors) {
-      if (lattice.prune(neighbor, hopping_count + 1, order)) { continue; }
-      placed_vertices[next_vertex_index] = neighbor;
-      place_next_vertex(placed_vertices, lattice, sequence, next_vertex_index, order, free_multiplicity, hopping_count + 1);
-      placed_vertices.erase(next_vertex_index);
-    }
-  }
-
-  int compute_free_multiplicity(adjmat A, int order) {
-
-    SquareLattice lattice;
-    std::vector<int> sequence = generate_walk_sequence(A, order);
-
-    std::unordered_map<int, Point> placed_vertices;
-    placed_vertices[0] = Point(0, 0); //place the first vertex at origin
-
-    int free_multiplicity = 0;
-    place_next_vertex(placed_vertices, lattice, sequence, 0, order, free_multiplicity, 0);
-    return free_multiplicity;
-  }
 } // namespace sc_expansion

@@ -6,6 +6,7 @@
 #include <queue>
 #include "./hubbard_atom.hpp"
 #include "./cumulant.hpp"
+#include "./graph.hpp" // Include Graph for compute_free_multiplicity logic
 
 namespace sc_expansion {
 
@@ -53,32 +54,5 @@ namespace sc_expansion {
     std::vector<Line> hopping_lines;
     std::vector<long> valid_spin_configurations;
   };
-
-  struct Point {
-    int x;
-    int y;
-
-    Point();
-    Point(int x, int y);
-  };
-
-  struct SquareLattice {
-
-    std::vector<Point> get_neighbors(Point const &r) const;
-
-    int manhattan_distance(Point const &r) const;
-    bool prune(Point const &r, int current_distance, int order) const;
-    bool is_neighbor(Point const &r1, Point const &r2) const;
-
-    SquareLattice();
-  };
-
-  void next_step(adjmat &A, std::vector<int> &sequence, int vertex, int V, int order);
-  std::vector<int> generate_walk_sequence(adjmat A, int order);
-
-  void place_next_vertex(std::unordered_map<int, Point> &placed_vertices, SquareLattice const &lattice, std::vector<int> const &sequence,
-                         int current_vertex_index, int order, int &free_multiplicity, int hopping_count);
-
-  int compute_free_multiplicity(adjmat A, int order);
 
 } // namespace sc_expansion
