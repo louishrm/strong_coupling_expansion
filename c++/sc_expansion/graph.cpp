@@ -14,7 +14,9 @@ namespace sc_expansion {
 
     this->check_connectivity();
 
-    if (this->connected) {
+    this->check_if_bipartite();
+
+    if ((this->connected) && (this->bipartite)) {
       this->compute_canonical_form();
       this->compute_free_multiplicity();
     } else {
@@ -56,6 +58,37 @@ namespace sc_expansion {
       }
     }
     this->connected = (visited_count == this->V);
+  }
+
+  bool Graph::check_bipartite_dfs(int vertex, std::vector<int> &colors) const {
+
+    for (int neighbor = 0; neighbor < this->V; neighbor++) {
+
+      bool is_connected = ((*this)(vertex, neighbor) > 0) || ((*this)(neighbor, vertex) > 0);
+
+      if (is_connected) {
+        if (colors[neighbor] == 0) {
+          colors[neighbor] = -colors[vertex];
+          if (!check_bipartite_dfs(neighbor, colors)) return false;
+        }
+
+        else if (colors[neighbor] == colors[vertex]) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  void Graph::check_if_bipartite() {
+    std::vector<int> colors(this->V, 0); // 0 = uncolored, 1 = color A, -1 = color B
+    for (int vertex = 0; vertex < this->V; vertex++) {
+      if (colors[vertex] == 0) {
+        colors[vertex] = 1;
+        if (!check_bipartite_dfs(vertex, colors)) { this->bipartite = false; }
+      }
+    }
+    this->bipartite = true;
   }
 
   // --- 2. Canonicalization (Min-Lex + Symmetry) ---

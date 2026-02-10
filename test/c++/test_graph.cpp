@@ -72,4 +72,13 @@ TEST_F(GraphTest, GraphFreeMultiplicityIsCorrect) {
   std::vector<uint8_t> D4c = {0, 2, 2, 0};
   Graph graph_4c(D4c, 2);
   EXPECT_EQ((int)graph_4c.get_free_multiplicity(), 4);
+
+  //D6
+  std::vector<uint8_t> D6_1 = {0, 1, 1, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0};
+  Graph graph_6_1(D6_1, 4);
+  EXPECT_EQ((int)graph_6_1.get_free_multiplicity(), 64);
+
+  std::vector<uint8_t> D6_2 = {0, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0};
+  Graph graph_6_2(D6_2, 4);
+  EXPECT_EQ((int)graph_6_2.get_free_multiplicity(), 64);
 }

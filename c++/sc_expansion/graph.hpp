@@ -16,6 +16,7 @@ namespace sc_expansion {
     bool get_connectivity() const { return this->connected; }
     std::vector<uint8_t> get_canonical_form() const { return this->canonical_matrix; }
     double get_free_multiplicity() const { return (double)this->free_multiplicity; }
+    bool get_bipartite() const { return this->bipartite; }
 
     private:
     std::vector<uint8_t> adjacency_matrix;
@@ -23,11 +24,14 @@ namespace sc_expansion {
     int order;
     std::vector<uint8_t> canonical_matrix;
     bool connected;
+    bool bipartite;
     int automorphism_count;
     int symmetry_factor;
     int free_multiplicity;
 
     void check_connectivity();
+    bool check_bipartite_dfs(int vertex, std::vector<int> &colors) const;
+    void check_if_bipartite();
     void compute_canonical_form();
     void compute_free_multiplicity();
 
