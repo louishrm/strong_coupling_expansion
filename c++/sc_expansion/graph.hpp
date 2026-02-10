@@ -1,6 +1,7 @@
 #pragma once
 #include <vector>
 #include <queue>
+#include <unordered_map>
 #include "combinatorics.hpp"
 
 namespace sc_expansion {
@@ -14,16 +15,30 @@ namespace sc_expansion {
     double get_symmetry_factor() const { return (double)this->symmetry_factor; }
     bool get_connectivity() const { return this->connected; }
     std::vector<uint8_t> get_canonical_form() const { return this->canonical_matrix; }
+    double get_free_multiplicity() const { return (double)this->free_multiplicity; }
 
     private:
     std::vector<uint8_t> adjacency_matrix;
     int V; //number of vertices
+    int order;
     std::vector<uint8_t> canonical_matrix;
     bool connected;
     int automorphism_count;
     int symmetry_factor;
+    int free_multiplicity;
 
     void check_connectivity();
     void compute_canonical_form();
+    void compute_free_multiplicity();
+
+    // Helper structs and methods for free multiplicity
+    struct Point {
+      int x;
+      int y;
+      Point() : x(0), y(0) {}
+      Point(int x_, int y_) : x(x_), y(y_) {}
+    };
+
+    long solve_embedding_recursive(int placed_count, std::vector<bool> &placed, std::vector<Point> &coords);
   };
 } // namespace sc_expansion

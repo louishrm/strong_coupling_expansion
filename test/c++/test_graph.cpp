@@ -45,3 +45,31 @@ TEST_F(GraphTest, GraphCanonicalFormIsCorrect) {
   Graph graph(adjacency_matrix, 3);
   EXPECT_EQ(graph.get_canonical_form(), std::vector<uint8_t>({0, 0, 1, 0, 0, 1, 1, 1, 0}));
 }
+
+TEST_F(GraphTest, GraphFreeMultiplicityIsCorrect) {
+
+  // D2a = {{0, 1}, {1, 0}};
+  std::vector<uint8_t> D2a = {0, 1, 1, 0};
+  Graph graph_2a(D2a, 2);
+  EXPECT_EQ((int)graph_2a.get_free_multiplicity(), 4);
+
+  // D4a = {{0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}, {1, 0, 0, 0}}; // 4-cycle
+  std::vector<uint8_t> D4a = {0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0};
+  Graph graph_4a(D4a, 4);
+  EXPECT_EQ((int)graph_4a.get_free_multiplicity(), 36);
+
+  // D4b = {{0, 1, 1}, {1, 0, 0}, {1, 0, 0}}; // 3-cycle with double lines (0->1, 0->2, 1->0, 2->0)?
+  // Wait, original adjmat D4b = {{0, 1, 1}, {1, 0, 0}, {1, 0, 0}} means:
+  // 0->1, 0->2
+  // 1->0
+  // 2->0
+  // Total order = 1+1+1+1 = 4.
+  std::vector<uint8_t> D4b = {0, 1, 1, 1, 0, 0, 1, 0, 0};
+  Graph graph_4b(D4b, 3);
+  EXPECT_EQ((int)graph_4b.get_free_multiplicity(), 16);
+
+  // D4c = {{0, 2}, {2, 0}};
+  std::vector<uint8_t> D4c = {0, 2, 2, 0};
+  Graph graph_4c(D4c, 2);
+  EXPECT_EQ((int)graph_4c.get_free_multiplicity(), 4);
+}
