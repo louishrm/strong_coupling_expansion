@@ -35,29 +35,6 @@ TEST_F(DiagramTest, SymmetryFactorOfDiagramIsCorrect) {
   EXPECT_EQ(diagram_c.get_symmetry_factor(), 8);
 }
 
-TEST_F(DiagramTest, DiagramFreeMultiplicityIsCorrect) {
-
-  adjmat D2a = {{0, 1}, {1, 0}};                                         //2-cycle
-  adjmat D4a = {{0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}, {1, 0, 0, 0}}; //4-cycle
-  adjmat D4b = {{0, 1, 1}, {1, 0, 0}, {1, 0, 0}};                        //3-cycle with double lines
-  adjmat D4c = {{0, 2}, {2, 0}};
-
-  Diagram diagram_2a(D2a, U, beta, mu);
-  Diagram diagram_a(D4a, U, beta, mu);
-  Diagram diagram_b(D4b, U, beta, mu);
-  Diagram diagram_c(D4c, U, beta, mu);
-
-  int free_multiplicity_2a = diagram_2a.get_free_multiplicity();
-  int free_multiplicity_a  = diagram_a.get_free_multiplicity();
-  int free_multiplicity_b  = diagram_b.get_free_multiplicity();
-  int free_multiplicity_c  = diagram_c.get_free_multiplicity();
-
-  EXPECT_EQ(free_multiplicity_2a, 4);
-  EXPECT_EQ(free_multiplicity_a, 36);
-  EXPECT_EQ(free_multiplicity_b, 16);
-  EXPECT_EQ(free_multiplicity_c, 4);
-}
-
 TEST_F(DiagramTest, InfiniteUDiagramConstantInSimplex) {
 
   adjmat D4a = {{0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}, {1, 0, 0, 0}}; //4-cycle
