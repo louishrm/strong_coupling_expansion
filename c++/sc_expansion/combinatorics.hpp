@@ -2,6 +2,7 @@
 #include <vector>
 #include <algorithm>
 #include <numeric>
+#include <cstdint>
 
 namespace sc_expansion {
 
