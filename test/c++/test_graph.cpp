@@ -24,6 +24,23 @@ TEST_F(GraphTest, GraphIsConnected) {
   EXPECT_FALSE(graph4.get_connectivity());
 }
 
+TEST_F(GraphTest, GraphIsBipartite) {
+  // 4-cycle is bipartite
+  std::vector<uint8_t> adjacency_matrix = {0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0};
+  Graph graph(adjacency_matrix, 4);
+  EXPECT_TRUE(graph.get_bipartite());
+
+  // 3-cycle is not bipartite
+  std::vector<uint8_t> adjacency_matrix2 = {0, 1, 1, 1, 0, 1, 1, 1, 0};
+  Graph graph2(adjacency_matrix2, 3);
+  EXPECT_FALSE(graph2.get_bipartite());
+
+  // Digon is bipartite
+  std::vector<uint8_t> adjacency_matrix3 = {0, 2, 2, 0};
+  Graph graph3(adjacency_matrix3, 2);
+  EXPECT_TRUE(graph3.get_bipartite());
+}
+
 TEST_F(GraphTest, GraphSymmetryFactorIsCorrect) {
 
   std::vector<uint8_t> adjacency_matrix = {0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0}; //4 vertices, edges: 0->1, 1->2, 2->3, 3->0

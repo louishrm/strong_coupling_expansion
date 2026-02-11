@@ -10,14 +10,7 @@ TEST(GenerateDiagramsTest, Order2Diagrams) {
   gen.generate();
 
   const auto &unique_graphs = gen.get_unique_graphs();
-  int count_nonzero_fm      = 0;
-  for (const auto &g : unique_graphs) {
-    int V = std::sqrt(g.size());
-    Graph graph(g, V);
-    if (graph.get_free_multiplicity() > 0) count_nonzero_fm++;
-  }
-
-  EXPECT_EQ(count_nonzero_fm, 1);
+  EXPECT_EQ(unique_graphs.size(), 1);
 }
 
 TEST(GenerateDiagramsTest, Order4Diagrams) {
@@ -25,14 +18,7 @@ TEST(GenerateDiagramsTest, Order4Diagrams) {
   gen.generate();
 
   const auto &unique_graphs = gen.get_unique_graphs();
-  int count_nonzero_fm      = 0;
-  for (const auto &g : unique_graphs) {
-    int V = std::sqrt(g.size());
-    Graph graph(g, V);
-    if (graph.get_free_multiplicity() > 0) count_nonzero_fm++;
-  }
-
-  EXPECT_EQ(count_nonzero_fm, 3);
+  EXPECT_EQ(unique_graphs.size(), 3);
 }
 
 TEST(GenerateDiagramsTest, Order6Diagrams) {
@@ -40,15 +26,7 @@ TEST(GenerateDiagramsTest, Order6Diagrams) {
   gen.generate();
 
   const auto &unique_graphs = gen.get_unique_graphs();
-  int count_nonzero_fm      = 0;
-  for (const auto &g : unique_graphs) {
-    int V = std::sqrt(g.size());
-    Graph graph(g, V);
-    if (graph.get_free_multiplicity() > 0) count_nonzero_fm++;
-  }
-
-  EXPECT_EQ(count_nonzero_fm, 7);
-  std::cout << "Detected " << count_nonzero_fm << " unique diagrams of order 6 with non-zero FM." << std::endl;
+  EXPECT_EQ(unique_graphs.size(), 7);
 }
 
 TEST(GenerateDiagramsTest, Order8Diagrams) {
@@ -56,13 +34,5 @@ TEST(GenerateDiagramsTest, Order8Diagrams) {
   gen.generate();
 
   const auto &unique_graphs = gen.get_unique_graphs();
-  int count_nonzero_fm      = 0;
-  for (const auto &g : unique_graphs) {
-    int V = std::sqrt(g.size());
-    Graph graph(g, V);
-    if (graph.get_free_multiplicity() > 0) count_nonzero_fm++;
-  }
-
-  std::cout << "Detected " << count_nonzero_fm << " unique diagrams of order 8 with non-zero FM out of " << unique_graphs.size()
-            << " unique topologies." << std::endl;
+  std::cout << "Detected " << unique_graphs.size() << " unique bipartite topologies of order 8." << std::endl;
 }
