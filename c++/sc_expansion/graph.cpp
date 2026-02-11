@@ -85,7 +85,10 @@ namespace sc_expansion {
     for (int vertex = 0; vertex < this->V; vertex++) {
       if (colors[vertex] == 0) {
         colors[vertex] = 1;
-        if (!check_bipartite_dfs(vertex, colors)) { this->bipartite = false; }
+        if (!check_bipartite_dfs(vertex, colors)) {
+          this->bipartite = false;
+          return;
+        }
       }
     }
     this->bipartite = true;

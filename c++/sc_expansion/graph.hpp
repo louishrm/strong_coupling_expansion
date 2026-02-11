@@ -12,6 +12,9 @@ namespace sc_expansion {
     Graph(std::vector<uint8_t> adjacency_matrix, int V);
     uint8_t operator()(int i, int j) const;
 
+    int get_V() const { return this->V; }
+    int get_order() const { return this->order; }
+
     double get_symmetry_factor() const { return (double)this->symmetry_factor; }
     bool get_connectivity() const { return this->connected; }
     std::vector<uint8_t> get_canonical_form() const { return this->canonical_matrix; }
