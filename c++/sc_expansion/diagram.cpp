@@ -2,87 +2,42 @@
 
 namespace sc_expansion {
 
-  Diagram::Diagram(adjmat adjacency_matrix, double U, double beta, double mu) : atom(U, beta, mu) {
+  Diagram::Diagram(Graph const &graph_) : graph(graph_) {
 
-    this->adjacency_matrix = adjacency_matrix;
-
-    this->V = adjacency_matrix.size();
-
-    int order = 0;
-    for (const auto &row : adjacency_matrix) {
-      for (const auto &entry : row) { order += entry; }
-    }
-    this->n = order;
-
-    this->hopping_lines             = this->compute_hopping_lines();
-    this->sign                      = (double)this->compute_diagram_sign();
-    this->symmetry_factor           = (double)this->compute_symmetry_factor();
-    this->fm                        = (double)this->compute_free_multiplicity();
-    this->valid_spin_configurations = this->compute_valid_spin_configurations();
+    this->compute_hopping_lines();
+    this->compute_diagram_sign();
+    this->compute_valid_spin_configurations();
   }
 
-  bool Diagram::is_particle_number_conserving() const {
+  void Diagram::compute_hopping_lines() {
 
-    for (int i = 0; i < this->V; i++) {
-      int total_in  = 0;
-      int total_out = 0;
-      for (int j = 0; j < this->V; j++) {
-        total_in += this->adjacency_matrix[j][i];
-        total_out += this->adjacency_matrix[i][j];
-      }
-      if (total_in != total_out) { return false; }
-    }
-    return true;
-  }
-
-  bool Diagram::is_connected() const {
-
-    //Use BFS to check connectivity
-    std::vector<bool> visited(this->V, false);
-    std::queue<int> q;
-    q.push(0);
-
-    int visited_count = 0;
-    while (!q.empty()) {
-      int vertex = q.front(); //get the next vertex to visit
-      q.pop();                //remove it from the queue
-      //check neighbors
-      for (int neighbor = 0; neighbor < this->V; neighbor++) {
-        //check for connection in either direction
-        bool connected = (this->adjacency_matrix[vertex][neighbor] > 0) || (this->adjacency_matrix[neighbor][vertex] > 0);
-        if (connected && !visited[neighbor]) { //if there is a connection and neighbor not visited
-          visited[neighbor] = true;            //mark as visited
-          q.push(neighbor);                    //add to queue for further exploration
-          visited_count++;                     //increment visited count
+    std::vector<Line> hopping_lines;
+    for (int i = 0; i < this->graph.get_V(); ++i) {
+      for (int j = 0; j < this->graph.get_V(); ++j) {
+        int line_count = this->graph(i, j);
+        if (line_count > 0) {
+          for (int k = 0; k < line_count; ++k) {
+            Line line;
+            line.from_vertex = i;
+            line.to_vertex   = j;
+            hopping_lines.push_back(line);
+          }
         }
       }
     }
-    return visited_count == this->V;
+    this->hopping_lines = hopping_lines;
   }
 
-  std::vector<std::vector<int>> generate_permutations(std::vector<int> vertices) {
-
-    std::vector<std::vector<int>> permutations;
-    std::sort(vertices.begin(), vertices.end());
-    do { permutations.push_back(vertices); } while (std::next_permutation(vertices.begin(), vertices.end()));
-    return permutations;
-  }
-
-  int factorial(int k) {
-    if (k <= 1) return 1;
-    return k * factorial(k - 1);
-  }
-
-  int Diagram::compute_diagram_sign() const {
+  void Diagram::compute_diagram_sign() {
 
     int num_loops = 0;
-    std::vector<bool> visited_lines(this->n, false);
+    std::vector<bool> visited_lines(this->graph.get_order(), false);
     auto lines = this->hopping_lines;
-    std::vector<int> successor_map(this->n);
-    for (int v = 0; v < this->V; ++v) {
+    std::vector<int> successor_map(this->graph.get_order());
+    for (int v = 0; v < this->graph.get_V(); ++v) {
       std::vector<int> incoming_indices;
       std::vector<int> outgoing_indices;
-      for (int i = 0; i < this->n; ++i) {
+      for (int i = 0; i < this->graph.get_order(); ++i) {
         if (lines[i].to_vertex == v) incoming_indices.push_back(i);
         if (lines[i].from_vertex == v) outgoing_indices.push_back(i);
       }
@@ -91,7 +46,7 @@ namespace sc_expansion {
     }
 
     // Step 2: Traverse and count
-    for (int i = 0; i < this->n; ++i) {
+    for (int i = 0; i < this->graph.get_order(); ++i) {
       if (!visited_lines[i]) {
         num_loops++;
         int current_line = i;
@@ -104,88 +59,20 @@ namespace sc_expansion {
     }
 
     // Step 3: Determine the sign
-    return (num_loops % 2 == 0) ? 1 : -1;
+    this->diagram_sign = (num_loops % 2 == 0) ? 1 : -1;
   }
 
-  // Public accessor returning cached value
-  int Diagram::diagram_sign() const { return (int)this->sign; }
-
-  int Diagram::compute_symmetry_factor() const {
-
-    //get all V! permutations of vertices.
-    std::vector<int> vertices(this->V);
-    std::iota(vertices.begin(), vertices.end(), 0); // Fill with 0, 1, ..., V-1
-    auto permutations = generate_permutations(vertices);
-
-    //For each permutation, check if the permuted adjacency matrix matches the original.
-    int symmetry_count = 0;
-    for (const auto &perm : permutations) {
-
-      //Create a new adjacency matrix based on the permutation
-      adjmat permuted_matrix(this->V, std::vector<int>(this->V, 0));
-      for (int i = 0; i < this->V; i++) {
-        for (int j = 0; j < this->V; j++) { permuted_matrix[i][j] = this->adjacency_matrix[perm[i]][perm[j]]; }
-        //Check if the permuted matrix matches the original
-        if (permuted_matrix == this->adjacency_matrix) { symmetry_count++; }
-      }
-    }
-    //product of the factorials of the entries
-    int factorial_product = 1;
-    for (int i = 0; i < this->V; i++) {
-      for (int j = 0; j < this->V; j++) { factorial_product *= factorial(this->adjacency_matrix[i][j]); }
-    }
-    return symmetry_count * factorial_product;
-  }
-
-  int Diagram::compute_free_multiplicity() const {
-    // Convert adjmat (vector<vector<int>>) to flat vector<uint8_t> for Graph
-    std::vector<uint8_t> flat_adjmat;
-    flat_adjmat.reserve(this->V * this->V);
-    for (const auto &row : this->adjacency_matrix) {
-      for (int val : row) { flat_adjmat.push_back((uint8_t)val); }
-    }
-
-    Graph g(flat_adjmat, this->V);
-    return (int)g.get_free_multiplicity();
-  }
-
-  // Public accessor returning cached value
-  int Diagram::get_free_multiplicity() const { return (int)this->fm; }
-
-  // Public accessor returning cached value
-  int Diagram::get_symmetry_factor() const { return (int)this->symmetry_factor; }
-
-  std::vector<Diagram::Line> Diagram::compute_hopping_lines() const {
-
-    std::vector<Line> hopping_lines;
-    for (int i = 0; i < this->V; i++) {
-      for (int j = 0; j < this->V; j++) {
-        int line_count = this->adjacency_matrix[i][j];
-        for (int k = 0; k < line_count; k++) {
-          Line line;
-          line.from_vertex = i;
-          line.to_vertex   = j;
-          hopping_lines.push_back(line);
-        }
-      }
-    }
-    return hopping_lines;
-  }
-
-  // Public accessor returning cached value
-  std::vector<Diagram::Line> Diagram::get_hopping_lines() const { return this->hopping_lines; }
-
-  std::vector<long> Diagram::compute_valid_spin_configurations() const {
+  void Diagram::compute_valid_spin_configurations() {
     std::vector<long> valid_configs;
-    long num_configs = 1L << this->n;
+    long num_configs = 1L << this->graph.get_order(); // 2^(number of lines)
 
     for (long config = 0; config < num_configs; ++config) {
 
       // Check spin conservation
       // We only track the flow of UP spins. Since total particle number is conserved (checked elsewhere),
       // if UP spin flow is conserved, DOWN spin flow is also conserved.
-      std::vector<int> spin_balance(this->V, 0);
-      for (int i = 0; i < this->n; ++i) {
+      std::vector<int> spin_balance(this->graph.get_V(), 0);
+      for (int i = 0; i < this->graph.get_order(); ++i) {
         if ((config >> i) & 1) { // if spin is UP
           spin_balance[this->hopping_lines[i].to_vertex]++;
           spin_balance[this->hopping_lines[i].from_vertex]--;
@@ -210,82 +97,69 @@ namespace sc_expansion {
         if (config <= inverted) { valid_configs.push_back(config); }
       }
     }
-    return valid_configs;
+    this->valid_spin_configurations = valid_configs;
   }
 
-  double Diagram::evaluate_at_points(HubbardAtom::cumul_args const &args, bool infinite_U) const {
+  // --- DiagramEvaluator Implementation ---
 
-    //evaluates a diagram at a given set of time-spin args
-    // Use cached hopping_lines
-    // auto hopping_lines = this->get_hopping_lines(); // This is now cheap, but we can access member directly.
-    // Use reference to avoid copy if possible, though Line is small.
-    const auto &lines = this->hopping_lines;
+  DiagramEvaluator::DiagramEvaluator(Diagram const &diagram_, Parameters const &params) : diagram(diagram_), atom(params.U, params.beta, params.mu) {}
 
-    std::vector<HubbardAtom::cumul_args> unprimed_args_per_vertex(this->V);
-    std::vector<HubbardAtom::cumul_args> primed_args_per_vertex(this->V);
+  double DiagramEvaluator::evaluate_at_points(HubbardAtom::cumul_args const &args, bool infinite_U) const {
 
-    // Monotonic shift to enforce strict ordering and uniqueness
-    // delta, 2*delta, 3*delta, ...
-    //constexpr double DELTA = 1.0e-12;
+    const auto &lines = this->diagram.get_hopping_lines();
+    int V             = this->diagram.get_graph().get_V();
 
-    for (size_t line_idx = 0; line_idx < lines.size(); line_idx++) { //loop through each hopping line
+    std::vector<HubbardAtom::cumul_args> unprimed_args_per_vertex(V);
+    std::vector<HubbardAtom::cumul_args> primed_args_per_vertex(V);
 
-      auto line = lines[line_idx]; //get the destroy and create vertices for this line
+    for (size_t line_idx = 0; line_idx < lines.size(); line_idx++) {
+      auto line = lines[line_idx];
 
-      // Unprimed (Annihilation): Shift by 2*i * delta
       auto arg_unprimed = args[line_idx];
-      // arg_unprimed.first += (2 * line_idx) * DELTA;
       unprimed_args_per_vertex[line.from_vertex].push_back(arg_unprimed);
 
-      // Primed (Creation): Shift by (2*i + 1) * delta
-      // Ensures Creation > Annihilation (Normal Ordering)
       auto arg_primed = args[line_idx];
-      // arg_primed.first += (2 * line_idx + 1) * DELTA;
       primed_args_per_vertex[line.to_vertex].push_back(arg_primed);
     }
 
     double prod = 1.0;
-    for (int vertex = 0; vertex < this->V; vertex++) {
-
+    for (int vertex = 0; vertex < V; vertex++) {
       HubbardAtom::cumul_args unprimed_args = unprimed_args_per_vertex[vertex];
+      HubbardAtom::cumul_args primed_args   = primed_args_per_vertex[vertex];
+      double new_factor                     = compute_cumulant_decomposition(unprimed_args, primed_args, this->atom, infinite_U);
 
-      HubbardAtom::cumul_args primed_args = primed_args_per_vertex[vertex];
-      double new_factor                   = compute_cumulant_decomposition(unprimed_args, primed_args, this->atom, infinite_U);
-
-      if (new_factor == 0.0) { return 0.0; } //early exit if any vertex contribution is zero
+      if (new_factor == 0.0) { return 0.0; }
       prod *= new_factor;
     }
 
     return prod;
   }
 
-  double Diagram::evaluate_at_taus(std::vector<double> const &taus, bool infinite_U) const {
+  double DiagramEvaluator::evaluate_at_taus(std::vector<double> const &taus, bool infinite_U) const {
 
-    //evaluates a diagram at a given set of time-spin args
-    double spin_sum = 0.0;
+    double spin_sum     = 0.0;
+    int order           = this->diagram.get_graph().get_order();
+    const auto &configs = this->diagram.get_valid_spin_configurations();
 
-    for (long config : this->valid_spin_configurations) {
-
+    for (long config : configs) {
       HubbardAtom::cumul_args args;
-      for (int i = 0; i < this->n; i++) {
-        int spin = (config & (1L << i)) ? 1 : 0; //extract spin from bit representation
+      for (int i = 0; i < order; i++) {
+        int spin = (config & (1L << i)) ? 1 : 0;
         args.push_back({taus[i], spin});
       }
 
       double val = this->evaluate_at_points(args, infinite_U);
 
-      // Symmetry: if config != ~config, we count it twice (for config and ~config)
-      // If config == ~config (only for n=0), count once.
-      // Since valid_spin_configurations only stores the canonical representative (smaller one),
-      // we check if it is self-inverse.
-      long inverted = (~config) & ((1L << this->n) - 1);
+      long inverted = (~config) & ((1L << order) - 1);
       if (config != inverted) { val *= 2.0; }
       spin_sum += val;
     }
 
-    //double free_multiplicity = 1.0; //assume 1 for now, can be modified later if needed
-    // Use cached values
-    return (-1.0 / this->atom.beta) * this->sign * spin_sum / this->symmetry_factor * this->fm;
+    double sign            = this->diagram.get_diagram_sign();
+    double symmetry_factor = this->diagram.get_graph().get_symmetry_factor();
+    double fm              = this->diagram.get_graph().get_free_multiplicity();
+
+    return (-1.0 / this->atom.beta) * sign * spin_sum / symmetry_factor * fm;
   }
 
 } // namespace sc_expansion

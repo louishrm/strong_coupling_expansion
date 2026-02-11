@@ -10,49 +10,50 @@
 
 namespace sc_expansion {
 
-  using adjmat = std::vector<std::vector<int>>; //adjacency matrix is a VxV matrix where V is the number of vertices.
-  //Each entry Aij is the number of directed lines from i to j.
+  struct Line {
+    int from_vertex;
+    int to_vertex;
+  };
+
+  struct Parameters {
+    double U;
+    double beta;
+    double mu;
+  };
 
   class Diagram {
 
     public:
-    Diagram(adjmat adjacency_matrix, double U, double beta, double mu);
+    explicit Diagram(Graph const &graph);
 
-    bool is_connected() const;
-    bool is_particle_number_conserving() const;
-    Diagram get_canonical_form() const;
+    double get_diagram_sign() const { return (double)this->diagram_sign; }
+    std::vector<long> get_valid_spin_configurations() const { return this->valid_spin_configurations; }
+    std::vector<Line> get_hopping_lines() const { return this->hopping_lines; }
+    Graph const &get_graph() const { return this->graph; }
 
-    struct Line {
-      int from_vertex;
-      int to_vertex;
-    };
-    std::vector<Line> get_hopping_lines() const;
+    private:
+    void compute_hopping_lines();
+    void compute_valid_spin_configurations();
+    void compute_diagram_sign();
 
-    double evaluate_at_points(HubbardAtom::cumul_args const &args, bool infinite_U) const;
+    Graph graph;
+    std::vector<Line> hopping_lines;
+    std::vector<long> valid_spin_configurations;
+    int diagram_sign;
+  };
+
+  class DiagramEvaluator {
+
+    public:
+    explicit DiagramEvaluator(Diagram const &diagram, Parameters const &params);
 
     double evaluate_at_taus(std::vector<double> const &taus, bool infinite_U) const;
 
-    int diagram_sign() const;
-    int get_symmetry_factor() const;
-    int get_free_multiplicity() const;
-
     private:
-    int compute_symmetry_factor() const;
-    int compute_diagram_sign() const;
-    int compute_free_multiplicity() const;
-    std::vector<Line> compute_hopping_lines() const;
-    std::vector<long> compute_valid_spin_configurations() const;
+    double evaluate_at_points(HubbardAtom::cumul_args const &args, bool infinite_U) const;
 
-    int n; //order= number of hopping lines
-    int V; //number of vertices
-    adjmat adjacency_matrix;
+    Diagram const &diagram;
     HubbardAtom atom;
-
-    double sign;
-    double symmetry_factor;
-    double fm; //free multiplicity on inifnite 2d square lattice.
-    std::vector<Line> hopping_lines;
-    std::vector<long> valid_spin_configurations;
   };
 
 } // namespace sc_expansion
