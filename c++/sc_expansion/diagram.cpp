@@ -12,16 +12,22 @@ namespace sc_expansion {
   void Diagram::compute_hopping_lines() {
 
     std::vector<Line> hopping_lines;
-    for (int i = 0; i < this->graph.get_V(); ++i) {
-      for (int j = 0; j < this->graph.get_V(); ++j) {
+    int V = this->graph.get_V();
+    this->unprimed_line_indices_per_vertex.assign(V, {});
+    this->primed_line_indices_per_vertex.assign(V, {});
+
+    int line_idx = 0;
+    for (int i = 0; i < V; ++i) {
+      for (int j = 0; j < V; ++j) {
         int line_count = this->graph(i, j);
-        if (line_count > 0) {
-          for (int k = 0; k < line_count; ++k) {
-            Line line;
-            line.from_vertex = i;
-            line.to_vertex   = j;
-            hopping_lines.push_back(line);
-          }
+        for (int k = 0; k < line_count; ++k) {
+          Line line;
+          line.from_vertex = i;
+          line.to_vertex   = j;
+          hopping_lines.push_back(line);
+          this->unprimed_line_indices_per_vertex[i].push_back(line_idx);
+          this->primed_line_indices_per_vertex[j].push_back(line_idx);
+          line_idx++;
         }
       }
     }
@@ -106,27 +112,22 @@ namespace sc_expansion {
 
   double DiagramEvaluator::evaluate_at_points(HubbardAtom::cumul_args const &args, bool infinite_U) const {
 
-    const auto &lines = this->diagram.get_hopping_lines();
-    int V             = this->diagram.get_graph().get_V();
-
-    std::vector<HubbardAtom::cumul_args> unprimed_args_per_vertex(V);
-    std::vector<HubbardAtom::cumul_args> primed_args_per_vertex(V);
-
-    for (size_t line_idx = 0; line_idx < lines.size(); line_idx++) {
-      auto line = lines[line_idx];
-
-      auto arg_unprimed = args[line_idx];
-      unprimed_args_per_vertex[line.from_vertex].push_back(arg_unprimed);
-
-      auto arg_primed = args[line_idx];
-      primed_args_per_vertex[line.to_vertex].push_back(arg_primed);
-    }
+    int V = this->diagram.get_graph().get_V();
 
     double prod = 1.0;
     for (int vertex = 0; vertex < V; vertex++) {
-      HubbardAtom::cumul_args unprimed_args = unprimed_args_per_vertex[vertex];
-      HubbardAtom::cumul_args primed_args   = primed_args_per_vertex[vertex];
-      double new_factor                     = compute_cumulant_decomposition(unprimed_args, primed_args, this->atom, infinite_U);
+      const auto &u_indices = this->diagram.get_unprimed_indices(vertex);
+      const auto &p_indices = this->diagram.get_primed_indices(vertex);
+
+      HubbardAtom::cumul_args unprimed_args;
+      HubbardAtom::cumul_args primed_args;
+      unprimed_args.reserve(u_indices.size());
+      primed_args.reserve(p_indices.size());
+
+      for (int idx : u_indices) unprimed_args.push_back(args[idx]);
+      for (int idx : p_indices) primed_args.push_back(args[idx]);
+
+      double new_factor = compute_cumulant_decomposition(unprimed_args, primed_args, this->atom, infinite_U);
 
       if (new_factor == 0.0) { return 0.0; }
       prod *= new_factor;
@@ -141,11 +142,11 @@ namespace sc_expansion {
     int order           = this->diagram.get_graph().get_order();
     const auto &configs = this->diagram.get_valid_spin_configurations();
 
+    HubbardAtom::cumul_args args(order);
     for (long config : configs) {
-      HubbardAtom::cumul_args args;
       for (int i = 0; i < order; i++) {
         int spin = (config & (1L << i)) ? 1 : 0;
-        args.push_back({taus[i], spin});
+        args[i]  = {taus[i], spin};
       }
 
       double val = this->evaluate_at_points(args, infinite_U);
@@ -159,7 +160,7 @@ namespace sc_expansion {
     double symmetry_factor = this->diagram.get_graph().get_symmetry_factor();
     double fm              = this->diagram.get_graph().get_free_multiplicity();
 
-    return (-1.0 / this->atom.beta) * sign * spin_sum / symmetry_factor * fm;
+    return (-1.0 / this->atom.beta) * sign * spin_sum / symmetry_factor; //* fm;
   }
 
 } // namespace sc_expansion

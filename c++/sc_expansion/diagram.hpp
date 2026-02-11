@@ -31,6 +31,9 @@ namespace sc_expansion {
     std::vector<Line> get_hopping_lines() const { return this->hopping_lines; }
     Graph const &get_graph() const { return this->graph; }
 
+    const std::vector<int> &get_unprimed_indices(int vertex) const { return this->unprimed_line_indices_per_vertex[vertex]; }
+    const std::vector<int> &get_primed_indices(int vertex) const { return this->primed_line_indices_per_vertex[vertex]; }
+
     private:
     void compute_hopping_lines();
     void compute_valid_spin_configurations();
@@ -38,6 +41,8 @@ namespace sc_expansion {
 
     Graph graph;
     std::vector<Line> hopping_lines;
+    std::vector<std::vector<int>> unprimed_line_indices_per_vertex;
+    std::vector<std::vector<int>> primed_line_indices_per_vertex;
     std::vector<long> valid_spin_configurations;
     int diagram_sign;
   };
