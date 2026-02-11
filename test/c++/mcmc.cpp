@@ -1,7 +1,7 @@
 #include "sc_expansion/configuration.hpp"
+#include "sc_expansion/free_energy_order.hpp"
 #include "sc_expansion/move.hpp"
 #include "sc_expansion/measure.hpp"
-#include "sc_expansion/dimer_order_4.hpp"
 #include <triqs/mc_tools/mc_generic.hpp>
 #include <iostream>
 #include <triqs/utility/callbacks.hpp>
@@ -25,26 +25,6 @@ template <typename Order> double compute_exact_integral_infinite_U(Order &o, int
   for (int i = 1; i <= n; ++i) fact *= i;
 
   return (std::pow(beta, n) / fact) * sum;
-}
-
-std::vector<sc_expansion::adjmat> diagram_mats_4() {
-  sc_expansion::adjmat D4a = {{0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}, {1, 0, 0, 0}}; //4-cycle
-  sc_expansion::adjmat D4b = {{0, 1, 1}, {1, 0, 0}, {1, 0, 0}};                        //3-cycle with double lines
-  sc_expansion::adjmat D4c = {{0, 2}, {2, 0}};                                         //2-cycle with double lines
-  return {D4a, D4b, D4c};
-}
-
-std::vector<sc_expansion::adjmat> diagram_mats_6() {
-
-  sc_expansion::adjmat D6a = {{0, 1, 0, 0, 0, 0}, {0, 0, 1, 0, 0, 0}, {0, 0, 0, 1, 0, 0},
-                              {0, 0, 0, 0, 1, 0}, {0, 0, 0, 0, 0, 1}, {1, 0, 0, 0, 0, 0}};                          //6-cycle
-  sc_expansion::adjmat D6b = {{0, 3}, {3, 0}};                                                                      //watermelon triple
-  sc_expansion::adjmat D6c = {{0, 1, 1, 1}, {1, 0, 0, 0}, {1, 0, 0, 0}, {1, 0, 0, 0}};                              //petal with 4 vertice
-  sc_expansion::adjmat D6d = {{0, 1, 1, 0, 0}, {1, 0, 0, 0, 0}, {0, 0, 0, 1, 0}, {0, 0, 0, 0, 1}, {1, 0, 0, 0, 0}}; //square +digon
-  sc_expansion::adjmat D6e = {{0, 1, 1, 0}, {1, 0, 0, 1}, {1, 0, 0, 0}, {0, 1, 0, 0}};                              //crab diagram
-  sc_expansion::adjmat D6f = {{0, 2, 1}, {2, 0, 0}, {1, 0, 0}};                                                     //watermelon double + digon
-  sc_expansion::adjmat D6g = {{0, 2, 0, 0}, {1, 0, 1, 0}, {0, 0, 0, 1}, {1, 0, 0, 0}};                              //square with one double line
-  return {D6a, D6b, D6c, D6d, D6e, D6f, D6g};
 }
 
 int main(int argc, char *argv[]) {
@@ -84,25 +64,14 @@ int main(int argc, char *argv[]) {
   // Construct a Monte Carlo loop
   triqs::mc_tools::mc_generic<double> StrongCouplingMC(random_name, random_seed, verbosity);
 
-  // parameters of the model
-  std::vector<sc_expansion::adjmat> mats;
-  double reference_integral = 0;
-
-  if (order == 4) {
-    mats = diagram_mats_4();
-    sc_expansion::order4 o(U, mu, beta);
-    reference_integral = compute_exact_integral_infinite_U(o, 4, beta);
-  } else if (order == 6) {
-    mats = diagram_mats_6();
-    sc_expansion::order6 o(U, mu, beta);
-    reference_integral = compute_exact_integral_infinite_U(o, 6, beta);
-  } else {
-    if (world.rank() == 0) { std::cerr << "Error: Only order 4 and 6 are implemented." << std::endl; }
-    return 1;
-  }
-
   // construct configuration
-  Configuration config(U, beta, mu, order, alpha, mats);
+  sc_expansion::Parameters params{U, beta, mu};
+  Configuration config(params, order, alpha);
+
+  // parameters of the model
+  double reference_integral = 0;
+  sc_expansion::FreeEnergyCalculator calculator(params, order);
+  reference_integral = compute_exact_integral_infinite_U(calculator, order, beta);
 
   long total_cycles = n_cycles * world.size(); // Total samples across all cores
   int n_bins        = 50;                      // Standard choice for Jackknife
@@ -134,3 +103,25 @@ int main(int argc, char *argv[]) {
 
   return 0;
 }
+
+/*
+std::vector<sc_expansion::adjmat> diagram_mats_4() {
+  sc_expansion::adjmat D4a = {{0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}, {1, 0, 0, 0}}; //4-cycle
+  sc_expansion::adjmat D4b = {{0, 1, 1}, {1, 0, 0}, {1, 0, 0}};                        //3-cycle with double lines
+  sc_expansion::adjmat D4c = {{0, 2}, {2, 0}};                                         //2-cycle with double lines
+  return {D4a, D4b, D4c};
+}
+
+std::vector<sc_expansion::adjmat> diagram_mats_6() {
+
+  sc_expansion::adjmat D6a = {{0, 1, 0, 0, 0, 0}, {0, 0, 1, 0, 0, 0}, {0, 0, 0, 1, 0, 0},
+                              {0, 0, 0, 0, 1, 0}, {0, 0, 0, 0, 0, 1}, {1, 0, 0, 0, 0, 0}};                          //6-cycle
+  sc_expansion::adjmat D6b = {{0, 3}, {3, 0}};                                                                      //watermelon triple
+  sc_expansion::adjmat D6c = {{0, 1, 1, 1}, {1, 0, 0, 0}, {1, 0, 0, 0}, {1, 0, 0, 0}};                              //petal with 4 vertice
+  sc_expansion::adjmat D6d = {{0, 1, 1, 0, 0}, {1, 0, 0, 0, 0}, {0, 0, 0, 1, 0}, {0, 0, 0, 0, 1}, {1, 0, 0, 0, 0}}; //square +digon
+  sc_expansion::adjmat D6e = {{0, 1, 1, 0}, {1, 0, 0, 1}, {1, 0, 0, 0}, {0, 1, 0, 0}};                              //crab diagram
+  sc_expansion::adjmat D6f = {{0, 2, 1}, {2, 0, 0}, {1, 0, 0}};                                                     //watermelon double + digon
+  sc_expansion::adjmat D6g = {{0, 2, 0, 0}, {1, 0, 1, 0}, {0, 0, 0, 1}, {1, 0, 0, 0}};                              //square with one double line
+  return {D6a, D6b, D6c, D6d, D6e, D6f, D6g};
+}
+*/

@@ -1,9 +1,11 @@
 #pragma once
 
 #include <vector>
+#include <deque>
 #include <cmath>
 #include <utility>
 #include "diagram.hpp"
+#include "generate_diagrams.hpp"
 #include <./triqs/mc_tools/random_generator.hpp>
 
 struct VertexCaches {
@@ -27,14 +29,24 @@ class Configuration {
   double integrand;           //Omega(configuration)
   double reference_integrand; //Omega_infinite_U(configuration)
 
-  Configuration(double U_, double beta_, double mu_, int order_, double alpha_, std::vector<sc_expansion::adjmat> const &diagram_mats_)
-     : beta(beta_), U(U_), mu(mu_), order(order_), alpha(alpha_), diagram_mats(diagram_mats_) {
+  Configuration(sc_expansion::Parameters const &params, int order_, double alpha_)
+     : beta(params.beta), U(params.U), mu(params.mu), order(order_), alpha(alpha_) {
 
     this->state.resize(this->order);
     triqs::mc_tools::random_generator RNG("mt19937", 23432);
     for (int i = 0; i < this->order; i++) { this->state[i] = RNG(this->beta); }
 
-    for (auto const &mat : diagram_mats) { diagrams.push_back(sc_expansion::Diagram(mat, U, beta, mu)); }
+    // Generate diagrams
+    sc_expansion::VacuumDiagramGenerator gen(this->order);
+    gen.generate();
+    const auto &unique_graphs = gen.get_unique_graphs();
+
+    for (auto const &g_vec : unique_graphs) {
+      int V = std::sqrt(g_vec.size());
+      this->diagrams.emplace_back(sc_expansion::Graph(g_vec, V));
+    }
+
+    for (auto const &diag : this->diagrams) { this->evaluators.emplace_back(diag, params); }
 
     this->recompute_integrands();
     this->metropolis_weight = this->get_metropolis_weight();
@@ -44,9 +56,9 @@ class Configuration {
 
     double finite_U   = 0.0;
     double infinite_U = 0.0;
-    for (auto const &diagram : this->diagrams) {
-      finite_U += diagram.evaluate_at_taus(this->state, false);
-      infinite_U += diagram.evaluate_at_taus(this->state, true);
+    for (auto const &evaluator : this->evaluators) {
+      finite_U += evaluator.evaluate_at_taus(this->state, false);
+      infinite_U += evaluator.evaluate_at_taus(this->state, true);
     }
     return {finite_U, infinite_U};
   }
@@ -66,8 +78,8 @@ class Configuration {
   double mu;
   int order;
   double alpha;
-  std::vector<sc_expansion::adjmat> diagram_mats;
-  std::vector<sc_expansion::Diagram> diagrams;
+  std::deque<sc_expansion::Diagram> diagrams;
+  std::vector<sc_expansion::DiagramEvaluator> evaluators;
 
   void recompute_integrands() {
     auto [finite_U, infinite_U] = this->get_integrands();
