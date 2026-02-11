@@ -1,31 +1,31 @@
-#include "../../c++/sc_expansion/diagram.hpp"
-#include "../../c++/sc_expansion/hubbard_atom.hpp"
-#include "../../c++/sc_expansion/cumulant.hpp"
-#include <chrono>
+// #include "../../c++/sc_expansion/diagram.hpp"
+// #include "../../c++/sc_expansion/hubbard_atom.hpp"
+// #include "../../c++/sc_expansion/cumulant.hpp"
+// #include <chrono>
 
-using namespace sc_expansion;
+// using namespace sc_expansion;
 
-std::function<std::vector<double>(std::vector<double>)> make_x_to_tau(double beta) {
+// std::function<std::vector<double>(std::vector<double>)> make_x_to_tau(double beta) {
 
-  return [beta](std::vector<double> xs) -> std::vector<double> {
-    int n = xs.size();
-    std::vector<double> taus(xs.size());
-    taus[0] = beta * std::pow(xs[0], 1.0 / (double)n);
-    for (int i = 1; i < xs.size(); i++) { taus[i] = taus[i - 1] * std::pow(xs[i], 1.0 / ((double)(n - i))); }
-    return taus;
-  };
-}
+//   return [beta](std::vector<double> xs) -> std::vector<double> {
+//     int n = xs.size();
+//     std::vector<double> taus(xs.size());
+//     taus[0] = beta * std::pow(xs[0], 1.0 / (double)n);
+//     for (int i = 1; i < xs.size(); i++) { taus[i] = taus[i - 1] * std::pow(xs[i], 1.0 / ((double)(n - i))); }
+//     return taus;
+//   };
+// }
 
-double compute_4th_order_diagrams(std::vector<double> const &taus, std::vector<Diagram> const &diagrams) {
+// double compute_4th_order_diagrams(std::vector<double> const &taus, std::vector<Diagram> const &diagrams) {
 
-  double diagram_sum = 0.0;
-  for (auto const &diagram : diagrams) {
+//   double diagram_sum = 0.0;
+//   for (auto const &diagram : diagrams) {
 
-    double val = diagram.evaluate_at_taus(taus, false);
-    diagram_sum += val;
-  }
-  return diagram_sum;
-}
+//     double val = diagram.evaluate_at_taus(taus, false);
+//     diagram_sum += val;
+//   }
+//   return diagram_sum;
+// }
 
 // int main(int argc, char *argv[]) {
 
