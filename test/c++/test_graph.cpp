@@ -1,9 +1,29 @@
 #include <gtest/gtest.h>
+#include <iostream>
 #include "sc_expansion/graph.hpp"
 
 using namespace sc_expansion;
 
 class GraphTest : public ::testing::Test {};
+
+void print_all_order6_multiplicities() {
+  // Diagrams D6a to D6g from c++/sc_expansion/dimer_order_4.hpp
+  std::vector<uint8_t> D6a = {0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0};
+  std::vector<uint8_t> D6b = {0, 3, 3, 0};
+  std::vector<uint8_t> D6c = {0, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0};
+  std::vector<uint8_t> D6d = {0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0};
+  std::vector<uint8_t> D6e = {0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0};
+  std::vector<uint8_t> D6f = {0, 2, 1, 2, 0, 0, 1, 0, 0};
+  std::vector<uint8_t> D6g = {0, 2, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0};
+
+  std::cout << "D6a (6-cycle) Free Multiplicity: " << Graph(D6a, 6).get_free_multiplicity() << std::endl;
+  std::cout << "D6b (watermelon triple) Free Multiplicity: " << Graph(D6b, 2).get_free_multiplicity() << std::endl;
+  std::cout << "D6c (petal with 4 vertices) Free Multiplicity: " << Graph(D6c, 4).get_free_multiplicity() << std::endl;
+  std::cout << "D6d (square + digon) Free Multiplicity: " << Graph(D6d, 5).get_free_multiplicity() << std::endl;
+  std::cout << "D6e (crab diagram) Free Multiplicity: " << Graph(D6e, 4).get_free_multiplicity() << std::endl;
+  std::cout << "D6f (watermelon double + digon) Free Multiplicity: " << Graph(D6f, 3).get_free_multiplicity() << std::endl;
+  std::cout << "D6g (square with one double line) Free Multiplicity: " << Graph(D6g, 4).get_free_multiplicity() << std::endl;
+}
 
 TEST_F(GraphTest, GraphIsConnected) {
 
@@ -99,3 +119,5 @@ TEST_F(GraphTest, GraphFreeMultiplicityIsCorrect) {
   Graph graph_6_2(D6_2, 4);
   EXPECT_EQ((int)graph_6_2.get_free_multiplicity(), 64);
 }
+
+TEST_F(GraphTest, PrintOtherFreeMultiplicities) { print_all_order6_multiplicities(); }
