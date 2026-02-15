@@ -21,12 +21,53 @@ class DiagramTest : public ::testing::Test {
 };
 
 TEST_F(DiagramTest, DiagramSignIsCorrect) {
-  // D2a = {0, 1, 1, 0} is a 2-cycle (0->1, 1->0). 
+  // D2a = {0, 1, 1, 0} is a 2-cycle (0->1, 1->0).
   // It has 1 loop, so sign should be -1.
   std::vector<uint8_t> D2a = {0, 1, 1, 0};
   Graph g(D2a, 2);
   Diagram diagram(g);
   EXPECT_EQ(diagram.get_diagram_sign(), -1.0);
+
+  std::vector<uint8_t> D4a = {0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0}; // 4-cycle
+  std::vector<uint8_t> D4b = {0, 1, 1, 1, 0, 0, 1, 0, 0};                      // 3-cycle with double lines (0->1, 0->2, 1->0, 2->0)
+  std::vector<uint8_t> D4c = {0, 2, 2, 0};                                     // 2-cycle with double lines
+
+  Graph g_a(D4a, 4);
+  Graph g_b(D4b, 3);
+  Graph g_c(D4c, 2);
+
+  Diagram diagram_a(g_a);
+  Diagram diagram_b(g_b);
+  Diagram diagram_c(g_c);
+
+  EXPECT_EQ(diagram_a.get_diagram_sign(), -1.0); // 4-cycle has 2 loops, so sign should be
+  EXPECT_EQ(diagram_b.get_diagram_sign(), 1.0);  // 3-cycle with double lines has 3 loops, so sign should be
+  EXPECT_EQ(diagram_c.get_diagram_sign(), 1.0);  // 2-cycle with double lines has 4 loops, so sign should be
+}
+
+TEST_F(DiagramTest, Order6DiagramSignIsCorrect) {
+  // D6a: 6-cycle, 1 loop -> sign -1
+  std::vector<uint8_t> D6a = {0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0};
+  // D6b: watermelon triple, 3 loops -> sign -1
+  std::vector<uint8_t> D6b = {0, 3, 3, 0};
+  // D6c: petal with 4 vertices, 3 loops -> sign -1
+  std::vector<uint8_t> D6c = {0, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0};
+  // D6d: square + digon, 2 loops -> sign 1
+  std::vector<uint8_t> D6d = {0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0};
+  // D6e: crab diagram, 3 loops -> sign -1
+  std::vector<uint8_t> D6e = {0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0};
+  // D6f: watermelon double + digon, 3 loops -> sign -1
+  std::vector<uint8_t> D6f = {0, 2, 1, 2, 0, 0, 1, 0, 0};
+  // D6g: square with one double line, 2 loops -> sign 1
+  std::vector<uint8_t> D6g = {0, 2, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0};
+
+  EXPECT_EQ(Diagram(Graph(D6a, 6)).get_diagram_sign(), -1.0);
+  EXPECT_EQ(Diagram(Graph(D6b, 2)).get_diagram_sign(), -1.0);
+  EXPECT_EQ(Diagram(Graph(D6c, 4)).get_diagram_sign(), -1.0);
+  EXPECT_EQ(Diagram(Graph(D6d, 5)).get_diagram_sign(), 1.0);
+  EXPECT_EQ(Diagram(Graph(D6e, 4)).get_diagram_sign(), -1.0);
+  EXPECT_EQ(Diagram(Graph(D6f, 3)).get_diagram_sign(), -1.0);
+  EXPECT_EQ(Diagram(Graph(D6g, 4)).get_diagram_sign(), 1.0);
 }
 
 TEST_F(DiagramTest, SymmetryFactorOfDiagramIsCorrect) {

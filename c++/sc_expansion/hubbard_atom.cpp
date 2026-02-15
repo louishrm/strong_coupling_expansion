@@ -169,10 +169,8 @@ namespace sc_expansion {
       } //Destroying a particle with different spin than the one created at the previous (later) time
     }
 
-    // Check boundary condition for trace: if it starts with a create, it must end with a destroy of the same spin
-    if (sorted_flags[0] == 1) {
-      if (sorted_spins[0] != sorted_spins[total_ops - 1]) return false;
-    }
+    // Check boundary condition for trace: first and last operators must have matching spins
+    if (sorted_spins[0] != sorted_spins[total_ops - 1]) return false;
 
     return true;
   }
