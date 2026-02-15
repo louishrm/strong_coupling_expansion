@@ -14,17 +14,26 @@
 
 double Zat(double U, double beta, double mu) { return 1 + 2.0 * std::exp(beta * mu) + std::exp(beta * (2.0 * mu - U)); }
 
-template <typename Order> double compute_exact_integral_infinite_U(Order &o, int n, double beta) {
+template <typename Order> std::pair<double, double> compute_exact_integral_infinite_U(Order &o, int n, double beta) {
+  //Return \int |U_inf| d tau and \int U_inf d tau (both abs and signed version)
   std::vector<double> taus(n);
   std::iota(taus.begin(), taus.end(), 0.0);
 
-  double sum = 0.0;
-  do { sum += o.compute_sum_diagrams(taus, true); } while (std::next_permutation(taus.begin(), taus.end()));
+  double sum_abs    = 0.0;
+  double sum_signed = 0.0;
+  do {
+    double val = o.compute_sum_diagrams(taus, true);
+    sum_abs += std::abs(val);
+    sum_signed += val;
+  } while (std::next_permutation(taus.begin(), taus.end()));
 
   double fact = 1.0;
   for (int i = 1; i <= n; ++i) fact *= i;
 
-  return (std::pow(beta, n) / fact) * sum;
+  std::pair<double, double> result;
+  result.first  = (std::pow(beta, n) / fact) * sum_abs;
+  result.second = (std::pow(beta, n) / fact) * sum_signed;
+  return result;
 }
 
 int main(int argc, char *argv[]) {
@@ -69,16 +78,17 @@ int main(int argc, char *argv[]) {
   Configuration config(params, order, alpha);
 
   // parameters of the model
-  double reference_integral = 0;
   sc_expansion::FreeEnergyCalculator calculator(params, order);
-  reference_integral = compute_exact_integral_infinite_U(calculator, order, beta);
+  std::pair<double, double> reference_vals = compute_exact_integral_infinite_U(calculator, order, beta);
+  double reference_integral                = reference_vals.first;
+  double signed_reference_integral         = reference_vals.second;
 
   long total_cycles = n_cycles * world.size(); // Total samples across all cores
   int n_bins        = 50;                      // Standard choice for Jackknife
   int block_size    = (n_cycles / n_bins) + 1;
 
   // add moves and measures
-  measure my_measure(&config, reference_integral, n_bins, block_size, mu);
+  measure my_measure(&config, reference_integral, signed_reference_integral, n_bins, block_size, mu);
   StrongCouplingMC.add_move(move(&config, StrongCouplingMC.get_rng()), "time_swap");
   StrongCouplingMC.add_measure(my_measure, "defensive_measure");
 

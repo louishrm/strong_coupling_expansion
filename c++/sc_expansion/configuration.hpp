@@ -63,9 +63,9 @@ class Configuration {
     return {finite_U, infinite_U};
   }
 
-  double calculate_weight(double finite_U, double infinite_U) const { return std::abs(alpha * infinite_U + (1 - alpha) * finite_U); }
+  double calculate_weight(double finite_U, double infinite_U) const { return std::abs(finite_U - infinite_U) + alpha * std::abs(infinite_U); }
 
-  double get_metropolis_weight() { return std::abs(alpha * this->reference_integrand + (1 - alpha) * this->integrand); }
+  double get_metropolis_weight() { return std::abs(this->integrand - this->reference_integrand) + alpha * std::abs(this->reference_integrand); }
 
   void commit_update(double new_integrand, double new_reference_integrand) {
     this->integrand           = new_integrand;

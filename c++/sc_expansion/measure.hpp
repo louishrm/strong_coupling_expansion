@@ -18,13 +18,15 @@ struct measure {
   triqs::stat::accumulator<double> acc_reference;
 
   double reference_integral;
+  double signed_reference_integral;
   double mu;
 
-  measure(Configuration *config_, double reference_integral_, int n_bins, int block_size, double mu_)
+  measure(Configuration *config_, double reference_integral_, double signed_reference_integral_, int n_bins, int block_size, double mu_)
      : config(config_),
        acc_integrand(0.0, 0, n_bins, block_size + 100),
        acc_reference(0.0, 0, n_bins, block_size + 100),
        reference_integral(reference_integral_),
+       signed_reference_integral(signed_reference_integral_),
        mu(mu_) {}
 
   void accumulate(double) {
@@ -32,8 +34,8 @@ struct measure {
 
     // Safety check for W=0, though MC should not visit such states
     if (W > 0.0) {
-      acc_integrand << (config->integrand / W);
-      acc_reference << (config->reference_integrand / W);
+      acc_integrand << ((config->integrand - config->reference_integrand) / W);
+      acc_reference << (std::abs(config->reference_integrand) / W);
     }
   }
 
@@ -42,7 +44,7 @@ struct measure {
     // The ratio estimator: I = I_ref * (avg(integrand/W) / avg(ref_integrand/W))
     auto ratio_func = [this](double avg_int, double avg_ref) {
       if (std::abs(avg_ref) < 1e-18) return 0.0;
-      return (avg_int / avg_ref) * this->reference_integral;
+      return (avg_int / avg_ref) * this->reference_integral + this->signed_reference_integral;
     };
 
     // Perform Jackknife on the ratio of the two accumulators
