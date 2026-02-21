@@ -130,16 +130,16 @@ namespace sc_expansion {
     spins.reserve(n_ops);
     flags.reserve(n_ops);
 
-    for (auto [t, s] : unprimed_args) {
-      times.push_back(t);
-      spins.push_back(s);
-      flags.push_back(0); // destroy
-    }
+    for (int i = 0; i < order; ++i) {
+      // Push the Creation operator first
+      times.push_back(primed_args[i].first);
+      spins.push_back(primed_args[i].second);
+      flags.push_back(1);
 
-    for (auto [t, s] : primed_args) {
-      times.push_back(t);
-      spins.push_back(s);
-      flags.push_back(1); // create
+      // Push the Destruction operator second
+      times.push_back(unprimed_args[i].first);
+      spins.push_back(unprimed_args[i].second);
+      flags.push_back(0);
     }
 
     auto [sorted_times, sorted_spins, sorted_flags, sign] = sort_operators(times, spins, flags);

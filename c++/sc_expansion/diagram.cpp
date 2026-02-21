@@ -160,7 +160,7 @@ namespace sc_expansion {
     double symmetry_factor = this->diagram.get_graph().get_symmetry_factor();
     double fm              = this->diagram.get_graph().get_free_multiplicity();
 
-    return (-1.0 / this->atom.beta) * sign * spin_sum / symmetry_factor; //* fm;
+    return (-1.0 / this->atom.beta) * sign * spin_sum / symmetry_factor * fm;
   }
 
 } // namespace sc_expansion

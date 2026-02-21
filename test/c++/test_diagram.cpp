@@ -116,3 +116,31 @@ TEST_F(DiagramTest, InfiniteUDiagramConstantInSimplex) {
   EXPECT_DOUBLE_EQ(val_61, val_62);
   EXPECT_DOUBLE_EQ(val_41, val_42);
 }
+
+TEST_F(DiagramTest, VanishInNonInteractingLimit) {
+
+  Parameters pars{0.0, beta, mu};                                              // U=0 limit
+  std::vector<uint8_t> D4a = {0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0}; // 4-cycle
+  std::vector<uint8_t> D4b = {0, 1, 1, 1, 0, 0, 1, 0, 0};                      // 3-cycle with double lines (0->1, 0->2, 1->0, 2->0)
+  std::vector<uint8_t> D4c = {0, 2, 2, 0};                                     // 2-cycle with double lines
+
+  Graph g_a(D4a, 4);
+  Graph g_b(D4b, 3);
+  Graph g_c(D4c, 2);
+
+  Diagram diagram_a(g_a);
+  Diagram diagram_b(g_b);
+  Diagram diagram_c(g_c);
+
+  DiagramEvaluator eval_a(diagram_a, pars);
+  DiagramEvaluator eval_b(diagram_b, pars);
+  DiagramEvaluator eval_c(diagram_c, pars);
+
+  std::vector<double> taus = {0.1, 0.2, 0.3, 0.4}; // arbitrary taus
+  double resa              = eval_a.evaluate_at_taus(taus, false);
+  double resb              = eval_b.evaluate_at_taus(taus, false);
+  double resc              = eval_c.evaluate_at_taus(taus, false);
+
+  EXPECT_NEAR(resb, 0.0, 1e-9);
+  EXPECT_NEAR(resc, 0.0, 1e-9);
+}
