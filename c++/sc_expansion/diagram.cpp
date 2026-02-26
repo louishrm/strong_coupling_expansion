@@ -144,11 +144,7 @@ namespace sc_expansion {
       }
     }
 
-    if (is_corrupted) {
-      this->recompute_vertex(v_idx, taus);
-      for (int idx : v.outgoing_lines) { this->current_taus[idx] = taus[idx]; }
-      for (int idx : v.incoming_lines) { this->current_taus[idx] = taus[idx]; }
-    }
+    if (is_corrupted) { this->recompute_vertex(v_idx, taus); }
   }
 
   std::pair<HubbardAtom::cumul_args, HubbardAtom::cumul_args> DiagramEvaluator::get_local_cumul_args(int v_idx, std::vector<double> const &taus,
@@ -179,7 +175,7 @@ namespace sc_expansion {
     for (uint32_t mask : v.local_spin_configs) {
       if (already_done[mask]) continue;
 
-      auto args = this->get_local_cumul_args(v_idx, taus, mask);
+      auto args                         = this->get_local_cumul_args(v_idx, taus, mask);
       this->cache_finite[v_idx][mask]   = compute_cumulant_decomposition(args.first, args.second, this->atom, false);
       this->cache_infinite[v_idx][mask] = compute_cumulant_decomposition(args.first, args.second, this->atom, true);
 
@@ -190,6 +186,7 @@ namespace sc_expansion {
   double DiagramEvaluator::evaluate_at_taus(std::vector<double> const &taus, bool infinite_U) const {
     int V = this->diagram.get_vertices().size();
     for (int v = 0; v < V; ++v) { this->check_vertex(v, taus); }
+    this->current_taus = taus;
 
     double sum                 = 0.0;
     const auto &global_configs = this->diagram.get_global_configs();
