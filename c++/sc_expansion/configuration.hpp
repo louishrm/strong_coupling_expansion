@@ -52,6 +52,8 @@ class Configuration {
     this->metropolis_weight = this->get_metropolis_weight();
   }
 
+  int get_order() const { return this->order; }
+
   std::pair<double, double> get_integrands() {
 
     double finite_U   = 0.0;
