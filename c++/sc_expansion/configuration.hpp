@@ -53,6 +53,7 @@ class Configuration {
   }
 
   int get_order() const { return this->order; }
+  double get_U() const { return this->U; }
 
   std::pair<double, double> get_integrands() {
 
