@@ -44,10 +44,10 @@ namespace sc_expansion {
 
     private:
     Graph graph;
-    std::vector<Line> hopping_lines;                  
-    std::vector<Vertex> vertices;                     
-    std::vector<uint64_t> global_spin_configurations; 
-    std::vector<double> config_weights;               
+    std::vector<Line> hopping_lines;
+    std::vector<Vertex> vertices;
+    std::vector<uint64_t> global_spin_configurations;
+    std::vector<double> config_weights;
     int diagram_sign;
 
     void compute_hopping_lines_and_vertex_structures();
@@ -61,7 +61,7 @@ namespace sc_expansion {
     public:
     explicit DiagramEvaluator(Diagram const &diagram, Parameters const &params);
 
-    double evaluate_at_taus(std::vector<double> const &taus, bool infinite_U) const;
+    double evaluate_at_taus(std::vector<double> const &taus, bool infinite_U, bool use_cache) const;
     Diagram const &get_diagram() const { return this->diagram; }
 
     private:
@@ -73,7 +73,8 @@ namespace sc_expansion {
 
     void check_vertex(int v_idx, std::vector<double> const &taus) const;
     void recompute_vertex(int v_idx, std::vector<double> const &taus) const;
-    std::pair<HubbardAtom::cumul_args, HubbardAtom::cumul_args> get_local_cumul_args(int v_idx, std::vector<double> const &taus, uint32_t local_mask) const;
+    std::pair<HubbardAtom::cumul_args, HubbardAtom::cumul_args> get_local_cumul_args(int v_idx, std::vector<double> const &taus,
+                                                                                     uint32_t local_mask) const;
   };
 
   // class Diagram {

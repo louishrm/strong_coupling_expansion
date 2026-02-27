@@ -17,9 +17,9 @@ namespace sc_expansion {
     for (auto const &diag : this->diagrams) { this->evaluators.emplace_back(diag, this->params); }
   }
 
-  double FreeEnergyCalculator::compute_sum_diagrams(std::vector<double> const &taus, bool infinite_U) const {
+  double FreeEnergyCalculator::compute_sum_diagrams(std::vector<double> const &taus, bool infinite_U, bool use_cache) const {
     double sum = 0.0;
-    for (auto const &evaluator : this->evaluators) { sum += evaluator.evaluate_at_taus(taus, infinite_U); }
+    for (auto const &evaluator : this->evaluators) { sum += evaluator.evaluate_at_taus(taus, infinite_U, use_cache); }
     return sum;
   }
 

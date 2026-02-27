@@ -10,7 +10,7 @@ namespace sc_expansion {
     public:
     FreeEnergyCalculator(Parameters const &params, int order);
 
-    double compute_sum_diagrams(std::vector<double> const &taus, bool infinite_U) const;
+    double compute_sum_diagrams(std::vector<double> const &taus, bool infinite_U, bool use_cache) const;
 
     private:
     Parameters params;

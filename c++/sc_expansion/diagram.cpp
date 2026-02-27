@@ -183,7 +183,7 @@ namespace sc_expansion {
     }
   }
 
-  double DiagramEvaluator::evaluate_at_taus(std::vector<double> const &taus, bool infinite_U) const {
+  double DiagramEvaluator::evaluate_at_taus(std::vector<double> const &taus, bool infinite_U, bool use_cache) const {
     int V = this->diagram.get_vertices().size();
     for (int v = 0; v < V; ++v) { this->check_vertex(v, taus); }
     this->current_taus = taus;
@@ -198,17 +198,22 @@ namespace sc_expansion {
       double product = 1.0;
       for (int v_idx = 0; v_idx < V; ++v_idx) {
         int mask = vertices[v_idx].local_spin_configs[g_idx];
-        product *= cache[v_idx][mask];
+
+        if (use_cache) {
+          product *= cache[v_idx][mask];
+        } else {
+          auto args = this->get_local_cumul_args(v_idx, taus, mask);
+          product *= compute_cumulant_decomposition(args.first, args.second, this->atom, infinite_U);
+        }
+        sum += weights[g_idx] * product;
       }
-      sum += weights[g_idx] * product;
+
+      double sign            = this->diagram.get_diagram_sign();
+      double symmetry_factor = this->diagram.get_graph().get_symmetry_factor();
+      double fm              = this->diagram.get_graph().get_free_multiplicity();
+      double prefactor       = (-1.0 / this->atom.beta) * sign / symmetry_factor * fm;
+
+      return prefactor * sum;
     }
-
-    double sign            = this->diagram.get_diagram_sign();
-    double symmetry_factor = this->diagram.get_graph().get_symmetry_factor();
-    double fm              = this->diagram.get_graph().get_free_multiplicity();
-    double prefactor       = (-1.0 / this->atom.beta) * sign / symmetry_factor * fm;
-
-    return prefactor * sum;
   }
-
 } // namespace sc_expansion

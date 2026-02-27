@@ -99,8 +99,8 @@ TEST_F(DiagramTest, InfiniteUDiagramConstantInSimplex) {
   std::vector<double> taus_41 = {0.1, 0.2, 0.3, 0.4};
   std::vector<double> taus_42 = {0.15, 0.23, 0.31, 0.76};
 
-  double val_41 = eval4a.evaluate_at_taus(taus_41, true);
-  double val_42 = eval4a.evaluate_at_taus(taus_42, true);
+  double val_41 = eval4a.evaluate_at_taus(taus_41, true, false);
+  double val_42 = eval4a.evaluate_at_taus(taus_42, true, false);
 
   std::vector<uint8_t> D6c = {0, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0};
   Graph g6c(D6c, 4);
@@ -110,8 +110,8 @@ TEST_F(DiagramTest, InfiniteUDiagramConstantInSimplex) {
   std::vector<double> taus_61 = {0.1, 0.2, 0.3, 0.4, 0.5, 0.6};
   std::vector<double> taus_62 = {0.15, 0.23, 0.31, 0.45, 0.52, 0.78};
 
-  double val_61 = eval6c.evaluate_at_taus(taus_61, true);
-  double val_62 = eval6c.evaluate_at_taus(taus_62, true);
+  double val_61 = eval6c.evaluate_at_taus(taus_61, true, false);
+  double val_62 = eval6c.evaluate_at_taus(taus_62, true, false);
 
   EXPECT_DOUBLE_EQ(val_61, val_62);
   EXPECT_DOUBLE_EQ(val_41, val_42);
@@ -137,9 +137,9 @@ TEST_F(DiagramTest, VanishInNonInteractingLimit) {
   DiagramEvaluator eval_c(diagram_c, pars);
 
   std::vector<double> taus = {0.1, 0.2, 0.3, 0.4}; // arbitrary taus
-  double resa              = eval_a.evaluate_at_taus(taus, false);
-  double resb              = eval_b.evaluate_at_taus(taus, false);
-  double resc              = eval_c.evaluate_at_taus(taus, false);
+  double resa              = eval_a.evaluate_at_taus(taus, false, false);
+  double resb              = eval_b.evaluate_at_taus(taus, false, false);
+  double resc              = eval_c.evaluate_at_taus(taus, false, false);
 
   EXPECT_NEAR(resb, 0.0, 1e-9);
   EXPECT_NEAR(resc, 0.0, 1e-9);

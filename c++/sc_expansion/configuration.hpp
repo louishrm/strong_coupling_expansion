@@ -57,8 +57,8 @@ class Configuration {
     double finite_U   = 0.0;
     double infinite_U = 0.0;
     for (auto const &evaluator : this->evaluators) {
-      finite_U += evaluator.evaluate_at_taus(this->state, false);
-      infinite_U += evaluator.evaluate_at_taus(this->state, true);
+      finite_U += evaluator.evaluate_at_taus(this->state, false, true);
+      infinite_U += evaluator.evaluate_at_taus(this->state, true, true);
     }
     return {finite_U, infinite_U};
   }
