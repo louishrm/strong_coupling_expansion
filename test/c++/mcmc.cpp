@@ -61,8 +61,6 @@ int main(int argc, char *argv[]) {
     std::cout << "U=" << U << " beta=" << beta << " mu=" << mu << " alpha=" << alpha << std::endl;
   }
 
-  auto start_time = std::chrono::high_resolution_clock::now();
-
   // MC parameters
   int length_cycle        = 1;
   int n_warmup_cycles     = 2000;
@@ -83,6 +81,8 @@ int main(int argc, char *argv[]) {
   double reference_integral                = reference_vals.first;
   double signed_reference_integral         = reference_vals.second;
 
+  std::cout << "Done computing reference integral" << std::endl;
+
   long total_cycles = n_cycles * world.size(); // Total samples across all cores
   int n_bins        = 50;                      // Standard choice for Jackknife
   int block_size    = (n_cycles / n_bins) + 1;
@@ -92,6 +92,7 @@ int main(int argc, char *argv[]) {
   StrongCouplingMC.add_move(move(&config, StrongCouplingMC.get_rng()), "time_swap");
   StrongCouplingMC.add_measure(my_measure, "defensive_measure");
 
+  auto start_time = std::chrono::high_resolution_clock::now();
   // Run and collect results
   StrongCouplingMC.warmup_and_accumulate(n_warmup_cycles, n_cycles, length_cycle, triqs::utility::clock_callback(-1));
 
