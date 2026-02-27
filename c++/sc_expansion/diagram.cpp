@@ -205,15 +205,14 @@ namespace sc_expansion {
           auto args = this->get_local_cumul_args(v_idx, taus, mask);
           product *= compute_cumulant_decomposition(args.first, args.second, this->atom, infinite_U);
         }
-        sum += weights[g_idx] * product;
       }
-
-      double sign            = this->diagram.get_diagram_sign();
-      double symmetry_factor = this->diagram.get_graph().get_symmetry_factor();
-      double fm              = this->diagram.get_graph().get_free_multiplicity();
-      double prefactor       = (-1.0 / this->atom.beta) * sign / symmetry_factor * fm;
-
-      return prefactor * sum;
+      sum += weights[g_idx] * product;
     }
+    double sign            = this->diagram.get_diagram_sign();
+    double symmetry_factor = this->diagram.get_graph().get_symmetry_factor();
+    double fm              = this->diagram.get_graph().get_free_multiplicity();
+    double prefactor       = (-1.0 / this->atom.beta) * sign / symmetry_factor * fm;
+
+    return prefactor * sum;
   }
 } // namespace sc_expansion

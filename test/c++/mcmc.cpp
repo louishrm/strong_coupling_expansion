@@ -108,7 +108,7 @@ int main(int argc, char *argv[]) {
     std::cout << "Time per step (s): " << time_per_step << std::endl;
     std::cout << "Steps per second: " << 1.0 / time_per_step << std::endl;
 
-    std::cout << "Exact result (Infinite U, Order " << order << "): " << reference_integral << std::endl;
+    std::cout << "Exact result (Infinite U, Order " << order << "): " << signed_reference_integral << std::endl;
   }
 
   return 0;
