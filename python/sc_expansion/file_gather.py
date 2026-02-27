@@ -23,7 +23,7 @@ filename = f"./results/full_lattice_Omega_order_{order}_scan_mu_U={U}_beta={beta
 os.makedirs(os.path.dirname(filename), exist_ok=True)
 
 # 1. Find all the tiny files
-files = glob.glob("results/full_lattice_data_order_{}_mu_*.h5".format(order))
+files = glob.glob("results/full_lattice_data_order_{}_U_{:.6f}_beta_{:.6f}_mu_*.h5".format(order, U, beta))
 files.sort() 
 
 if not files:
