@@ -72,7 +72,7 @@ TEST_F(HubbardAtomTest, GreenFunctionG01MatchesExactResult) {
   double tau = 0.5;
 
   double Z_exact   = 1 + 2 * std::exp(beta * mu) + std::exp(-beta * (U - 2 * mu));
-  double G01_exact = 1.0 / Z_exact * (std::exp(tau * mu) + std::exp(beta * mu) * std::exp(-tau * (U - mu)));
+  double G01_exact = -1.0 / Z_exact * (std::exp(tau * mu) + std::exp(beta * mu) * std::exp(-tau * (U - mu)));
 
   HubbardAtom::cumul_args unprimed = {{tau, 0}};
   HubbardAtom::cumul_args primed   = {{0, 0}};
