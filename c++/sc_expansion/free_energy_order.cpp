@@ -23,4 +23,10 @@ namespace sc_expansion {
     return sum;
   }
 
+  double FreeEnergyCalculator::compute_sum_diagrams_dimer(std::vector<double> const &taus, bool infinite_U, bool use_cache) const {
+    double sum = 0.0;
+    for (auto const &evaluator : this->evaluators) { sum += evaluator.evaluate_at_taus_dimer(taus, infinite_U, use_cache); }
+    return sum;
+  }
+
 } // namespace sc_expansion
