@@ -6,6 +6,24 @@
 
 namespace sc_expansion {
 
+  inline double compute_permutation_sign(std::vector<int> const &p) {
+    int n            = p.size();
+    int cycles       = 0;
+    uint64_t visited = 0; // Each bit represents an index (up to 64 operators)
+
+    for (int i = 0; i < n; ++i) {
+      if (!(visited & (1ULL << i))) { // Check if the i-th bit is 0
+        int current = i;
+        while (!(visited & (1ULL << current))) {
+          visited |= (1ULL << current); // Set the current bit to 1
+          current = p[current];
+        }
+        cycles++;
+      }
+    }
+    return ((n - cycles) & 1) ? -1 : 1;
+  }
+
   inline uint64_t factorial(uint64_t k) {
     if (k <= 1) return 1;
     return k * factorial(k - 1);

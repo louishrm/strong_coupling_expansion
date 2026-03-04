@@ -95,3 +95,14 @@ TEST(CombinatoricsTest, PartitionGeneratorOfSixMaxThree) {
     EXPECT_EQ(result[i], expected[i]);
   }
 }
+
+TEST(CombinatoricsTest, PermutationSign) {
+  // S4 even permutation: (1, 2, 0, 3) which is (0 1 2)(3)
+  EXPECT_DOUBLE_EQ(compute_permutation_sign({1, 2, 0, 3}), 1.0);
+  
+  // S4 odd permutation: (1, 0, 2, 3) which is (0 1)(2)(3)
+  EXPECT_DOUBLE_EQ(compute_permutation_sign({1, 0, 2, 3}), -1.0);
+  
+  // Identity: (0, 1, 2, 3)
+  EXPECT_DOUBLE_EQ(compute_permutation_sign({0, 1, 2, 3}), 1.0);
+}
