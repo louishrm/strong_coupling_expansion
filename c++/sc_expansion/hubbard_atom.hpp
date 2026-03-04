@@ -12,48 +12,59 @@
 
 namespace sc_expansion {
 
-  class HubbardAtom {
-    public:
-    using cumul_args = std::vector<std::pair<double, int>>;
+  using Arg     = std::pair<double, int>;
+  using ArgList = std::vector<Arg>;
 
-    // Attributes
+  struct Parameters {
     double U;
     double beta;
     double mu;
-    double Z_infinite_U;
-    triqs::operators::many_body_operator_generic<double> H;
-    triqs::atom_diag::atom_diag<false> ad;
-    nda::matrix<double> rho0;
-    nda::matrix<double> c_up;
-    nda::matrix<double> c_dn;
-    nda::matrix<double> cdag_up;
-    nda::matrix<double> cdag_dn;
-    std::vector<double> energies;
-
-    // Constructor
-    HubbardAtom(double U, double beta, double mu);
-
-    // Methods
-    static int calculate_permutation_sign(const std::vector<int> &p);
-
-    static std::tuple<std::vector<double>, std::vector<int>, std::vector<int>, int>
-    sort_operators(const std::vector<double> &times, const std::vector<int> &spins, const std::vector<int> &flags);
-
-    static bool verify_consecutive_terms(const std::vector<int> &sorted_spins, const std::vector<int> &sorted_flags);
-
-    static bool verify_consecutive_terms_infinite_U(const std::vector<int> &sorted_spins, const std::vector<int> &sorted_flags, int n_ops);
-
-    nda::matrix<double> make_interaction_picture_destroy_op(double tau, int state_index) const;
-
-    nda::matrix<double> make_interaction_picture_create_op(double tau, int state_index) const;
-
-    double G0(cumul_args const &unprimed_args, cumul_args const &primed_args) const;
-
-    double G0_infinite_U(cumul_args const &unprimed_args, cumul_args const &primed_args) const;
-
-    private:
-    static triqs::hilbert_space::fundamental_operator_set make_fops();
-    static triqs::operators::many_body_operator_generic<double> make_H0(double U, double mu);
   };
 
+  struct Args {
+
+    std::vector<double> taus;
+    std::vector<int> spins;
+    std::vector<int> ops; // 0: cup, 1: cdn, 2: cdag_up, 3: cdag_dn
+    double permutation_sign;
+    int order;
+
+    Args(std::vector<double> taus, std::vector<int> spins);
+
+    void sort_args();
+    bool verify_consecutive_terms_infinite_U() const;
+  };
+
+  struct Transition {
+
+    int connected_state;
+    double matrix_element;
+  };
+
+  class HubbardAtom {
+
+    public:
+    HubbardAtom(double U, double beta, double mu);
+
+    double G0(std::vector<double> const &taus, std::vector<int> const &spins) const;
+    double G0_infinite_U(std::vector<double> const &taus, std::vector<int> const &spins) const;
+
+    // Internal members made public for testing and cumulant solver efficiency
+    double U;
+    double beta;
+    double mu;
+
+    double Z;
+    double Z_infinite_U;
+    std::array<double, 4> E;
+
+    static const std::array<Transition, 16> lookup_table; 
+
+    static constexpr int valid_start_states[4][2] = {
+       {1, 3}, // op 0 (c_up):       Needs state 1 (|up>) or 3 (|up down>)
+       {2, 3}, // op 1 (c_down):     Needs state 2 (|down>) or 3 (|up down>)
+       {0, 2}, // op 2 (cdag_up):    Needs state 0 (|0>) or 2 (|down>)
+       {0, 1}  // op 3 (cdag_down):  Needs state 0 (|0>) or 1 (|up>)
+    };
+  };
 } // namespace sc_expansion

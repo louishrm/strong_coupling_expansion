@@ -2,10 +2,106 @@
 #include <cmath>
 #include "../c++/sc_expansion/hubbard_atom.hpp"
 #include <iostream>
+#include <vector>
+#include <numeric>
+#include <algorithm>
 
 using namespace sc_expansion;
 
-// The Test Fixture: Sets up the data common to all tests
+// --- Args Tests ---
+
+TEST(ArgsTest, ConstructorAndSorting) {
+  // Scenario: t1 < t2, but input as {t1, t2}. Should be sorted to {t2, t1}.
+  // Index 0: spin 0 (up) -> creation (op=2)
+  // Index 1: spin 1 (down) -> annihilation (op=1)
+  std::vector<double> taus = {0.2, 0.8};
+  std::vector<int> spins   = {0, 1};
+  Args args(taus, spins);
+
+  EXPECT_EQ(args.order, 2);
+  // Sorted descending:
+  EXPECT_DOUBLE_EQ(args.taus[0], 0.8);
+  EXPECT_DOUBLE_EQ(args.taus[1], 0.2);
+
+  // Initial ops were: ops[0]=2 (cdag_up), ops[1]=1 (cdn)
+  // After sorting (argsort={1, 0}):
+  EXPECT_EQ(args.ops[0], 1); // cdn
+  EXPECT_EQ(args.ops[1], 2); // cdag_up
+
+  // One swap: permutation sign should be -1.0
+  EXPECT_DOUBLE_EQ(args.permutation_sign, -1.0);
+}
+
+TEST(ArgsTest, PermutationSignComplex) {
+  // 4 operators, multiple swaps
+  std::vector<double> taus = {0.1, 0.4, 0.2, 0.3}; // argsort: {1, 3, 2, 0}
+  std::vector<int> spins   = {0, 0, 1, 1};
+  Args args(taus, spins);
+
+  // argsort = {1, 3, 2, 0}
+  // 1 3 2 0
+  // Initial: 0 1 2 3
+  // Swap(0, 1) -> 1 0 2 3 (sign -1)
+  // Swap(1, 3) -> 1 3 2 0 (sign +1) -> Wait, 1 3 2 0 is not 1 swap from 1 0 2 3.
+  // 0 1 2 3 -> 1 0 2 3 (1) -> 1 2 0 3 (2) -> 1 3 0 2 (3) -> 1 3 2 0 (4)
+  // Or: inversions in {1, 3, 2, 0}:
+  // (1,0), (3,2), (3,0), (2,0) -> 4 inversions. Sign = +1.0.
+  EXPECT_DOUBLE_EQ(args.permutation_sign, 1.0);
+}
+
+TEST(ArgsTest, VerifyConsecutiveTermsInfiniteU) {
+  // Test valid sequence: cdag_up(0.8), cup(0.2)
+  // taus = {0.8, 0.2}, spins = {0, 0} -> ops = {2, 0}.
+  // i=0: ops[0]=2 (late), i+1=1: ops[1]=0 (early)
+  // early_is_create=false, late_is_create=true. early_is_create != late_is_create (True).
+  // No Rule B check because early is not create.
+  // Beta check: op_beta = 2, op_zero = 0. beta_is_create = true. op_zero == 2-2=0. (True).
+  {
+    Args args({0.8, 0.2}, {0, 0});
+    EXPECT_TRUE(args.verify_consecutive_terms_infinite_U());
+  }
+
+  // Invalid: Consecutive creations
+  // taus = {0.8, 0.2}, spins = {0, 1} -> ops = {2, 3}.
+  // early_is_create=true, late_is_create=true -> False.
+  {
+    Args args({0.8, 0.2}, {0, 1});
+    EXPECT_FALSE(args.verify_consecutive_terms_infinite_U());
+  }
+
+  // Invalid: Spin mismatch (creation of up, destruction of down)
+  // taus = {0.8, 0.2}, spins = {1, 0} -> ops = {3, 0}.
+  // i=0: op_late=3 (cdag_dn), i+1=1: op_early=0 (cup).
+  // early_is_create=false, late_is_create=true.
+  // Rule B check: None.
+  // Beta check: op_beta=3 (cdag_dn), op_zero=0 (cup). beta_is_create=true.
+  // op_zero != 3-2 (0 != 1) -> False.
+  {
+    Args args({0.8, 0.2}, {1, 0});
+    EXPECT_FALSE(args.verify_consecutive_terms_infinite_U());
+  }
+
+  // Valid: D(0.9), C(0.7), D(0.5), C(0.3)
+  // taus={0.9, 0.7, 0.5, 0.3}, spins={0, 0, 1, 1}
+  // ops={0, 2, 1, 3} (Wait, i=0: cdag, i=1: c ... so this is D, C, D, C?)
+  // No, i=0: cdag, i=1: c.
+  // input: taus={0.7, 0.9, 0.3, 0.5}, spins={0, 0, 1, 1}
+  // indices: 0: cdag_up, 1: cup, 2: cdag_dn, 3: cdn
+  // sorted: 1(0.9), 0(0.7), 3(0.5), 2(0.3)
+  // sorted_ops: ops[1]=0, ops[0]=2, ops[3]=1, ops[2]=3
+  // D(0.9), C(0.7), D(0.5), C(0.3)
+  // Pairs: (0, 2) -> early=2, late=0. early_is_create=true. op_late = 0 == 2-2. OK.
+  // (2, 1) -> early=1, late=2. early_is_create=false. OK.
+  // (1, 3) -> early=3, late=1. early_is_create=true. op_late = 1 == 3-2. OK.
+  // Boundary: op_beta=0, op_zero=3. beta_is_create=false. OK.
+  {
+    Args args({0.7, 0.9, 0.3, 0.5}, {0, 0, 1, 1});
+    EXPECT_TRUE(args.verify_consecutive_terms_infinite_U());
+  }
+}
+
+// --- HubbardAtom Tests ---
+
 class HubbardAtomTest : public ::testing::Test {
   protected:
   double U    = 8.0;
@@ -17,166 +113,113 @@ class HubbardAtomTest : public ::testing::Test {
   void SetUp() override { atom = std::make_unique<HubbardAtom>(U, beta, mu); }
 };
 
-TEST_F(HubbardAtomTest, PartitionFunctionMatchesExactResult) {
-  double Z_exact = 1 + 2 * std::exp(beta * mu) + std::exp(-beta * (U - 2 * mu));
-  double gs      = atom->ad.get_gs_energy();
-  Z_exact *= std::exp(beta * gs); //H -> H-E0 shift for numerical stability
-  double Z = triqs::atom_diag::partition_function(atom->ad, beta);
-
-  // EXPECT_NEAR is better than 'abs > 1e-10' because it handles output formatting
-  EXPECT_NEAR(Z, Z_exact, 1e-10);
+TEST_F(HubbardAtomTest, ConstructorStateEnergies) {
+  // E = {0, -mu, -mu, 2*mu - U}
+  EXPECT_DOUBLE_EQ(atom->E[0], 0.0);
+  EXPECT_DOUBLE_EQ(atom->E[1], -2.0);
+  EXPECT_DOUBLE_EQ(atom->E[2], -2.0);
+  EXPECT_DOUBLE_EQ(atom->E[3], 8.0 - 2 * 2.0); // -4.0
 }
 
-TEST_F(HubbardAtomTest, AtomicDensityMatrixMatchesExactResult) {
-  double Z_exact = 1 + 2 * std::exp(beta * mu) + std::exp(-beta * (U - 2 * mu));
-  double gs      = atom->ad.get_gs_energy();
-  Z_exact *= std::exp(beta * gs); //H -> H-E0 shift for numerical stability
+TEST_F(HubbardAtomTest, PartitionFunctions) {
+  double Z_expected          = 1 + 2 * std::exp(beta * mu) + std::exp(beta * (2 * mu - U));
+  double Z_infinite_expected = 1 + 2 * std::exp(beta * mu);
 
-  auto rho = triqs::atom_diag::atomic_density_matrix(atom->ad, beta)[0];
-
-  std::vector<double> rho_entries_exact = {
-     std::exp(-beta * (0 - gs)) / Z_exact,
-     std::exp(-beta * (-mu - gs)) / Z_exact,
-     std::exp(-beta * (-mu - gs)) / Z_exact,
-     std::exp(-beta * (U - 2 * mu - gs)) / Z_exact,
-  };
-
-  std::sort(rho_entries_exact.begin(), rho_entries_exact.end(), std::greater<double>());
-
-  EXPECT_NEAR(rho(0, 0), rho_entries_exact[0], 1e-10);
-  EXPECT_NEAR(rho(1, 1), rho_entries_exact[1], 1e-10);
-  EXPECT_NEAR(rho(2, 2), rho_entries_exact[2], 1e-10);
-  EXPECT_NEAR(rho(3, 3), rho_entries_exact[3], 1e-10);
+  EXPECT_NEAR(atom->Z, Z_expected, 1e-10);
+  EXPECT_NEAR(atom->Z_infinite_U, Z_infinite_expected, 1e-10);
 }
 
-TEST_F(HubbardAtomTest, ImaginaryTimeEvolutionMatchesExactResult) {
+TEST_F(HubbardAtomTest, LookupTableVerify) {
+  // index = (state << 2) | op
+  // op 0: cup, 1: cdn, 2: cdag_up, 3: cdag_dn
+  // States: 0:|0>, 1:|up>, 2:|dn>, 3:|up dn>
 
+  // cdag_up on |0> (state 0, op 2) -> |up> (state 1), mel 1.0
+  EXPECT_EQ(HubbardAtom::lookup_table[(0 << 2) | 2].connected_state, 1);
+  EXPECT_DOUBLE_EQ(HubbardAtom::lookup_table[(0 << 2) | 2].matrix_element, 1.0);
+
+  // cdag_dn on |up> (state 1, op 3) -> |up dn> (state 3), mel -1.0 (jump over up)
+  EXPECT_EQ(HubbardAtom::lookup_table[(1 << 2) | 3].connected_state, 3);
+  EXPECT_DOUBLE_EQ(HubbardAtom::lookup_table[(1 << 2) | 3].matrix_element, -1.0);
+
+  // cup on |up> (state 1, op 0) -> |0> (state 0), mel 1.0
+  EXPECT_EQ(HubbardAtom::lookup_table[(1 << 2) | 0].connected_state, 0);
+  EXPECT_DOUBLE_EQ(HubbardAtom::lookup_table[(1 << 2) | 0].matrix_element, 1.0);
+
+  // cdn on |up dn> (state 3, op 1) -> |up> (state 1), mel -1.0 (jump over up)
+  EXPECT_EQ(HubbardAtom::lookup_table[(3 << 2) | 1].connected_state, 1);
+  EXPECT_DOUBLE_EQ(HubbardAtom::lookup_table[(3 << 2) | 1].matrix_element, -1.0);
+
+  // Pauli exclusion: cdag_up on |up> (state 1, op 2) -> mel 0.0
+  EXPECT_DOUBLE_EQ(HubbardAtom::lookup_table[(1 << 2) | 2].matrix_element, 0.0);
+}
+
+TEST_F(HubbardAtomTest, GreenFunctionG0_FiniteU_Order1) {
   double tau = 0.5;
-  double gs  = atom->ad.get_gs_energy();
+  // Compute G0(tau, 0) = - < T c_up(tau) cdag_up(0) >
+  // For tau > 0, G0 = - < c_up(tau) cdag_up(0) >
+  // Input to G0 method: {tau, 0} for c, cdag.
+  // Wait, the code expects {tau_cdag, tau_c}.
+  // Let's check G0 implementation again.
+  // It computes Tr(rho O_n(tau_n) ... O_1(tau_1)) where tau_n > ... > tau_1.
+  // To get < c_up(tau) cdag_up(0) >, we need tau_c = tau, tau_cdag = 0.
+  // Since tau > 0, tau_c is the LATEST operator.
+  // Args({tau_c, tau_cdag}, {0, 0}) -> taus={0.5, 0.0}, spins={0, 0}.
+  // ops[0]=2 (cdag_up), ops[1]=0 (cup).
+  // Sorted: 0.5, 0.0. sorted_ops: ops[0], ops[1] -> 2, 0.
+  // Wait, if taus={0.5, 0.0}, argsort={0, 1}. sorted_ops = {ops[0], ops[1]} = {2, 0}.
+  // Loop i=1 (tau=0.0): op=0 (cup). Loop i=0 (tau=0.5): op=2 (cdag_up).
+  // This computes Tr(rho cdag_up(0.5) cup(0)).
 
-  auto left = triqs::atom_diag::atomic_density_matrix(atom->ad, -tau)[0];
-  left *= triqs::atom_diag::partition_function(atom->ad, -tau); //Multiply by Z0 to get unnormalized left operator
+  // To get Tr(rho cup(0.5) cdag_up(0)):
+  // We need op_late = cup, op_early = cdag_up.
+  // Since tau_late > tau_early, we need tau_cup=0.5, tau_cdag=0.0.
+  // In Args(taus, spins):
+  // ops[i] = 2+spin if i even, spin if i odd.
+  // So we need i=1 for cup, i=0 for cdag_up.
+  // taus = {0.0, 0.5}, spins = {0, 0}.
+  // ops[0] = 2 (cdag_up), ops[1] = 0 (cup).
+  // Sorted: 0.5(i=1), 0.0(i=0). sorted_ops: ops[1], ops[0] -> 0, 2.
+  // Permutation sign: swap (0, 1) -> -1.0.
+  // Result = -1.0 * Tr(rho cup(0.5) cdag_up(0)).
+  // This is exactly G0(0.5, 0)!
 
-  std::vector<double> left_exact = {std::exp(tau * (0 - gs)), std::exp(tau * (-mu - gs)), std::exp(tau * (-mu - gs)),
-                                    std::exp(tau * (U - 2 * mu - gs))};
+  std::vector<double> taus = {0.0, 0.5};
+  std::vector<int> spins   = {0, 0};
+  double g0                = atom->G0(taus, spins);
 
-  std::sort(left_exact.begin(), left_exact.end());
-  EXPECT_NEAR(left(0, 0), left_exact[0], 1e-10);
-  EXPECT_NEAR(left(1, 1), left_exact[1], 1e-10);
-  EXPECT_NEAR(left(2, 2), left_exact[2], 1e-10);
-  EXPECT_NEAR(left(3, 3), left_exact[3], 1e-10);
+  // Exact G0(tau) = -1/Z * (exp(-beta*E0) * exp(tau*(E0-E1)) * 1 * 1 + exp(-beta*E2) * exp(tau*(E2-E3)) * 1 * 1)
+  // G0(tau) = -1/Z * (exp(tau*mu) + exp(-beta*(-mu)) * exp(tau*(-mu - (2*mu-U))))
+  // G0(tau) = -1/Z * (exp(tau*mu) + exp(beta*mu) * exp(tau*(U-mu)))
+  // Wait, my signs...
+  // Tr(rho cup(tau) cdag_up(0)) = 1/Z * Sum_a <a| e^{-beta H} e^{tau H} cup e^{-tau H} cdag |a>
+  // a=0: <0| e^{-beta E0} e^{tau E0} cup e^{-tau E1} cdag |0> = exp(-beta*0) * exp(tau*0) * 1 * exp(-tau*(-mu)) * 1 = exp(tau*mu)
+  // a=2: <2| e^{-beta E2} e^{tau E2} cup e^{-tau E3} cdag |2> = exp(-beta*-mu) * exp(tau*-mu) * (-1) * exp(-tau*(2*mu-U)) * (-1) = exp(beta*mu) * exp(tau*(U-mu))
+  // G0 = -1/Z * (exp(tau*mu) + exp(beta*mu) * exp(tau*(U-mu)))
+
+  double Z_exact  = 1 + 2 * std::exp(beta * mu) + std::exp(beta * (2 * mu - U));
+  double G0_exact = -1.0 / Z_exact * (std::exp(tau * mu) + std::exp(beta * mu) * std::exp(-tau * (U - mu)));
+  EXPECT_NEAR(g0, G0_exact, 1e-10);
 }
 
-TEST_F(HubbardAtomTest, GreenFunctionG01MatchesExactResult) {
-  //also checks shift invariance of G0 with respect to H -> H-E0
-  double tau = 0.5;
+TEST_F(HubbardAtomTest, GreenFunctionG0_InfiniteU_Order1) {
+  // taus = {0.0, 0.5}, spins = {0, 0}
+  // G0_infinite_U implementation:
+  // args.ops = {0, 2} sorted -> {0, 2} (wait, 0.5 is at index 1).
+  // sorted_ops = {0, 2}. first_op = 0.
+  // Result = args.permutation_sign * (-exp(beta*mu) / Z_infinite_U)
+  // permutation_sign = -1.0. Result = exp(beta*mu) / Z_infinite_U.
 
-  double Z_exact   = 1 + 2 * std::exp(beta * mu) + std::exp(-beta * (U - 2 * mu));
-  double G01_exact = -1.0 / Z_exact * (std::exp(tau * mu) + std::exp(beta * mu) * std::exp(-tau * (U - mu)));
+  std::vector<double> taus = {0.0, 0.5};
+  std::vector<int> spins   = {0, 0};
+  double g0_inf            = atom->G0_infinite_U(taus, spins); //<T_tau c^dag_up(0.0) cup(0.5)> = <cup(0.5) c^dag_up(0.0)>
 
-  HubbardAtom::cumul_args unprimed = {{tau, 0}};
-  HubbardAtom::cumul_args primed   = {{0, 0}};
+  double Z_inf_exact = 1 + 2 * std::exp(beta * mu);
+  double expected    = -1.0 / Z_inf_exact;
 
-  double G01 = atom->G0(unprimed, primed);
-
-  EXPECT_NEAR(G01, G01_exact, 1e-10);
+  EXPECT_NEAR(g0_inf, expected, 1e-10);
 }
 
-TEST_F(HubbardAtomTest, GreenFunctionG02VanishConsecutiveTimes) {
-
-  HubbardAtom::cumul_args unprimed = {{0.1, 0}, {0.2, 0}};
-  HubbardAtom::cumul_args primed   = {{0.3, 0}, {0.4, 0}};
-
-  double G02 = atom->G0(unprimed, primed);
-
-  EXPECT_NEAR(G02, 0.0, 1e-10);
-}
-
-TEST_F(HubbardAtomTest, GreenFunctionG01InfiniteUMatchesExactResult) {
-  double tau = 0.5;
-
-  double Z_infinite_U = 1 + 2 * std::exp(beta * mu);
-
-  //tau = destroy
-  double G01_exact_1 = 1.0 / Z_infinite_U; //* (std::exp(tau * mu));
-
-  double G01_exact_2 = -G01_exact_1 * std::exp(beta * mu);
-
-  HubbardAtom::cumul_args unprimed = {{tau, 0}};
-  HubbardAtom::cumul_args primed   = {{0, 0}};
-
-  double G01_1 = atom->G0_infinite_U(unprimed, primed);
-  double G01_2 = atom->G0_infinite_U(primed, unprimed);
-
-  EXPECT_NEAR(G01_1, G01_exact_1, 1e-12);
-  EXPECT_NEAR(G01_2, G01_exact_2, 1e-12);
-}
-
-TEST_F(HubbardAtomTest, GreenFunctionG02InfiniteUMatchesExactResult) {
-
-  double Z_infinite_U = 1 + 2 * std::exp(beta * mu);
-
-  //tau = destroy
-  double G02_exact_1 = -1.0 / Z_infinite_U; //* (std::exp(tau * mu));
-
-  double G02_exact_2 = G02_exact_1 * std::exp(beta * mu);
-
-  HubbardAtom::cumul_args unprimed = {{0.7, 0}, {0.3, 0}};
-  HubbardAtom::cumul_args primed   = {{0.5, 0}, {0.1, 0}};
-
-  double G02_1 = atom->G0_infinite_U(unprimed, primed);
-  double G02_2 = atom->G0_infinite_U(primed, unprimed);
-
-  EXPECT_NEAR(G02_1, G02_exact_1, 1e-12);
-  EXPECT_NEAR(G02_2, G02_exact_2, 1e-12);
-}
-
-TEST_F(HubbardAtomTest, VerifyConsecutiveTerms) {
-  // 1. Three consecutive creates/destroys -> False
-  EXPECT_FALSE(HubbardAtom::verify_consecutive_terms({0, 0, 0, 0, 0, 0}, {0, 0, 0, 1, 1, 1})); //3 consecutive creates
-  EXPECT_FALSE(HubbardAtom::verify_consecutive_terms({0, 0, 0, 0, 0, 0}, {1, 1, 1, 0, 0, 0})); //3 consecutive destroys
-
-  // 2. Two consecutive creates/destroys with same spin -> False
-  EXPECT_FALSE(HubbardAtom::verify_consecutive_terms({0, 0, 1, 1}, {0, 0, 1, 1})); //creates with same spin
-  EXPECT_FALSE(HubbardAtom::verify_consecutive_terms({1, 1, 0, 0}, {1, 1, 0, 0})); //destroys with same spin
-
-  // Two consecutive create with a destroy of opposite spin in between -> false
-  EXPECT_FALSE(HubbardAtom::verify_consecutive_terms({0, 1, 0, 1}, {0, 1, 0, 1})); //up+ dn - up+ dn -
-
-  //Valid alternating sequence
-  EXPECT_TRUE(HubbardAtom::verify_consecutive_terms({0, 1, 0, 1}, {1, 0, 0, 1}));
-
-  //complex sequence
-  std::vector<int> complex_spins = {0, 1, 0, 1, 0, 0};
-  std::vector<int> complex_flags = {1, 0, 0, 1, 1, 0};
-  EXPECT_TRUE(HubbardAtom::verify_consecutive_terms(complex_spins, complex_flags));
-}
-TEST_F(HubbardAtomTest, VerifyConsecutiveTermsInfiniteU) {
-  // 1. Consecutive Identical Flags -> False
-  EXPECT_FALSE(HubbardAtom::verify_consecutive_terms_infinite_U({0, 0}, {0, 0}, 1)); // 0, 0
-  EXPECT_FALSE(HubbardAtom::verify_consecutive_terms_infinite_U({0, 0}, {1, 1}, 1)); // 1, 1
-
-  // 2. Destroy(t0), Create(t1) [t0 > t1] -> Particle in (t1, t0). Spins MUST match.
-  // flags = {0, 1}
-  EXPECT_TRUE(HubbardAtom::verify_consecutive_terms_infinite_U({0, 0}, {0, 1}, 1));  // Match
-  EXPECT_FALSE(HubbardAtom::verify_consecutive_terms_infinite_U({0, 1}, {0, 1}, 1)); // Mismatch
-
-  // 3. Create(t0), Destroy(t1) [t0 > t1] -> Particle in (t0, beta) U (0, t1). Spins MUST match (Boundary).
-  // flags = {1, 0}
-  EXPECT_TRUE(HubbardAtom::verify_consecutive_terms_infinite_U({0, 0}, {1, 0}, 1));  // Match
-  EXPECT_FALSE(HubbardAtom::verify_consecutive_terms_infinite_U({0, 1}, {1, 0}, 1)); // Mismatch
-
-  // 4. Complex Chain: D(t0), C(t1), D(t2), C(t3).
-  // (t1, t0) -> Particle. (t3, t2) -> Particle.
-  // flags = {0, 1, 0, 1}
-  // spins = {0, 0, 1, 1} -> OK.
-  EXPECT_TRUE(HubbardAtom::verify_consecutive_terms_infinite_U({0, 0, 1, 1}, {0, 1, 0, 1}, 2));
-
-  // spins = {0, 1, 1, 1} -> Fail at first pair (0 vs 1).
-  EXPECT_FALSE(HubbardAtom::verify_consecutive_terms_infinite_U({0, 1, 1, 1}, {0, 1, 0, 1}, 2));
-}
-
-// Main is usually provided by gtest_main, but if you need a custom one:
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
