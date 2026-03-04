@@ -147,10 +147,9 @@ namespace sc_expansion {
     if (is_corrupted) { this->recompute_vertex(v_idx, taus); }
   }
 
-  std::pair<HubbardAtom::cumul_args, HubbardAtom::cumul_args> DiagramEvaluator::get_local_cumul_args(int v_idx, std::vector<double> const &taus,
-                                                                                                     uint32_t local_mask) const {
+  std::pair<ArgList, ArgList> DiagramEvaluator::get_local_cumul_args(int v_idx, std::vector<double> const &taus, uint32_t local_mask) const {
     const auto &v = this->diagram.get_vertices()[v_idx];
-    HubbardAtom::cumul_args unprimed_args, primed_args;
+    ArgList unprimed_args, primed_args;
 
     int bit_pos = 0;
     for (int idx : v.outgoing_lines) {
@@ -211,7 +210,40 @@ namespace sc_expansion {
     double sign            = this->diagram.get_diagram_sign();
     double symmetry_factor = this->diagram.get_graph().get_symmetry_factor();
     double fm              = this->diagram.get_graph().get_free_multiplicity();
-    double prefactor       = (-1.0 / this->atom.beta) * sign / symmetry_factor* fm;
+    double prefactor       = (-1.0 / this->atom.beta) * sign / symmetry_factor * fm;
+
+    return prefactor * sum;
+  }
+
+  double DiagramEvaluator::evaluate_at_taus_dimer(std::vector<double> const &taus, bool infinite_U, bool use_cache) const {
+    int V = this->diagram.get_vertices().size();
+    for (int v = 0; v < V; ++v) { this->check_vertex(v, taus); }
+    this->current_taus = taus;
+
+    double sum                 = 0.0;
+    const auto &global_configs = this->diagram.get_global_configs();
+    const auto &weights        = this->diagram.get_config_weights();
+    const auto &vertices       = this->diagram.get_vertices();
+    const auto &cache          = infinite_U ? cache_infinite : cache_finite;
+
+    for (size_t g_idx = 0; g_idx < global_configs.size(); ++g_idx) {
+      double product = 1.0;
+      for (int v_idx = 0; v_idx < V; ++v_idx) {
+        int mask = vertices[v_idx].local_spin_configs[g_idx];
+
+        if (use_cache) {
+          product *= cache[v_idx][mask];
+        } else {
+          auto args = this->get_local_cumul_args(v_idx, taus, mask);
+          product *= compute_cumulant_decomposition(args.first, args.second, this->atom, infinite_U);
+        }
+      }
+      sum += weights[g_idx] * product;
+    }
+    double sign            = this->diagram.get_diagram_sign();
+    double symmetry_factor = this->diagram.get_graph().get_symmetry_factor();
+    double fm              = 1.0; // Fixed for dimer calculation
+    double prefactor       = (-1.0 / this->atom.beta) * sign / symmetry_factor * fm;
 
     return prefactor * sum;
   }

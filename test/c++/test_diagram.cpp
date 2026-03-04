@@ -1,11 +1,36 @@
 #include <gtest/gtest.h>
 #include <cmath>
+#include <numeric>
 #include "sc_expansion/hubbard_atom.hpp"
 #include "sc_expansion/cumulant.hpp"
 #include "sc_expansion/diagram.hpp"
 #include "sc_expansion/graph.hpp"
+#include "sc_expansion/free_energy_order.hpp"
 
 using namespace sc_expansion;
+
+template <typename Order> std::pair<double, double> compute_exact_integral_infinite_U(Order &o, int n, double beta) {
+  //Return \int |U_inf| d tau and \int U_inf d tau (both abs and signed version)
+  std::vector<double> taus(n);
+  std::iota(taus.begin(), taus.end(), 0.0);
+
+  double sum_abs    = 0.0;
+  double sum_signed = 0.0;
+  do {
+    // CRITICAL: Using dimer version for the integrator as requested
+    double val = o.compute_sum_diagrams_dimer(taus, true, false);
+    sum_abs += std::abs(val);
+    sum_signed += val;
+  } while (std::next_permutation(taus.begin(), taus.end()));
+
+  double fact = 1.0;
+  for (int i = 1; i <= n; ++i) fact *= i;
+
+  std::pair<double, double> result;
+  result.first  = (std::pow(beta, n) / fact) * sum_abs;
+  result.second = (std::pow(beta, n) / fact) * sum_signed;
+  return result;
+}
 
 // The Test Fixture: Sets up the data common to all tests
 class DiagramTest : public ::testing::Test {
@@ -143,4 +168,13 @@ TEST_F(DiagramTest, VanishInNonInteractingLimit) {
 
   EXPECT_NEAR(resb, 0.0, 1e-9);
   EXPECT_NEAR(resc, 0.0, 1e-9);
+}
+
+TEST_F(DiagramTest, ExactIntegralOrder4InfiniteU) {
+  int order = 4;
+  FreeEnergyCalculator calculator(params, order);
+  auto result = compute_exact_integral_infinite_U(calculator, order, beta);
+  
+  // The expected result for order 4, U=8.0, beta=1.0, mu=2.0 is -1.59245549e-03
+  EXPECT_NEAR(result.second, -1.59245549e-03, 1e-10);
 }

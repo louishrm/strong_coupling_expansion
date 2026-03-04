@@ -15,12 +15,6 @@ namespace sc_expansion {
     int to_vertex;
   };
 
-  struct Parameters {
-    double U;
-    double beta;
-    double mu;
-  };
-
   struct Vertex {
     std::vector<int> outgoing_lines; //annihilation indices
     std::vector<int> incoming_lines; //creation indices
@@ -62,6 +56,7 @@ namespace sc_expansion {
     explicit DiagramEvaluator(Diagram const &diagram, Parameters const &params);
 
     double evaluate_at_taus(std::vector<double> const &taus, bool infinite_U, bool use_cache) const;
+    double evaluate_at_taus_dimer(std::vector<double> const &taus, bool infinite_U, bool use_cache) const;
     Diagram const &get_diagram() const { return this->diagram; }
 
     private:
@@ -73,7 +68,7 @@ namespace sc_expansion {
 
     void check_vertex(int v_idx, std::vector<double> const &taus) const;
     void recompute_vertex(int v_idx, std::vector<double> const &taus) const;
-    std::pair<HubbardAtom::cumul_args, HubbardAtom::cumul_args> get_local_cumul_args(int v_idx, std::vector<double> const &taus,
+    std::pair<ArgList, ArgList> get_local_cumul_args(int v_idx, std::vector<double> const &taus,
                                                                                      uint32_t local_mask) const;
   };
 
