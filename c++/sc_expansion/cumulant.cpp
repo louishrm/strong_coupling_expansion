@@ -90,12 +90,21 @@ namespace sc_expansion {
     for (size_t i = 0; i < p.size(); ++i) {
       if (p[i].second == 1) this->master_spin_mask_p |= (1ULL << i);
     }
+  }
 
-    if (infinite_U) {
-      this->bare_propagator = &HubbardAtom::G0_infinite_U;
-    } else {
-      this->bare_propagator = &HubbardAtom::G0;
+  double CumulantSolver::call_bare(const ArgList &u, const ArgList &p) const {
+    int n = u.size();
+    std::vector<double> taus(2 * n);
+    std::vector<int> spins(2 * n);
+    for (int i = 0; i < n; ++i) {
+      // Creation (primed) goes to even indices
+      taus[2 * i]  = p[i].first;
+      spins[2 * i] = p[i].second;
+      // Destruction (unprimed) goes to odd indices
+      taus[2 * i + 1]  = u[i].first;
+      spins[2 * i + 1] = u[i].second;
     }
+    return infinite_U ? atom.G0_infinite_U(taus, spins) : atom.G0(taus, spins);
   }
 
   // Recursive Distributor (Fixed Sign Logic)
@@ -178,7 +187,7 @@ namespace sc_expansion {
     if (order == 1) {
       ArgList args_u   = {master_unprimed[global_map_u[0]]};
       ArgList args_p   = {master_primed[global_map_p[0]]};
-      return memo[key] = (atom.*bare_propagator)(args_u, args_p);
+      return memo[key] = this->call_bare(args_u, args_p);
     }
 
     // 5. Compute G0_n
@@ -188,7 +197,7 @@ namespace sc_expansion {
     for (int idx : global_map_u) current_args_u.push_back(master_unprimed[idx]);
     for (int idx : global_map_p) current_args_p.push_back(master_primed[idx]);
 
-    double G0n = (atom.*bare_propagator)(current_args_u, current_args_p);
+    double G0n = this->call_bare(current_args_u, current_args_p);
 
     // 6. Subtraction Term Logic
     double low_order_cumulants = 0.0;
@@ -232,7 +241,7 @@ namespace sc_expansion {
     return this->solve(full_mask, full_mask);
   }
 
-  double compute_cumulant_decomposition(HubbardAtom::cumul_args const &unprimed, HubbardAtom::cumul_args const &primed, HubbardAtom const &atom,
+  double compute_cumulant_decomposition(ArgList const &unprimed, ArgList const &primed, HubbardAtom const &atom,
                                         bool infinite_U, bool verbose) {
     if (unprimed.size() != primed.size()) throw std::invalid_argument("Size mismatch in compute_cumulant_decomposition");
     if (unprimed.empty()) throw std::invalid_argument("Empty list in compute_cumulant_decomposition");

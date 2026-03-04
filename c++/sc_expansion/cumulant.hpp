@@ -35,7 +35,7 @@ namespace sc_expansion {
     const HubbardAtom &atom;
     bool infinite_U = false;
 
-    double (HubbardAtom::*bare_propagator)(const ArgList &, const ArgList &) const;
+    double call_bare(const ArgList &u, const ArgList &p) const;
 
     // Memoization Table
     std::unordered_map<CacheKey, double, KeyHasher> memo;
@@ -60,7 +60,7 @@ namespace sc_expansion {
     double compute_cumulant_decomposition();
   };
 
-  double compute_cumulant_decomposition(HubbardAtom::cumul_args const &unprimed, HubbardAtom::cumul_args const &primed, HubbardAtom const &atom,
+  double compute_cumulant_decomposition(ArgList const &unprimed, ArgList const &primed, HubbardAtom const &atom,
                                         bool infinite_U = false, bool verbose = false);
 
   // Wrapper class for Python to easily compute cumulants for spin 0
@@ -74,7 +74,7 @@ namespace sc_expansion {
       if (taus.size() % 2 != 0) { throw std::invalid_argument("CumulantHelper::compute: input vector must have even size (2n)."); }
       size_t n = taus.size() / 2;
 
-      HubbardAtom::cumul_args u, p;
+      ArgList u, p;
       u.reserve(n);
       p.reserve(n);
 
