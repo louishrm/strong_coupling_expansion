@@ -27,11 +27,17 @@ namespace {
     current_partition.pop_back();
   }
 
-  all_partitions_t get_partitions(std::vector<int> const &set) {
+  const all_partitions_t &get_partitions(int n) {
+    static std::unordered_map<int, all_partitions_t> partition_cache;
+    auto it = partition_cache.find(n);
+    if (it != partition_cache.end()) return it->second;
+
+    std::vector<int> set(n);
+    std::iota(set.begin(), set.end(), 0);
     all_partitions_t ans;
     partition_t current_partition;
     fill_partitions(set, 0, ans, current_partition);
-    return ans;
+    return partition_cache[n] = std::move(ans);
   }
 
   // --- Bitwise Helpers ---
@@ -201,10 +207,7 @@ namespace sc_expansion {
 
     // 6. Subtraction Term Logic
     double low_order_cumulants = 0.0;
-    std::vector<int> local_indices(order);
-    std::iota(local_indices.begin(), local_indices.end(), 0);
-
-    auto unprimed_partitions = get_partitions(local_indices);
+    const auto &unprimed_partitions = get_partitions(order);
 
     for (const auto &partition : unprimed_partitions) {
       if (partition.size() == 1) continue;
