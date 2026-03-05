@@ -68,20 +68,30 @@ int main(int argc, char *argv[]) {
   int random_seed         = 32186222 + world.rank() * 786512;
   int verbosity           = (world.rank() == 0 ? 2 : 0);
 
+  // Parameters of the model and Monte Carlo initialization
+  sc_expansion::Parameters params{U, beta, mu};
+  
+  double reference_integral = 0.0;
+  double signed_reference_integral = 0.0;
+
+  if (world.rank() == 0) {
+    std::cout << "Computing reference integral on master rank..." << std::endl;
+    sc_expansion::FreeEnergyCalculator calculator(params, order);
+    std::pair<double, double> reference_vals = compute_exact_integral_infinite_U(calculator, order, beta);
+    reference_integral                = reference_vals.first;
+    signed_reference_integral         = reference_vals.second;
+    std::cout << "Done computing reference integral. Value: " << signed_reference_integral << std::endl;
+  }
+
+  // Broadcast reference values to all ranks
+  mpi::broadcast(reference_integral, world);
+  mpi::broadcast(signed_reference_integral, world);
+
   // Construct a Monte Carlo loop
   triqs::mc_tools::mc_generic<double> StrongCouplingMC(random_name, random_seed, verbosity);
 
-  // construct configuration
-  sc_expansion::Parameters params{U, beta, mu};
+  // construct configuration (Every rank needs its own for MC)
   Configuration config(params, order, alpha);
-
-  // parameters of the model
-  sc_expansion::FreeEnergyCalculator calculator(params, order);
-  std::pair<double, double> reference_vals = compute_exact_integral_infinite_U(calculator, order, beta);
-  double reference_integral                = reference_vals.first;
-  double signed_reference_integral         = reference_vals.second;
-
-  std::cout << "Done computing reference integral" << std::endl;
 
   long total_cycles = n_cycles * world.size(); // Total samples across all cores
   int n_bins        = 50;                      // Standard choice for Jackknife
