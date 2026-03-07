@@ -9,17 +9,6 @@
 #include "dual.hpp"
 #include <./triqs/mc_tools/random_generator.hpp>
 
-struct VertexCaches {
-  int V;
-  std::vector<std::unordered_map<long long, double>> cache;
-
-  VertexCaches(int V_) : V(V_) { cache.resize(V); }
-
-  void clear() {
-    for (int i = 0; i < V; i++) { cache[i].clear(); }
-  }
-};
-
 class Configuration {
 
   public:
@@ -86,8 +75,8 @@ class Configuration {
 
     if (this->use_dual) {
       for (auto const &evaluator : this->dual_evaluators) {
-        finite_U += evaluator.evaluate_at_taus(this->state, false, true).derivative;
-        infinite_U += evaluator.evaluate_at_taus(this->state, true, true).derivative;
+        finite_U -= evaluator.evaluate_at_taus(this->state, false, true).derivative;
+        infinite_U -= evaluator.evaluate_at_taus(this->state, true, true).derivative;
       }
     } else {
       for (auto const &evaluator : this->evaluators) {
