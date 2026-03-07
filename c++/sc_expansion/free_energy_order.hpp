@@ -6,18 +6,19 @@
 
 namespace sc_expansion {
 
+  template <typename T>
   class FreeEnergyCalculator {
     public:
-    FreeEnergyCalculator(Parameters const &params, int order);
+    FreeEnergyCalculator(Parameters<T> const &params, int order);
 
-    double compute_sum_diagrams(std::vector<double> const &taus, bool infinite_U, bool use_cache) const;
-    double compute_sum_diagrams_dimer(std::vector<double> const &taus, bool infinite_U, bool use_cache) const;
+    T compute_sum_diagrams(std::vector<double> const &taus, bool infinite_U, bool use_cache) const;
+    T compute_sum_diagrams_dimer(std::vector<double> const &taus, bool infinite_U, bool use_cache) const;
 
     private:
-    Parameters params;
+    Parameters<T> params;
     int order;
     std::deque<Diagram> diagrams;
-    std::vector<DiagramEvaluator> evaluators;
+    std::vector<DiagramEvaluator<T>> evaluators;
   };
 
 } // namespace sc_expansion

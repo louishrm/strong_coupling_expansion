@@ -8,6 +8,7 @@
 
 namespace sc_expansion {
 
+  template <typename T>
   class CumulantSolver {
     public:
     using Arg     = std::pair<double, int>;
@@ -32,40 +33,41 @@ namespace sc_expansion {
     // References to the original full lists (The "Master" lists)
     const ArgList &master_unprimed;
     const ArgList &master_primed;
-    const HubbardAtom &atom;
+    const HubbardAtom<T> &atom;
     bool infinite_U = false;
 
-    double call_bare(const ArgList &u, const ArgList &p) const;
+    T call_bare(const ArgList &u, const ArgList &p) const;
 
     // Memoization Table
-    std::unordered_map<CacheKey, double, KeyHasher> memo;
+    std::unordered_map<CacheKey, T, KeyHasher> memo;
 
     // Pre-calculated spin masks for fast conservation checks
     uint64_t master_spin_mask_u = 0;
     uint64_t master_spin_mask_p = 0;
 
-    double distribute_primed(const std::vector<uint64_t> &u_partition_masks, int u_idx, uint64_t current_p_pool, const std::vector<int> &global_map_u,
+    T distribute_primed(const std::vector<uint64_t> &u_partition_masks, int u_idx, uint64_t current_p_pool, const std::vector<int> &global_map_u,
                              const std::vector<int> &global_map_p);
 
     public:
-    CumulantSolver(const ArgList &u, const ArgList &p, const HubbardAtom &a, bool infinite_U);
+    CumulantSolver(const ArgList &u, const ArgList &p, const HubbardAtom<T> &a, bool infinite_U);
 
     mutable int cache_hits   = 0;
     mutable int cache_misses = 0;
 
     // --- The Core Recursive Function ---
-    double solve(uint64_t mask_u, uint64_t mask_p);
+    T solve(uint64_t mask_u, uint64_t mask_p);
 
     // Wrapper to match the test usage
-    double compute_cumulant_decomposition();
+    T compute_cumulant_decomposition();
   };
 
-  double compute_cumulant_decomposition(ArgList const &unprimed, ArgList const &primed, HubbardAtom const &atom,
+  template <typename T>
+  T compute_cumulant_decomposition(ArgList const &unprimed, ArgList const &primed, HubbardAtom<T> const &atom,
                                         bool infinite_U = false, bool verbose = false);
 
   // Wrapper class for Python to easily compute cumulants for spin 0
   class CumulantHelper {
-    HubbardAtom atom;
+    HubbardAtom<double> atom;
 
     public:
     CumulantHelper(double U, double beta, double mu) : atom(U, beta, mu) {}

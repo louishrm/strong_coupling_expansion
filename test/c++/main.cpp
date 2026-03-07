@@ -11,8 +11,8 @@ using namespace sc_expansion;
 
 double dimer_Omega2a(auto atom, double beta, std::vector<double> tau) {
 
-  double G0_12 = compute_cumulant_decomposition({{tau[0], 0}}, {{tau[1], 0}}, atom); //G(1|2)
-  double G0_21 = compute_cumulant_decomposition({{tau[1], 0}}, {{tau[0], 0}}, atom); //G(2|1)
+  double G0_12 = compute_cumulant_decomposition<double>({{tau[0], 0}}, {{tau[1], 0}}, atom); //G(1|2)
+  double G0_21 = compute_cumulant_decomposition<double>({{tau[1], 0}}, {{tau[0], 0}}, atom); //G(2|1)
 
   double sign              = 1.0;
   double symmetry_factor   = 1 / 2.0;
@@ -39,10 +39,10 @@ double dimer_Omega2(auto atom, double beta, double delta) {
 
 double dimer_Omega4a(auto atom, double beta, std::vector<double> tau) {
 
-  double G01_14 = compute_cumulant_decomposition({{tau[0], 0}}, {{tau[3], 0}}, atom); //G(1|4)
-  double G01_21 = compute_cumulant_decomposition({{tau[1], 0}}, {{tau[0], 0}}, atom); //G(2|1)
-  double G01_32 = compute_cumulant_decomposition({{tau[2], 0}}, {{tau[1], 0}}, atom); //G(3|2)
-  double G01_43 = compute_cumulant_decomposition({{tau[3], 0}}, {{tau[2], 0}}, atom); //G(4|3)
+  double G01_14 = compute_cumulant_decomposition<double>({{tau[0], 0}}, {{tau[3], 0}}, atom); //G(1|4)
+  double G01_21 = compute_cumulant_decomposition<double>({{tau[1], 0}}, {{tau[0], 0}}, atom); //G(2|1)
+  double G01_32 = compute_cumulant_decomposition<double>({{tau[2], 0}}, {{tau[1], 0}}, atom); //G(3|2)
+  double G01_43 = compute_cumulant_decomposition<double>({{tau[3], 0}}, {{tau[2], 0}}, atom); //G(4|3)
 
   double sign              = -1.0;
   double symmetry_factor   = 1 / 4.0;
@@ -56,16 +56,16 @@ double dimer_Omega4a(auto atom, double beta, std::vector<double> tau) {
 double dimer_Omega4b(auto atom, double beta, std::vector<double> tau) {
   double result = 0.0;
 
-  double C02_up = compute_cumulant_decomposition({{tau[1], 0}, {tau[3], 0}}, {{tau[0], 0}, {tau[2], 0}}, atom); //C(2 4 | 1 3)
+  double C02_up = compute_cumulant_decomposition<double>({{tau[1], 0}, {tau[3], 0}}, {{tau[0], 0}, {tau[2], 0}}, atom); //C(2 4 | 1 3)
 
-  double G01_14_up = compute_cumulant_decomposition({{tau[0], 0}}, {{tau[1], 0}}, atom);
-  double G01_32_up = compute_cumulant_decomposition({{tau[2], 0}}, {{tau[3], 0}}, atom);
+  double G01_14_up = compute_cumulant_decomposition<double>({{tau[0], 0}}, {{tau[1], 0}}, atom);
+  double G01_32_up = compute_cumulant_decomposition<double>({{tau[2], 0}}, {{tau[3], 0}}, atom);
   result += 2 * C02_up * G01_14_up * G01_32_up;
 
-  double C02_updown = compute_cumulant_decomposition({{tau[1], 0}, {tau[3], 1}}, {{tau[0], 0}, {tau[2], 1}}, atom); //C(2 4 | 1 3)
+  double C02_updown = compute_cumulant_decomposition<double>({{tau[1], 0}, {tau[3], 1}}, {{tau[0], 0}, {tau[2], 1}}, atom); //C(2 4 | 1 3)
 
-  double G01_14_up_2 = compute_cumulant_decomposition({{tau[0], 0}}, {{tau[1], 0}}, atom); //G(1|4)
-  double G01_32_down = compute_cumulant_decomposition({{tau[2], 1}}, {{tau[3], 1}}, atom); //G(3|2)
+  double G01_14_up_2 = compute_cumulant_decomposition<double>({{tau[0], 0}}, {{tau[1], 0}}, atom); //G(1|4)
+  double G01_32_down = compute_cumulant_decomposition<double>({{tau[2], 1}}, {{tau[3], 1}}, atom); //G(3|2)
 
   result += 2 * C02_updown * G01_14_up_2 * G01_32_down;
 
@@ -81,14 +81,14 @@ double dimer_Omega4c(auto atom, double beta, std::vector<double> tau) {
 
   double result = 0.0;
 
-  result += 2 * compute_cumulant_decomposition({{tau[1], 0}, {tau[3], 0}}, {{tau[0], 0}, {tau[2], 0}}, atom)
-     * compute_cumulant_decomposition({{tau[0], 0}, {tau[2], 0}}, {{tau[1], 0}, {tau[3], 0}}, atom);
+  result += 2 * compute_cumulant_decomposition<double>({{tau[1], 0}, {tau[3], 0}}, {{tau[0], 0}, {tau[2], 0}}, atom)
+     * compute_cumulant_decomposition<double>({{tau[0], 0}, {tau[2], 0}}, {{tau[1], 0}, {tau[3], 0}}, atom);
 
-  result += 2 * compute_cumulant_decomposition({{tau[1], 0}, {tau[3], 1}}, {{tau[0], 0}, {tau[2], 1}}, atom)
-     * compute_cumulant_decomposition({{tau[0], 0}, {tau[2], 1}}, {{tau[1], 0}, {tau[3], 1}}, atom);
+  result += 2 * compute_cumulant_decomposition<double>({{tau[1], 0}, {tau[3], 1}}, {{tau[0], 0}, {tau[2], 1}}, atom)
+     * compute_cumulant_decomposition<double>({{tau[0], 0}, {tau[2], 1}}, {{tau[1], 0}, {tau[3], 1}}, atom);
 
-  result += 2 * compute_cumulant_decomposition({{tau[1], 1}, {tau[3], 0}}, {{tau[0], 0}, {tau[2], 1}}, atom)
-     * compute_cumulant_decomposition({{tau[0], 0}, {tau[2], 1}}, {{tau[1], 1}, {tau[3], 0}}, atom);
+  result += 2 * compute_cumulant_decomposition<double>({{tau[1], 1}, {tau[3], 0}}, {{tau[0], 0}, {tau[2], 1}}, atom)
+     * compute_cumulant_decomposition<double>({{tau[0], 0}, {tau[2], 1}}, {{tau[1], 1}, {tau[3], 0}}, atom);
 
   double sign              = 1.0;
   double symmetry_factor   = 1 / 8.0;
@@ -160,7 +160,7 @@ int main(int argc, char *argv[]) {
   double beta = 1.0;
   double mu   = 2.0;
 
-  HubbardAtom atom(U, beta, mu);
+  HubbardAtom<double> atom(U, beta, mu);
 
   std::vector<std::vector<double>> grid;
   for (int i = 0; i < order; i++) {

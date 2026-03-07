@@ -1,5 +1,6 @@
 #include "./hubbard_atom.hpp"
 #include "./combinatorics.hpp"
+#include "./dual.hpp"
 
 namespace sc_expansion {
 
@@ -77,7 +78,8 @@ namespace sc_expansion {
     return true;
   }
 
-  const std::array<Transition, 16> HubbardAtom::lookup_table = []() {
+  template <typename T>
+  const std::array<Transition, 16> HubbardAtom<T>::lookup_table = []() {
     std::array<Transition, 16> table;
 
     // Iterate through all 4 states (00, 01, 10, 11)
@@ -133,15 +135,17 @@ namespace sc_expansion {
     return table;
   }();
 
-  HubbardAtom::HubbardAtom(double U_, double beta_, double mu_) : U(U_), beta(beta_), mu(mu_) {
-    this->Z            = 1 + 2 * std::exp(beta * mu) + std::exp(beta * (2 * mu - U)); //Partition function at finite U
-    this->Z_infinite_U = 1 + 2 * std::exp(beta * mu);                                 //Partition function at infinite U
-    this->E            = {0, -mu, -mu, U - 2 * mu};
+  template <typename T>
+  HubbardAtom<T>::HubbardAtom(T U_, T beta_, T mu_) : U(U_), beta(beta_), mu(mu_) {
+    this->Z            = T(1.0) + T(2.0) * exp(beta * mu) + exp(beta * (T(2.0) * mu - U)); //Partition function at finite U
+    this->Z_infinite_U = T(1.0) + T(2.0) * exp(beta * mu);                                 //Partition function at infinite U
+    this->E            = {T(0.0), -mu, -mu, U - T(2.0) * mu};
   }
 
-  double HubbardAtom::G0(std::vector<double> const &taus, std::vector<int> const &spins) const {
+  template <typename T>
+  T HubbardAtom<T>::G0(std::vector<double> const &taus, std::vector<int> const &spins) const {
     Args args(taus, spins);
-    double G0_value = 0.0;
+    T G0_value = T(0.0);
 
     //get the only two states that the list op in the sorted list can act on
     int last_op = args.ops.back();
@@ -149,7 +153,7 @@ namespace sc_expansion {
     for (int initial_state : this->valid_start_states[last_op]) {
 
       int current_state        = initial_state;
-      double current_trace_val = 1.0;
+      T current_trace_val = T(1.0);
 
       for (int i = args.order - 1; i >= 0; --i) {
 
@@ -157,32 +161,31 @@ namespace sc_expansion {
         Transition t    = this->lookup_table[table_index];
 
         if (t.matrix_element == 0.0) {
-          current_trace_val = 0.0;
+          current_trace_val = T(0.0);
           break;
         }
         int next_state     = t.connected_state;
-        double energy_diff = this->E[next_state] - this->E[current_state];
-        current_trace_val *= t.matrix_element * std::exp(args.taus[i] * energy_diff);
+        T energy_diff = this->E[next_state] - this->E[current_state];
+        current_trace_val = current_trace_val * T(t.matrix_element) * exp(T(args.taus[i]) * energy_diff);
         current_state = next_state;
       }
 
-      if (current_trace_val != 0.0) {
-
-        if (current_state == initial_state) {
-          current_trace_val *= std::exp(-this->beta * this->E[current_state]);
-          G0_value += current_trace_val;
-        }
+      // Add to value for Dual properly
+      if (current_state == initial_state) {
+        current_trace_val = current_trace_val * exp(-this->beta * this->E[current_state]);
+        G0_value = G0_value + current_trace_val;
       }
     }
 
-    return 1 / this->Z * args.permutation_sign * G0_value;
+    return T(1.0) / this->Z * T(args.permutation_sign) * G0_value;
   }
 
-  double HubbardAtom::G0_infinite_U(std::vector<double> const &taus, std::vector<int> const &spins) const {
+  template <typename T>
+  T HubbardAtom<T>::G0_infinite_U(std::vector<double> const &taus, std::vector<int> const &spins) const {
     Args args(taus, spins);
-    double G0_value = 0.0;
+    T G0_value = T(0.0);
 
-    if (!args.verify_consecutive_terms_infinite_U()) { return 0.0; }
+    if (!args.verify_consecutive_terms_infinite_U()) { return T(0.0); }
 
     // If the sequence is valid, we can directly compute the contribution from the first operator.
     // The contribution from the rest of the sequence is guaranteed to be 1 due to the strict alternation and spin conservation rules.
@@ -190,14 +193,17 @@ namespace sc_expansion {
     int first_op = args.ops[0];
     if (first_op >= 2) {
       // First operator is a creation operator
-      G0_value = std::exp(this->beta * this->mu) / this->Z_infinite_U;
+      G0_value = exp(this->beta * this->mu) / this->Z_infinite_U;
     } else {
       // First operator is a destruction operator
-      G0_value = 1.0 / this->Z_infinite_U;
+      G0_value = T(1.0) / this->Z_infinite_U;
     }
 
-    return args.permutation_sign * G0_value;
+    return T(args.permutation_sign) * G0_value;
   }
+
+  template class HubbardAtom<double>;
+  template class HubbardAtom<Dual>;
 
 } // namespace sc_expansion
 

@@ -15,10 +15,11 @@ namespace sc_expansion {
   using Arg     = std::pair<double, int>;
   using ArgList = std::vector<Arg>;
 
+  template <typename T>
   struct Parameters {
-    double U;
-    double beta;
-    double mu;
+    T U;
+    T beta;
+    T mu;
   };
 
   struct Args {
@@ -41,22 +42,23 @@ namespace sc_expansion {
     double matrix_element;
   };
 
+  template <typename T>
   class HubbardAtom {
 
     public:
-    HubbardAtom(double U, double beta, double mu);
+    HubbardAtom(T U, T beta, T mu);
 
-    double G0(std::vector<double> const &taus, std::vector<int> const &spins) const;
-    double G0_infinite_U(std::vector<double> const &taus, std::vector<int> const &spins) const;
+    T G0(std::vector<double> const &taus, std::vector<int> const &spins) const;
+    T G0_infinite_U(std::vector<double> const &taus, std::vector<int> const &spins) const;
 
     // Internal members made public for testing and cumulant solver efficiency
-    double U;
-    double beta;
-    double mu;
+    T U;
+    T beta;
+    T mu;
 
-    double Z;
-    double Z_infinite_U;
-    std::array<double, 4> E;
+    T Z;
+    T Z_infinite_U;
+    std::array<T, 4> E;
 
     static const std::array<Transition, 16> lookup_table; 
 

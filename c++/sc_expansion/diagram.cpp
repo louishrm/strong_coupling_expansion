@@ -116,16 +116,18 @@ namespace sc_expansion {
     this->diagram_sign = (num_loops % 2 == 0) ? 1 : -1;
   }
 
-  DiagramEvaluator::DiagramEvaluator(Diagram const &diagram_, Parameters const &params) : diagram(diagram_), atom(params.U, params.beta, params.mu) {
+  template <typename T>
+  DiagramEvaluator<T>::DiagramEvaluator(Diagram const &diagram_, Parameters<T> const &params) : diagram(diagram_), atom(params.U, params.beta, params.mu) {
     int order = this->diagram.get_graph().get_order();
     this->current_taus.assign(order, -1.0);
     for (const Vertex &v : this->diagram.get_vertices()) {
-      this->cache_finite.emplace_back(1 << v.degree(), 0.0);
-      this->cache_infinite.emplace_back(1 << v.degree(), 0.0);
+      this->cache_finite.emplace_back(1 << v.degree(), T(0.0));
+      this->cache_infinite.emplace_back(1 << v.degree(), T(0.0));
     }
   }
 
-  void DiagramEvaluator::check_vertex(int v_idx, std::vector<double> const &taus) const {
+  template <typename T>
+  void DiagramEvaluator<T>::check_vertex(int v_idx, std::vector<double> const &taus) const {
     const auto &v     = diagram.get_vertices()[v_idx];
     bool is_corrupted = false;
 
@@ -147,7 +149,8 @@ namespace sc_expansion {
     if (is_corrupted) { this->recompute_vertex(v_idx, taus); }
   }
 
-  std::pair<ArgList, ArgList> DiagramEvaluator::get_local_cumul_args(int v_idx, std::vector<double> const &taus, uint32_t local_mask) const {
+  template <typename T>
+  std::pair<ArgList, ArgList> DiagramEvaluator<T>::get_local_cumul_args(int v_idx, std::vector<double> const &taus, uint32_t local_mask) const {
     const auto &v = this->diagram.get_vertices()[v_idx];
     ArgList unprimed_args, primed_args;
 
@@ -167,7 +170,8 @@ namespace sc_expansion {
     return {unprimed_args, primed_args};
   }
 
-  void DiagramEvaluator::recompute_vertex(int v_idx, std::vector<double> const &taus) const {
+  template <typename T>
+  void DiagramEvaluator<T>::recompute_vertex(int v_idx, std::vector<double> const &taus) const {
     const auto &v = diagram.get_vertices()[v_idx];
     std::vector<bool> already_done(1 << v.degree(), false);
 
@@ -182,69 +186,74 @@ namespace sc_expansion {
     }
   }
 
-  double DiagramEvaluator::evaluate_at_taus(std::vector<double> const &taus, bool infinite_U, bool use_cache) const {
+  template <typename T>
+  T DiagramEvaluator<T>::evaluate_at_taus(std::vector<double> const &taus, bool infinite_U, bool use_cache) const {
     int V = this->diagram.get_vertices().size();
     for (int v = 0; v < V; ++v) { this->check_vertex(v, taus); }
     this->current_taus = taus;
 
-    double sum                 = 0.0;
+    T sum                 = T(0.0);
     const auto &global_configs = this->diagram.get_global_configs();
     const auto &weights        = this->diagram.get_config_weights();
     const auto &vertices       = this->diagram.get_vertices();
     const auto &cache          = infinite_U ? cache_infinite : cache_finite;
 
     for (size_t g_idx = 0; g_idx < global_configs.size(); ++g_idx) {
-      double product = 1.0;
+      T product = T(1.0);
       for (int v_idx = 0; v_idx < V; ++v_idx) {
         int mask = vertices[v_idx].local_spin_configs[g_idx];
 
         if (use_cache) {
-          product *= cache[v_idx][mask];
+          product = product * cache[v_idx][mask];
         } else {
           auto args = this->get_local_cumul_args(v_idx, taus, mask);
-          product *= compute_cumulant_decomposition(args.first, args.second, this->atom, infinite_U);
+          product = product * compute_cumulant_decomposition(args.first, args.second, this->atom, infinite_U);
         }
       }
-      sum += weights[g_idx] * product;
+      sum = sum + T(weights[g_idx]) * product;
     }
-    double sign            = this->diagram.get_diagram_sign();
-    double symmetry_factor = this->diagram.get_graph().get_symmetry_factor();
-    double fm              = this->diagram.get_graph().get_free_multiplicity();
-    double prefactor       = (-1.0 / this->atom.beta) * sign / symmetry_factor * fm;
+    T sign            = T(this->diagram.get_diagram_sign());
+    T symmetry_factor = T(this->diagram.get_graph().get_symmetry_factor());
+    T fm              = T(this->diagram.get_graph().get_free_multiplicity());
+    T prefactor       = (T(-1.0) / this->atom.beta) * sign / symmetry_factor * fm;
 
     return prefactor * sum;
   }
 
-  double DiagramEvaluator::evaluate_at_taus_dimer(std::vector<double> const &taus, bool infinite_U, bool use_cache) const {
+  template <typename T>
+  T DiagramEvaluator<T>::evaluate_at_taus_dimer(std::vector<double> const &taus, bool infinite_U, bool use_cache) const {
     int V = this->diagram.get_vertices().size();
     for (int v = 0; v < V; ++v) { this->check_vertex(v, taus); }
     this->current_taus = taus;
 
-    double sum                 = 0.0;
+    T sum                 = T(0.0);
     const auto &global_configs = this->diagram.get_global_configs();
     const auto &weights        = this->diagram.get_config_weights();
     const auto &vertices       = this->diagram.get_vertices();
     const auto &cache          = infinite_U ? cache_infinite : cache_finite;
 
     for (size_t g_idx = 0; g_idx < global_configs.size(); ++g_idx) {
-      double product = 1.0;
+      T product = T(1.0);
       for (int v_idx = 0; v_idx < V; ++v_idx) {
         int mask = vertices[v_idx].local_spin_configs[g_idx];
 
         if (use_cache) {
-          product *= cache[v_idx][mask];
+          product = product * cache[v_idx][mask];
         } else {
           auto args = this->get_local_cumul_args(v_idx, taus, mask);
-          product *= compute_cumulant_decomposition(args.first, args.second, this->atom, infinite_U);
+          product = product * compute_cumulant_decomposition(args.first, args.second, this->atom, infinite_U);
         }
       }
-      sum += weights[g_idx] * product;
+      sum = sum + T(weights[g_idx]) * product;
     }
-    double sign            = this->diagram.get_diagram_sign();
-    double symmetry_factor = this->diagram.get_graph().get_symmetry_factor();
-    double fm              = 1.0; // Fixed for dimer calculation
-    double prefactor       = (-1.0 / this->atom.beta) * sign / symmetry_factor * fm;
+    T sign            = T(this->diagram.get_diagram_sign());
+    T symmetry_factor = T(this->diagram.get_graph().get_symmetry_factor());
+    T fm              = T(1.0); // Fixed for dimer calculation
+    T prefactor       = (T(-1.0) / this->atom.beta) * sign / symmetry_factor * fm;
 
     return prefactor * sum;
   }
+
+  template class DiagramEvaluator<double>;
+  template class DiagramEvaluator<Dual>;
 } // namespace sc_expansion

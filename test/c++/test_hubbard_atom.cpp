@@ -108,9 +108,9 @@ class HubbardAtomTest : public ::testing::Test {
   double beta = 1.0;
   double mu   = 2.0;
 
-  std::unique_ptr<HubbardAtom> atom;
+  std::unique_ptr<HubbardAtom<double>> atom;
 
-  void SetUp() override { atom = std::make_unique<HubbardAtom>(U, beta, mu); }
+  void SetUp() override { atom = std::make_unique<HubbardAtom<double>>(U, beta, mu); }
 };
 
 TEST_F(HubbardAtomTest, ConstructorStateEnergies) {
@@ -135,23 +135,23 @@ TEST_F(HubbardAtomTest, LookupTableVerify) {
   // States: 0:|0>, 1:|up>, 2:|dn>, 3:|up dn>
 
   // cdag_up on |0> (state 0, op 2) -> |up> (state 1), mel 1.0
-  EXPECT_EQ(HubbardAtom::lookup_table[(0 << 2) | 2].connected_state, 1);
-  EXPECT_DOUBLE_EQ(HubbardAtom::lookup_table[(0 << 2) | 2].matrix_element, 1.0);
+  EXPECT_EQ(HubbardAtom<double>::lookup_table[(0 << 2) | 2].connected_state, 1);
+  EXPECT_DOUBLE_EQ(HubbardAtom<double>::lookup_table[(0 << 2) | 2].matrix_element, 1.0);
 
   // cdag_dn on |up> (state 1, op 3) -> |up dn> (state 3), mel -1.0 (jump over up)
-  EXPECT_EQ(HubbardAtom::lookup_table[(1 << 2) | 3].connected_state, 3);
-  EXPECT_DOUBLE_EQ(HubbardAtom::lookup_table[(1 << 2) | 3].matrix_element, -1.0);
+  EXPECT_EQ(HubbardAtom<double>::lookup_table[(1 << 2) | 3].connected_state, 3);
+  EXPECT_DOUBLE_EQ(HubbardAtom<double>::lookup_table[(1 << 2) | 3].matrix_element, -1.0);
 
   // cup on |up> (state 1, op 0) -> |0> (state 0), mel 1.0
-  EXPECT_EQ(HubbardAtom::lookup_table[(1 << 2) | 0].connected_state, 0);
-  EXPECT_DOUBLE_EQ(HubbardAtom::lookup_table[(1 << 2) | 0].matrix_element, 1.0);
+  EXPECT_EQ(HubbardAtom<double>::lookup_table[(1 << 2) | 0].connected_state, 0);
+  EXPECT_DOUBLE_EQ(HubbardAtom<double>::lookup_table[(1 << 2) | 0].matrix_element, 1.0);
 
   // cdn on |up dn> (state 3, op 1) -> |up> (state 1), mel -1.0 (jump over up)
-  EXPECT_EQ(HubbardAtom::lookup_table[(3 << 2) | 1].connected_state, 1);
-  EXPECT_DOUBLE_EQ(HubbardAtom::lookup_table[(3 << 2) | 1].matrix_element, -1.0);
+  EXPECT_EQ(HubbardAtom<double>::lookup_table[(3 << 2) | 1].connected_state, 1);
+  EXPECT_DOUBLE_EQ(HubbardAtom<double>::lookup_table[(3 << 2) | 1].matrix_element, -1.0);
 
   // Pauli exclusion: cdag_up on |up> (state 1, op 2) -> mel 0.0
-  EXPECT_DOUBLE_EQ(HubbardAtom::lookup_table[(1 << 2) | 2].matrix_element, 0.0);
+  EXPECT_DOUBLE_EQ(HubbardAtom<double>::lookup_table[(1 << 2) | 2].matrix_element, 0.0);
 }
 
 TEST_F(HubbardAtomTest, GreenFunctionG0_FiniteU_Order1) {

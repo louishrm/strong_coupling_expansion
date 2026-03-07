@@ -2,6 +2,7 @@
 #include "sc_expansion/free_energy_order.hpp"
 #include "sc_expansion/move.hpp"
 #include "sc_expansion/measure.hpp"
+#include "sc_expansion/dual.hpp"
 #include <triqs/mc_tools/mc_generic.hpp>
 #include <iostream>
 #include <triqs/utility/callbacks.hpp>
@@ -39,7 +40,7 @@ template <typename Order> std::pair<double, double> compute_exact_integral_infin
 int main(int argc, char *argv[]) {
 
   if (argc < 6) {
-    if (mpi::communicator().rank() == 0) { std::cerr << "Usage: " << argv[0] << " order n_cycles U beta mu [alpha]" << std::endl; }
+    if (mpi::communicator().rank() == 0) { std::cerr << "Usage: " << argv[0] << " order n_cycles U beta mu [alpha] [use_dual]" << std::endl; }
     return 1;
   }
 
@@ -49,6 +50,7 @@ int main(int argc, char *argv[]) {
   double beta  = std::stod(argv[4]);
   double mu    = std::stod(argv[5]);
   double alpha = (argc > 6 ? std::stod(argv[6]) : 0.5);
+  bool use_dual = (argc > 7 ? std::stoi(argv[7]) != 0 : false);
 
   // initialize mpi
   mpi::environment env(argc, argv);
@@ -58,7 +60,7 @@ int main(int argc, char *argv[]) {
   if (world.rank() == 0) {
     std::cout << "Strong Coupling Monte Carlo" << std::endl;
     std::cout << "Number of MPI processes: " << world.size() << std::endl;
-    std::cout << "U=" << U << " beta=" << beta << " mu=" << mu << " alpha=" << alpha << std::endl;
+    std::cout << "U=" << U << " beta=" << beta << " mu=" << mu << " alpha=" << alpha << " use_dual=" << use_dual << std::endl;
   }
 
   // MC parameters
@@ -69,18 +71,40 @@ int main(int argc, char *argv[]) {
   int verbosity           = (world.rank() == 0 ? 2 : 0);
 
   // Parameters of the model and Monte Carlo initialization
-  sc_expansion::Parameters params{U, beta, mu};
-  
   double reference_integral = 0.0;
   double signed_reference_integral = 0.0;
+  Configuration* config_ptr = nullptr;
 
-  if (world.rank() == 0) {
-    std::cout << "Computing reference integral on master rank..." << std::endl;
-    sc_expansion::FreeEnergyCalculator calculator(params, order);
-    std::pair<double, double> reference_vals = compute_exact_integral_infinite_U(calculator, order, beta);
-    reference_integral                = reference_vals.first;
-    signed_reference_integral         = reference_vals.second;
-    std::cout << "Done computing reference integral. Value: " << signed_reference_integral << std::endl;
+  if (use_dual) {
+    sc_expansion::Parameters<Dual> params_dual{Dual(U, 0.0), Dual(beta, 0.0), Dual(mu, 1.0)};
+    if (world.rank() == 0) {
+      std::cout << "Computing reference integral on master rank..." << std::endl;
+      sc_expansion::FreeEnergyCalculator<Dual> calculator(params_dual, order);
+      std::vector<double> taus(order);
+      std::iota(taus.begin(), taus.end(), 0.0);
+      double sum_abs    = 0.0;
+      double sum_signed = 0.0;
+      do {
+        double val = calculator.compute_sum_diagrams(taus, true, false).derivative;
+        sum_abs += std::abs(val);
+        sum_signed += val;
+      } while (std::next_permutation(taus.begin(), taus.end()));
+      double fact = 1.0;
+      for (int i = 1; i <= order; ++i) fact *= i;
+      reference_integral = (std::pow(beta, order) / fact) * sum_abs;
+      signed_reference_integral = (std::pow(beta, order) / fact) * sum_signed;
+      std::cout << "Done computing reference integral. Value: " << signed_reference_integral << std::endl;
+    }
+  } else {
+    sc_expansion::Parameters<double> params{U, beta, mu};
+    if (world.rank() == 0) {
+      std::cout << "Computing reference integral on master rank..." << std::endl;
+      sc_expansion::FreeEnergyCalculator<double> calculator(params, order);
+      std::pair<double, double> reference_vals = compute_exact_integral_infinite_U(calculator, order, beta);
+      reference_integral                = reference_vals.first;
+      signed_reference_integral         = reference_vals.second;
+      std::cout << "Done computing reference integral. Value: " << signed_reference_integral << std::endl;
+    }
   }
 
   // Broadcast reference values to all ranks
@@ -91,7 +115,14 @@ int main(int argc, char *argv[]) {
   triqs::mc_tools::mc_generic<double> StrongCouplingMC(random_name, random_seed, verbosity);
 
   // construct configuration (Every rank needs its own for MC)
-  Configuration config(params, order, alpha);
+  if (use_dual) {
+    sc_expansion::Parameters<Dual> params_dual{Dual(U, 0.0), Dual(beta, 0.0), Dual(mu, 1.0)};
+    config_ptr = new Configuration(params_dual, order, alpha);
+  } else {
+    sc_expansion::Parameters<double> params{U, beta, mu};
+    config_ptr = new Configuration(params, order, alpha);
+  }
+  Configuration& config = *config_ptr;
 
   long total_cycles = n_cycles * world.size(); // Total samples across all cores
   int n_bins        = 50;                      // Standard choice for Jackknife
@@ -121,6 +152,7 @@ int main(int argc, char *argv[]) {
     std::cout << "Exact result (Infinite U, Order " << order << "): " << signed_reference_integral << std::endl;
   }
 
+  delete config_ptr;
   return 0;
 }
 

@@ -38,11 +38,11 @@ class DiagramTest : public ::testing::Test {
   double U    = 8.0;
   double beta = 1.0;
   double mu   = 2.0;
-  Parameters params{U, beta, mu};
+  Parameters<double> params{U, beta, mu};
 
-  std::unique_ptr<HubbardAtom> atom;
+  std::unique_ptr<HubbardAtom<double>> atom;
 
-  void SetUp() override { atom = std::make_unique<HubbardAtom>(U, beta, mu); }
+  void SetUp() override { atom = std::make_unique<HubbardAtom<double>>(U, beta, mu); }
 };
 
 TEST_F(DiagramTest, DiagramSignIsCorrect) {
@@ -119,7 +119,7 @@ TEST_F(DiagramTest, InfiniteUDiagramConstantInSimplex) {
   std::vector<uint8_t> D4a = {0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0}; // 4-cycle
   Graph g4a(D4a, 4);
   Diagram d4a(g4a);
-  DiagramEvaluator eval4a(d4a, params);
+  DiagramEvaluator<double> eval4a(d4a, params);
 
   std::vector<double> taus_41 = {0.1, 0.2, 0.3, 0.4};
   std::vector<double> taus_42 = {0.15, 0.23, 0.31, 0.76};
@@ -130,7 +130,7 @@ TEST_F(DiagramTest, InfiniteUDiagramConstantInSimplex) {
   std::vector<uint8_t> D6c = {0, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0};
   Graph g6c(D6c, 4);
   Diagram d6c(g6c);
-  DiagramEvaluator eval6c(d6c, params);
+  DiagramEvaluator<double> eval6c(d6c, params);
 
   std::vector<double> taus_61 = {0.1, 0.2, 0.3, 0.4, 0.5, 0.6};
   std::vector<double> taus_62 = {0.15, 0.23, 0.31, 0.45, 0.52, 0.78};
@@ -144,7 +144,7 @@ TEST_F(DiagramTest, InfiniteUDiagramConstantInSimplex) {
 
 TEST_F(DiagramTest, VanishInNonInteractingLimit) {
 
-  Parameters pars{0.0, beta, mu};                                              // U=0 limit
+  Parameters<double> pars{0.0, beta, mu};                                              // U=0 limit
   std::vector<uint8_t> D4a = {0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0}; // 4-cycle
   std::vector<uint8_t> D4b = {0, 1, 1, 1, 0, 0, 1, 0, 0};                      // 3-cycle with double lines (0->1, 0->2, 1->0, 2->0)
   std::vector<uint8_t> D4c = {0, 2, 2, 0};                                     // 2-cycle with double lines
@@ -157,9 +157,9 @@ TEST_F(DiagramTest, VanishInNonInteractingLimit) {
   Diagram diagram_b(g_b);
   Diagram diagram_c(g_c);
 
-  DiagramEvaluator eval_a(diagram_a, pars);
-  DiagramEvaluator eval_b(diagram_b, pars);
-  DiagramEvaluator eval_c(diagram_c, pars);
+  DiagramEvaluator<double> eval_a(diagram_a, pars);
+  DiagramEvaluator<double> eval_b(diagram_b, pars);
+  DiagramEvaluator<double> eval_c(diagram_c, pars);
 
   std::vector<double> taus = {0.1, 0.2, 0.3, 0.4}; // arbitrary taus
   double resa              = eval_a.evaluate_at_taus(taus, false, false);
@@ -172,7 +172,7 @@ TEST_F(DiagramTest, VanishInNonInteractingLimit) {
 
 TEST_F(DiagramTest, ExactIntegralOrder4InfiniteU) {
   int order = 4;
-  FreeEnergyCalculator calculator(params, order);
+  FreeEnergyCalculator<double> calculator(params, order);
   auto result = compute_exact_integral_infinite_U(calculator, order, beta);
   
   // The expected result for order 4, U=8.0, beta=1.0, mu=2.0 is -1.59245549e-03

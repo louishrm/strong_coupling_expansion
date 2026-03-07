@@ -50,21 +50,22 @@ namespace sc_expansion {
     void compute_diagram_sign();
   };
 
+  template <typename T>
   class DiagramEvaluator {
 
     public:
-    explicit DiagramEvaluator(Diagram const &diagram, Parameters const &params);
+    explicit DiagramEvaluator(Diagram const &diagram, Parameters<T> const &params);
 
-    double evaluate_at_taus(std::vector<double> const &taus, bool infinite_U, bool use_cache) const;
-    double evaluate_at_taus_dimer(std::vector<double> const &taus, bool infinite_U, bool use_cache) const;
+    T evaluate_at_taus(std::vector<double> const &taus, bool infinite_U, bool use_cache) const;
+    T evaluate_at_taus_dimer(std::vector<double> const &taus, bool infinite_U, bool use_cache) const;
     Diagram const &get_diagram() const { return this->diagram; }
 
     private:
     const Diagram &diagram;
-    HubbardAtom atom;
+    HubbardAtom<T> atom;
     mutable std::vector<double> current_taus;
-    mutable std::vector<std::vector<double>> cache_finite;
-    mutable std::vector<std::vector<double>> cache_infinite;
+    mutable std::vector<std::vector<T>> cache_finite;
+    mutable std::vector<std::vector<T>> cache_infinite;
 
     void check_vertex(int v_idx, std::vector<double> const &taus) const;
     void recompute_vertex(int v_idx, std::vector<double> const &taus) const;
