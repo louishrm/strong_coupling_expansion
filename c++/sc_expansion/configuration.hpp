@@ -75,8 +75,8 @@ class Configuration {
 
     if (this->use_dual) {
       for (auto const &evaluator : this->dual_evaluators) {
-        finite_U -= evaluator.evaluate_at_taus(this->state, false, true).derivative;
-        infinite_U -= evaluator.evaluate_at_taus(this->state, true, true).derivative;
+        finite_U += evaluator.evaluate_at_taus(this->state, false, true).derivative;
+        infinite_U += evaluator.evaluate_at_taus(this->state, true, true).derivative;
       }
     } else {
       for (auto const &evaluator : this->evaluators) {
