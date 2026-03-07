@@ -20,7 +20,7 @@ struct Dual {
   Dual operator-() const { return Dual(-value, -derivative); }
 };
 
-Dual exp(const Dual &xi) {
+inline Dual exp(const Dual &xi) {
   double exp_val = std::exp(xi.value);
   return Dual(exp_val, exp_val * xi.derivative);
 }
