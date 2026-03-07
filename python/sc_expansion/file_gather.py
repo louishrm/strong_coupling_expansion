@@ -20,7 +20,7 @@ alpha = args.alpha
 dual = args.dual
 
 if dual: 
-    filename = f"./results/full_lattice_density_order_{order}_scan_mu_U={U}_beta={beta}_alpha={alpha}_dual.h5"
+    filename = f"./results/full_lattice_density_order_{order}_scan_mu_U={U}_beta={beta}_alpha={alpha}.h5"
 else:
     filename = f"./results/full_lattice_Omega_order_{order}_scan_mu_U={U}_beta={beta}_alpha={alpha}.h5"
 
