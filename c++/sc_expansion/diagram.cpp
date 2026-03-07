@@ -117,7 +117,8 @@ namespace sc_expansion {
   }
 
   template <typename T>
-  DiagramEvaluator<T>::DiagramEvaluator(Diagram const &diagram_, Parameters<T> const &params) : diagram(diagram_), atom(params.U, params.beta, params.mu) {
+  DiagramEvaluator<T>::DiagramEvaluator(Diagram const &diagram_, Parameters<T> const &params)
+     : diagram(diagram_), atom(params.U, params.beta, params.mu) {
     int order = this->diagram.get_graph().get_order();
     this->current_taus.assign(order, -1.0);
     for (const Vertex &v : this->diagram.get_vertices()) {
@@ -126,8 +127,7 @@ namespace sc_expansion {
     }
   }
 
-  template <typename T>
-  void DiagramEvaluator<T>::check_vertex(int v_idx, std::vector<double> const &taus) const {
+  template <typename T> void DiagramEvaluator<T>::check_vertex(int v_idx, std::vector<double> const &taus) const {
     const auto &v     = diagram.get_vertices()[v_idx];
     bool is_corrupted = false;
 
@@ -170,8 +170,7 @@ namespace sc_expansion {
     return {unprimed_args, primed_args};
   }
 
-  template <typename T>
-  void DiagramEvaluator<T>::recompute_vertex(int v_idx, std::vector<double> const &taus) const {
+  template <typename T> void DiagramEvaluator<T>::recompute_vertex(int v_idx, std::vector<double> const &taus) const {
     const auto &v = diagram.get_vertices()[v_idx];
     std::vector<bool> already_done(1 << v.degree(), false);
 
@@ -186,13 +185,12 @@ namespace sc_expansion {
     }
   }
 
-  template <typename T>
-  T DiagramEvaluator<T>::evaluate_at_taus(std::vector<double> const &taus, bool infinite_U, bool use_cache) const {
+  template <typename T> T DiagramEvaluator<T>::evaluate_at_taus(std::vector<double> const &taus, bool infinite_U, bool use_cache) const {
     int V = this->diagram.get_vertices().size();
     for (int v = 0; v < V; ++v) { this->check_vertex(v, taus); }
     this->current_taus = taus;
 
-    T sum                 = T(0.0);
+    T sum                      = T(0.0);
     const auto &global_configs = this->diagram.get_global_configs();
     const auto &weights        = this->diagram.get_config_weights();
     const auto &vertices       = this->diagram.get_vertices();
@@ -207,7 +205,7 @@ namespace sc_expansion {
           product = product * cache[v_idx][mask];
         } else {
           auto args = this->get_local_cumul_args(v_idx, taus, mask);
-          product = product * compute_cumulant_decomposition(args.first, args.second, this->atom, infinite_U);
+          product   = product * compute_cumulant_decomposition(args.first, args.second, this->atom, infinite_U);
         }
       }
       sum = sum + T(weights[g_idx]) * product;
@@ -220,13 +218,12 @@ namespace sc_expansion {
     return prefactor * sum;
   }
 
-  template <typename T>
-  T DiagramEvaluator<T>::evaluate_at_taus_dimer(std::vector<double> const &taus, bool infinite_U, bool use_cache) const {
+  template <typename T> T DiagramEvaluator<T>::evaluate_at_taus_dimer(std::vector<double> const &taus, bool infinite_U, bool use_cache) const {
     int V = this->diagram.get_vertices().size();
     for (int v = 0; v < V; ++v) { this->check_vertex(v, taus); }
     this->current_taus = taus;
 
-    T sum                 = T(0.0);
+    T sum                      = T(0.0);
     const auto &global_configs = this->diagram.get_global_configs();
     const auto &weights        = this->diagram.get_config_weights();
     const auto &vertices       = this->diagram.get_vertices();
@@ -241,7 +238,7 @@ namespace sc_expansion {
           product = product * cache[v_idx][mask];
         } else {
           auto args = this->get_local_cumul_args(v_idx, taus, mask);
-          product = product * compute_cumulant_decomposition(args.first, args.second, this->atom, infinite_U);
+          product   = product * compute_cumulant_decomposition(args.first, args.second, this->atom, infinite_U);
         }
       }
       sum = sum + T(weights[g_idx]) * product;
