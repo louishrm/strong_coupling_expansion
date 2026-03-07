@@ -7,6 +7,7 @@
 #include "./hubbard_atom.hpp"
 #include "./cumulant.hpp"
 #include "./graph.hpp" // Include Graph for compute_free_multiplicity logic
+#include "./dual.hpp"
 
 namespace sc_expansion {
 
@@ -50,8 +51,7 @@ namespace sc_expansion {
     void compute_diagram_sign();
   };
 
-  template <typename T>
-  class DiagramEvaluator {
+  template <typename T> class DiagramEvaluator {
 
     public:
     explicit DiagramEvaluator(Diagram const &diagram, Parameters<T> const &params);
@@ -69,8 +69,7 @@ namespace sc_expansion {
 
     void check_vertex(int v_idx, std::vector<double> const &taus) const;
     void recompute_vertex(int v_idx, std::vector<double> const &taus) const;
-    std::pair<ArgList, ArgList> get_local_cumul_args(int v_idx, std::vector<double> const &taus,
-                                                                                     uint32_t local_mask) const;
+    std::pair<ArgList, ArgList> get_local_cumul_args(int v_idx, std::vector<double> const &taus, uint32_t local_mask) const;
   };
 
   // class Diagram {
