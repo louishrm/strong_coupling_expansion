@@ -2,6 +2,7 @@
 #include <cmath>
 #include "../c++/sc_expansion/hubbard_atom.hpp"
 #include "../c++/sc_expansion/cumulant.hpp"
+#include "../c++/sc_expansion/dual.hpp"
 
 using namespace sc_expansion;
 
@@ -33,7 +34,7 @@ class HubbardAtomTest : public ::testing::Test {
 
 TEST_F(HubbardAtomTest, CumulantOrderOneMatchesExactResult) {
 
-  double tau          = 0.5;
+  double tau       = 0.5;
   ArgList unprimed = {{tau, 0}};
   ArgList primed   = {{0, 0}};
 
@@ -157,6 +158,27 @@ TEST_F(HubbardAtomTest, InfiniteUCumulantOrder2MatchesExactResult) {
   double C02 = compute_cumulant_decomposition<double>(unprimed_args, primed_args, *atom, true);
 
   EXPECT_NEAR(C02, C02_exact, 1e-12);
+}
+
+TEST(HubbardAtomDualTest, ParticleHoleSymmetryCumulant) {
+  double U     = 8.0;
+  double beta  = 1.0;
+  double delta = 0.1;
+
+  Dual mu1(U / 2.0 + delta, 1.0);
+  Dual mu2(U / 2.0 - delta, 1.0);
+
+  HubbardAtom<Dual> atom1(U, beta, mu1);
+  HubbardAtom<Dual> atom2(U, beta, mu2);
+
+  ArgList u1 = {{0.8, 0}, {0.4, 1}};
+  ArgList p1 = {{0.6, 0}, {0.2, 1}};
+
+  Dual c1 = compute_cumulant_decomposition<Dual>(u1, p1, atom1);
+  Dual c2 = compute_cumulant_decomposition<Dual>(p1, u1, atom2);
+
+  EXPECT_NEAR(c1.value, c2.value, 1e-12);
+  EXPECT_NEAR(c1.derivative, -c2.derivative, 1e-12);
 }
 
 int main(int argc, char **argv) {

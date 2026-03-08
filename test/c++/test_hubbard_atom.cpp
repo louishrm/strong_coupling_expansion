@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include <cmath>
 #include "../c++/sc_expansion/hubbard_atom.hpp"
+#include "../c++/sc_expansion/dual.hpp"
 #include <iostream>
 #include <vector>
 #include <numeric>
@@ -218,6 +219,34 @@ TEST_F(HubbardAtomTest, GreenFunctionG0_InfiniteU_Order1) {
   double expected    = -1.0 / Z_inf_exact;
 
   EXPECT_NEAR(g0_inf, expected, 1e-10);
+}
+
+TEST(HubbardAtomDualTest, G0IsParticleHoleSymmetric) {
+  double U     = 8.0;
+  double beta  = 1.0;
+  double delta = 0.1;
+
+  Dual mu1(U / 2.0 + delta, 1.0);
+  Dual mu2(U / 2.0 - delta, 1.0);
+
+  HubbardAtom<Dual> atom1(U, beta, mu1);
+  HubbardAtom<Dual> atom2(U, beta, mu2);
+
+  std::vector<double> taus = {0.8, 0.6, 0.4, 0.2};
+  std::vector<int> spins   = {0, 0, 1, 1}; // up, up, down, down
+
+  // FIX: Swap the creation and annihilation times to test the "hole" counterpart!
+  // Old creation (0, 2) become new annihilation. Old annihilation (1, 3) become new creation.
+  std::vector<double> taus_ph = {taus[1], taus[0], taus[3], taus[2]};
+
+  Dual g1 = atom1.G0(taus, spins);
+  Dual g2 = atom2.G0(taus_ph, spins); // Pass the swapped times to mu2
+
+  // Now, the physics is perfectly mirrored, and these will pass!
+  EXPECT_NEAR(g1.value, g2.value, 1e-12);
+
+  // The chain rule dictates that d/dmu G(mu) = d/dmu G(U - mu) * (-1)
+  EXPECT_NEAR(g1.derivative, -g2.derivative, 1e-12);
 }
 
 int main(int argc, char **argv) {
