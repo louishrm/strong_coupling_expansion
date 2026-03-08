@@ -93,10 +93,11 @@ def pade_approx(f, pade_orders, tol=1e-14):
     
         #  Hopping finished. Now compute b and a.
         if n > 0:
-            U, S, V = np.linalg.svd(C)
+            U, S, Vh = np.linalg.svd(C)
 
             #  Null vector gives b.
-            b = V[:,n]
+            # FIX: Vh contains right singular vectors as rows. Take the last row.
+            b = Vh[-1, :]
     
             #  Do final computation via reweighted QR for better zero preservation.
             D = np.diag(np.abs(b) + np.sqrt(eps))
