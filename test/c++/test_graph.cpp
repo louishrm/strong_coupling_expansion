@@ -118,6 +118,36 @@ TEST_F(GraphTest, GraphFreeMultiplicityIsCorrect) {
   std::vector<uint8_t> D6_2 = {0, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0};
   Graph graph_6_2(D6_2, 4);
   EXPECT_EQ((int)graph_6_2.get_free_multiplicity(), 64);
+
+  // --- Order 6 Vacuum Diagrams (Square Lattice) ---
+
+  // D6a: 6-cycle. V=6. Closed walk of length 6: W_6 = (6 choose 3)^2 = 400.
+  std::vector<uint8_t> D6a = {0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0};
+  EXPECT_EQ((int)Graph(D6a, 6).get_free_multiplicity(), 400);
+
+  // D6b: Watermelon triple. V=2. Vertex 1 must be neighbor of 0. Multiplicity = 4.
+  std::vector<uint8_t> D6b = {0, 3, 3, 0};
+  EXPECT_EQ((int)Graph(D6b, 2).get_free_multiplicity(), 4);
+
+  // D6c: Petal with 4 vertices. V=4. Center 0, 3 leaves. Each leaf has 4 choices. Multiplicity = 4^3 = 64.
+  std::vector<uint8_t> D6c = {0, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0};
+  EXPECT_EQ((int)Graph(D6c, 4).get_free_multiplicity(), 64);
+
+  // D6d: Square + digon. V=5. 4-cycle (0-2-3-4-0) [36 ways] + leaf 1 attached to 0 [4 ways]. Multiplicity = 36 * 4 = 144.
+  std::vector<uint8_t> D6d = {0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0};
+  EXPECT_EQ((int)Graph(D6d, 5).get_free_multiplicity(), 144);
+
+  // D6e: Crab diagram. V=4. Chain 2-0-1-3. Multiplicity = 4 * 4 * 4 = 64.
+  std::vector<uint8_t> D6e = {0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0};
+  EXPECT_EQ((int)Graph(D6e, 4).get_free_multiplicity(), 64);
+
+  // D6f: Watermelon double + digon. V=3. Center 0, 2 leaves. Multiplicity = 4^2 = 16.
+  std::vector<uint8_t> D6f = {0, 2, 1, 2, 0, 0, 1, 0, 0};
+  EXPECT_EQ((int)Graph(D6f, 3).get_free_multiplicity(), 16);
+
+  // D6g: Square with one double line. V=4. 4-cycle 0-1-2-3-0. Multiplicity = 36.
+  std::vector<uint8_t> D6g = {0, 2, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0};
+  EXPECT_EQ((int)Graph(D6g, 4).get_free_multiplicity(), 36);
 }
 
 TEST_F(GraphTest, PrintOtherFreeMultiplicities) { print_all_order6_multiplicities(); }
