@@ -106,3 +106,36 @@ TEST(CombinatoricsTest, PermutationSign) {
   // Identity: (0, 1, 2, 3)
   EXPECT_DOUBLE_EQ(compute_permutation_sign({0, 1, 2, 3}), 1.0);
 }
+
+TEST(CombinatoricsTest, SJT_PermutationCount) {
+  // n = 1
+  SJT sjt1(1);
+  int count1 = 1;
+  while (sjt1.next_permutation()) { count1++; }
+  EXPECT_EQ(count1, 1);
+
+  // n = 3
+  SJT sjt3(3);
+  int count3 = 1;
+  while (sjt3.next_permutation()) { count3++; }
+  EXPECT_EQ(count3, 6);
+
+  // n = 4
+  SJT sjt4(4);
+  int count4 = 1;
+  while (sjt4.next_permutation()) { count4++; }
+  EXPECT_EQ(count4, 24);
+}
+
+TEST(CombinatoricsTest, SJT_PermutationSequence) {
+  SJT sjt(3);
+  std::vector<std::vector<int>> result;
+  result.push_back(sjt.get_permutation());
+  while (sjt.next_permutation()) { result.push_back(sjt.get_permutation()); }
+
+  std::vector<std::vector<int>> expected = {{1, 2, 3}, {1, 3, 2}, {3, 1, 2}, {3, 2, 1}, {2, 3, 1}, {2, 1, 3}};
+
+  EXPECT_EQ(result.size(), expected.size());
+  for (size_t i = 0; i < expected.size(); ++i) { EXPECT_EQ(result[i], expected[i]); }
+}
+

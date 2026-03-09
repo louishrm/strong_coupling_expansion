@@ -29,6 +29,70 @@ namespace sc_expansion {
     return k * factorial(k - 1);
   }
 
+  class SJT {
+
+    public:
+    SJT(int n_) : n(n_) {
+
+      this->permutation.resize(n);
+      std::iota(this->permutation.begin(), this->permutation.end(), 1);
+
+      this->directions.resize(n + 1, -1); // -1 for left, +1 for right //use index from 0 to n included
+
+      this->positions.resize(n + 1);
+      for (int v = 1; v <= n; v++) { this->positions[v] = v - 1; }
+    }
+
+    const std::vector<int> &get_permutation() const { return this->permutation; }
+
+    bool next_permutation() {
+
+      /*Find the largest element with non zero direction
+      Move it in the direction specified by the directions vector
+      */
+      for (int i = n; i >= 1; i--) {
+        if (this->is_mobile(i)) {
+          this->perform_swap(i);
+          this->reverse_directions(i);
+          return true;
+        }
+      }
+      return false;
+    }
+
+    private:
+    int n;
+    std::vector<int> permutation;
+    std::vector<int> directions;
+    std::vector<int> positions;
+
+    bool is_mobile(int i) const {
+
+      /*is mobile if direction is not zero 
+      and can move  within the bounds without hitting a larger number*/
+      int dir        = this->directions[i];
+      int idx        = this->positions[i];
+      int target_idx = idx + dir;
+      if (idx + dir < 0 || idx + dir >= n) { return false; }
+      return this->permutation[target_idx] < this->permutation[idx];
+    }
+
+    void perform_swap(int i) {
+
+      int idx        = this->positions[i];
+      int target_idx = idx + this->directions[i];
+      // Swap in the permutation
+      std::swap(this->permutation[idx], this->permutation[target_idx]);
+      //update positions
+      this->positions[i]                      = target_idx;
+      this->positions[this->permutation[idx]] = idx;
+    }
+
+    void reverse_directions(int i) {
+      for (int j = i + 1; j <= n; j++) { this->directions[j] *= -1; }
+    }
+  };
+
   class PartitionGenerator {
     public:
     //calculates all valid partitions immediately
