@@ -213,7 +213,7 @@ namespace sc_expansion {
     T sign            = T(this->diagram.get_diagram_sign());
     T symmetry_factor = T(this->diagram.get_graph().get_symmetry_factor());
     T fm              = T(this->diagram.get_graph().get_free_multiplicity());
-    T prefactor       = (T(-1.0) / this->atom.beta) * sign / symmetry_factor * fm;
+    T prefactor       = (T(-1.0) / this->atom.beta) * sign / symmetry_factor; //* fm;
 
     return prefactor * sum;
   }
