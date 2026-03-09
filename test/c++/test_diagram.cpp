@@ -6,22 +6,26 @@
 #include "sc_expansion/diagram.hpp"
 #include "sc_expansion/graph.hpp"
 #include "sc_expansion/free_energy_order.hpp"
+#include "sc_expansion/combinatorics.hpp"
 
 using namespace sc_expansion;
 
 template <typename Order> std::pair<double, double> compute_exact_integral_infinite_U(Order &o, int n, double beta) {
   //Return \int |U_inf| d tau and \int U_inf d tau (both abs and signed version)
-  std::vector<double> taus(n);
-  std::iota(taus.begin(), taus.end(), 0.0);
-
   double sum_abs    = 0.0;
   double sum_signed = 0.0;
+
+  SJT sjt(n);
   do {
+    const auto &p = sjt.get_permutation();
+    std::vector<double> taus(p.begin(), p.end());
+
     // CRITICAL: Using dimer version for the integrator as requested
-    double val = o.compute_sum_diagrams_dimer(taus, true, false);
+    // Enabling vertex caching (use_cache = true)
+    double val = o.compute_sum_diagrams_dimer(taus, true, true);
     sum_abs += std::abs(val);
     sum_signed += val;
-  } while (std::next_permutation(taus.begin(), taus.end()));
+  } while (sjt.next_permutation());
 
   double fact = 1.0;
   for (int i = 1; i <= n; ++i) fact *= i;
@@ -140,34 +144,6 @@ TEST_F(DiagramTest, InfiniteUDiagramConstantInSimplex) {
 
   EXPECT_DOUBLE_EQ(val_61, val_62);
   EXPECT_DOUBLE_EQ(val_41, val_42);
-}
-
-TEST_F(DiagramTest, VanishInNonInteractingLimit) {
-
-  Parameters<double> pars{0.0, beta, mu};                                              // U=0 limit
-  std::vector<uint8_t> D4a = {0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0}; // 4-cycle
-  std::vector<uint8_t> D4b = {0, 1, 1, 1, 0, 0, 1, 0, 0};                      // 3-cycle with double lines (0->1, 0->2, 1->0, 2->0)
-  std::vector<uint8_t> D4c = {0, 2, 2, 0};                                     // 2-cycle with double lines
-
-  Graph g_a(D4a, 4);
-  Graph g_b(D4b, 3);
-  Graph g_c(D4c, 2);
-
-  Diagram diagram_a(g_a);
-  Diagram diagram_b(g_b);
-  Diagram diagram_c(g_c);
-
-  DiagramEvaluator<double> eval_a(diagram_a, pars);
-  DiagramEvaluator<double> eval_b(diagram_b, pars);
-  DiagramEvaluator<double> eval_c(diagram_c, pars);
-
-  std::vector<double> taus = {0.1, 0.2, 0.3, 0.4}; // arbitrary taus
-  double resa              = eval_a.evaluate_at_taus(taus, false, false);
-  double resb              = eval_b.evaluate_at_taus(taus, false, false);
-  double resc              = eval_c.evaluate_at_taus(taus, false, false);
-
-  EXPECT_NEAR(resb, 0.0, 1e-9);
-  EXPECT_NEAR(resc, 0.0, 1e-9);
 }
 
 TEST_F(DiagramTest, ExactIntegralOrder4InfiniteU) {

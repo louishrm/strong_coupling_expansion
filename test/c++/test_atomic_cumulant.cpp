@@ -181,6 +181,25 @@ TEST(HubbardAtomDualTest, ParticleHoleSymmetryCumulant) {
   EXPECT_NEAR(c1.derivative, -c2.derivative, 1e-12);
 }
 
+TEST(HubbardAtomDualTest, DualMu_VanishInNonInteractingLimit) {
+  double U_val    = 0.0;
+  double beta_val = 1.0;
+  Dual mu(0.5, 1.0); // mu = 0.5, dmu/dmu = 1
+
+  HubbardAtom<Dual> atom(Dual(U_val, 0.0), Dual(beta_val, 0.0), mu);
+
+  // 2-particle cumulant (4 operators)
+  ArgList unprimed = {{0.8, 0}, {0.4, 1}};
+  ArgList primed   = {{0.6, 0}, {0.2, 1}};
+
+  Dual c = compute_cumulant_decomposition<Dual>(unprimed, primed, atom);
+
+  // At U=0, the cumulant should be zero (Gaussian),
+  // and its derivative w.r.t mu should also be zero.
+  EXPECT_NEAR(c.value, 0.0, 1e-12);
+  EXPECT_NEAR(c.derivative, 0.0, 1e-12);
+}
+
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
