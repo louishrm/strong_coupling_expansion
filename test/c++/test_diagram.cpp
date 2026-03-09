@@ -27,12 +27,11 @@ template <typename Order> std::pair<double, double> compute_exact_integral_infin
     sum_signed += val;
   } while (sjt.next_permutation());
 
-  double fact = 1.0;
-  for (int i = 1; i <= n; ++i) fact *= i;
+  double nfact = factorial(n);
 
   std::pair<double, double> result;
-  result.first  = (std::pow(beta, n) / fact) * sum_abs;
-  result.second = (std::pow(beta, n) / fact) * sum_signed;
+  result.first  = (std::pow(beta, n) / nfact) * sum_abs;
+  result.second = (std::pow(beta, n) / nfact) * sum_signed;
   return result;
 }
 
@@ -146,11 +145,16 @@ TEST_F(DiagramTest, InfiniteUDiagramConstantInSimplex) {
   EXPECT_DOUBLE_EQ(val_41, val_42);
 }
 
-TEST_F(DiagramTest, ExactIntegralOrder4InfiniteU) {
-  int order = 4;
-  FreeEnergyCalculator<double> calculator(params, order);
-  auto result = compute_exact_integral_infinite_U(calculator, order, beta);
-  
-  // The expected result for order 4, U=8.0, beta=1.0, mu=2.0 is -1.59245549e-03
-  EXPECT_NEAR(result.second, -1.59245549e-03, 1e-10);
+TEST_F(DiagramTest, ExactIntegralInfiniteUFreeEnergy) {
+
+  Parameters<double> params_2{8.0, 3.0, 2.0};
+  FreeEnergyCalculator<double> calculator_4(params_2, 4);
+  auto result_4 = compute_exact_integral_infinite_U(calculator_4, 4, params_2.beta);
+
+  FreeEnergyCalculator<double> calculator_6(params_2, 6);
+  auto result_6 = compute_exact_integral_infinite_U(calculator_6, 6, params_2.beta);
+
+  // The expected result for order 4, U=8.0, beta=3.0, mu=2.0 is -1.59245549e-03
+  EXPECT_NEAR(result_4.second, -1.38053128e-03, 1e-10);
+  EXPECT_NEAR(result_6.second, -4.01855375e-04, 1e-10);
 }
