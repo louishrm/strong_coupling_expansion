@@ -148,6 +148,18 @@ TEST_F(GraphTest, GraphFreeMultiplicityIsCorrect) {
   // D6g: Square with one double line. V=4. 4-cycle 0-1-2-3-0. Multiplicity = 36.
   std::vector<uint8_t> D6g = {0, 2, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0};
   EXPECT_EQ((int)Graph(D6g, 4).get_free_multiplicity(), 36);
+
+  //closed walk of length 8 on square lattice: W_8 = (8 choose 4)^2 = 4900
+  std::vector<uint8_t> D8a(64, 0);
+  for (int i = 0; i < 8; ++i) {
+    D8a[i * 8 + (i + 1) % 8]   = 1;
+    D8a[((i + 1) % 8) * 8 + i] = 1;
+  }
+  EXPECT_EQ((int)Graph(D8a, 8).get_free_multiplicity(), 4900);
+
+  std::vector<uint8_t> D8b = {0, 4, 4, 0};
+  Graph graph_8b(D8b, 2);
+  EXPECT_EQ((int)graph_8b.get_free_multiplicity(), 4);
 }
 
 TEST_F(GraphTest, PrintOtherFreeMultiplicities) { print_all_order6_multiplicities(); }
