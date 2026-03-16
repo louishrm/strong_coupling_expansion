@@ -8,14 +8,11 @@ namespace sc_expansion {
 
   template <typename T>
   FreeEnergyCalculator<T>::FreeEnergyCalculator(Parameters<T> const &params_, int order_) : params(params_), order(order_) {
-    VacuumDiagramGenerator gen(this->order);
+    VacuumDiagramGenerator gen(this->order, params_.bipartite);
     gen.generate();
     const auto &unique_graphs = gen.get_unique_graphs();
 
-    for (auto const &g_vec : unique_graphs) {
-      int V = std::sqrt(g_vec.size());
-      this->diagrams.emplace_back(Graph(g_vec, V));
-    }
+    for (auto const &g : unique_graphs) { this->diagrams.emplace_back(g); }
 
     for (auto const &diag : this->diagrams) { this->evaluators.emplace_back(diag, this->params); }
   }
