@@ -15,11 +15,11 @@ namespace sc_expansion {
   using Arg     = std::pair<double, int>;
   using ArgList = std::vector<Arg>;
 
-  template <typename T>
-  struct Parameters {
+  template <typename T> struct Parameters {
     T U;
     T beta;
     T mu;
+    bool bipartite = true;
   };
 
   struct Args {
@@ -42,8 +42,7 @@ namespace sc_expansion {
     double matrix_element;
   };
 
-  template <typename T>
-  class HubbardAtom {
+  template <typename T> class HubbardAtom {
 
     public:
     HubbardAtom(T U, T beta, T mu);
@@ -60,7 +59,7 @@ namespace sc_expansion {
     T Z_infinite_U;
     std::array<T, 4> E;
 
-    static const std::array<Transition, 16> lookup_table; 
+    static const std::array<Transition, 16> lookup_table;
 
     static constexpr int valid_start_states[4][2] = {
        {1, 3}, // op 0 (c_up):       Needs state 1 (|up>) or 3 (|up down>)
