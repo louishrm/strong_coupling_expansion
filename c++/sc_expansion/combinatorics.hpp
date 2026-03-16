@@ -29,6 +29,18 @@ namespace sc_expansion {
     return k * factorial(k - 1);
   }
 
+  inline uint64_t binomial_coefficient(uint64_t n, uint64_t k) {
+    if (k > n) return 0;
+    if (k == 0 || k == n) return 1;
+    if (k > n / 2) k = n - k;
+    uint64_t res = 1;
+    for (uint64_t i = 1; i <= k; ++i) {
+      res *= (n - i + 1);
+      res /= i;
+    }
+    return res;
+  }
+
   class SJT {
 
     public:
