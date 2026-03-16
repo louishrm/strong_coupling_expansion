@@ -15,27 +15,30 @@ class Configuration {
   double beta;
   std::vector<double> state; //set of imaginary times
   double metropolis_weight;  //|alpha Uinf+ (1-alpha) Ufin|
+  bool bipartite;
 
   double integrand;           //Omega(configuration)
   double reference_integrand; //Omega_infinite_U(configuration)
 
   Configuration(sc_expansion::Parameters<double> const &params, int order_, double alpha_)
-     : beta(params.beta), U(params.U), mu(params.mu), order(order_), alpha(alpha_) {
+     : beta(params.beta), bipartite(params.bipartite), U(params.U), mu(params.mu), order(order_), alpha(alpha_) {
 
     this->state.resize(this->order);
     triqs::mc_tools::random_generator RNG("mt19937", 23432);
     for (int i = 0; i < this->order; i++) { this->state[i] = RNG(this->beta); }
 
     // Generate diagrams
-    sc_expansion::VacuumDiagramGenerator gen(this->order);
+    sc_expansion::VacuumDiagramGenerator gen(this->order, params.bipartite);
     gen.generate();
     const auto &unique_graphs = gen.get_unique_graphs();
 
-    for (auto const &g_vec : unique_graphs) {
-      int V = std::sqrt(g_vec.size());
-      this->diagrams.emplace_back(sc_expansion::Graph(g_vec, V));
-    }
+    this->diagrams.reserve(unique_graphs.size());
+    this->evaluators.reserve(unique_graphs.size());
 
+    // Construct Diagram objects from the unique graphs
+    for (auto const &g : unique_graphs) { this->diagrams.emplace_back(sc_expansion::Diagram(g)); }
+
+    // Construct DiagramEvaluators for each diagram
     for (auto const &diag : this->diagrams) { this->evaluators.emplace_back(diag, params); }
 
     this->recompute_integrands();
@@ -43,22 +46,24 @@ class Configuration {
   }
 
   Configuration(sc_expansion::Parameters<Dual> const &params, int order_, double alpha_)
-     : beta(params.beta.value), U(params.U.value), mu(params.mu.value), order(order_), alpha(alpha_) {
+     : beta(params.beta.value), bipartite(params.bipartite), U(params.U.value), mu(params.mu.value), order(order_), alpha(alpha_) {
 
     this->state.resize(this->order);
     triqs::mc_tools::random_generator RNG("mt19937", 23432);
     for (int i = 0; i < this->order; i++) { this->state[i] = RNG(this->beta); }
 
     // Generate diagrams
-    sc_expansion::VacuumDiagramGenerator gen(this->order);
+    sc_expansion::VacuumDiagramGenerator gen(this->order, params.bipartite);
     gen.generate();
     const auto &unique_graphs = gen.get_unique_graphs();
 
-    for (auto const &g_vec : unique_graphs) {
-      int V = std::sqrt(g_vec.size());
-      this->diagrams.emplace_back(sc_expansion::Graph(g_vec, V));
-    }
+    this->diagrams.reserve(unique_graphs.size());
+    this->dual_evaluators.reserve(unique_graphs.size());
 
+    // Construct Diagram objects from the unique graphs
+    for (auto const &g : unique_graphs) { this->diagrams.emplace_back(sc_expansion::Diagram(g)); }
+
+    // Construct DiagramEvaluators for each diagram
     for (auto const &diag : this->diagrams) { this->dual_evaluators.emplace_back(diag, params); }
 
     this->use_dual = true;
@@ -103,7 +108,7 @@ class Configuration {
   int order;
   double alpha;
   bool use_dual = false;
-  std::deque<sc_expansion::Diagram> diagrams;
+  std::vector<sc_expansion::Diagram> diagrams;
   std::vector<sc_expansion::DiagramEvaluator<double>> evaluators;
   std::vector<sc_expansion::DiagramEvaluator<Dual>> dual_evaluators;
 
