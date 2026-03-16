@@ -6,17 +6,21 @@
 
 namespace sc_expansion {
 
-  Graph::Graph(std::vector<uint8_t> adjacency_matrix_, int V_) : adjacency_matrix(adjacency_matrix_), V(V_), canonical_matrix(adjacency_matrix_) {
+  Graph::Graph(std::vector<uint8_t> adjacency_matrix_, int V_, bool bipartite_only_) : adjacency_matrix(adjacency_matrix_), V(V_), canonical_matrix(adjacency_matrix_), bipartite_only(bipartite_only_) {
 
     // Calculate Order (Total number of lines)
     this->order = 0;
     for (auto val : this->adjacency_matrix) { this->order += val; }
 
+    // Pre-calculate Degrees
+    this->degrees.resize(this->V, 0);
+    for (int i = 0; i < this->V; i++) { this->degrees[i] = this->get_degree_of_vertex(i); }
+
     this->check_connectivity();
 
     this->check_if_bipartite();
 
-    if ((this->connected) && (this->bipartite)) {
+    if ((this->connected) && (!this->bipartite_only || this->bipartite)) {
       this->compute_canonical_form();
       this->compute_free_multiplicity();
     } else {
@@ -24,6 +28,26 @@ namespace sc_expansion {
       this->free_multiplicity  = 0;
       this->automorphism_count = 0;
     }
+  }
+
+  Graph::Graph(std::vector<uint8_t> adjacency_matrix_, int V_, int automorphism_count_, int symmetry_factor_, int free_multiplicity_, bool bipartite_only_)
+    : adjacency_matrix(adjacency_matrix_), V(V_), canonical_matrix(adjacency_matrix_), connected(true), bipartite(true), bipartite_only(bipartite_only_),
+      automorphism_count(automorphism_count_), symmetry_factor(symmetry_factor_), free_multiplicity(free_multiplicity_) {
+
+    // Calculate Order (Total number of lines)
+    this->order = 0;
+    for (auto val : this->adjacency_matrix) { this->order += val; }
+
+    // Pre-calculate Degrees
+    this->degrees.resize(this->V, 0);
+    for (int i = 0; i < this->V; i++) { this->degrees[i] = this->get_degree_of_vertex(i); }
+  }
+
+  int Graph::get_degree_of_vertex(int vertex) const {
+    //degree = number of outgoing+incoming lines
+    int degree = 0;
+    for (int j = 0; j < this->V; j++) { degree += (*this)(vertex, j) + this->adjacency_matrix[j * this->V + vertex]; }
+    return degree;
   }
 
   uint8_t Graph::operator()(int i, int j) const { return this->adjacency_matrix[i * this->V + j]; }
@@ -49,7 +73,7 @@ namespace sc_expansion {
 
       for (int neighbor = 0; neighbor < this->V; neighbor++) {
         // Check undirected connection
-        bool is_connected = ((*this)(vertex, neighbor) > 0) || ((*this)(neighbor, vertex) > 0);
+        bool is_connected = ((*this)(vertex, neighbor) > 0) || (this->adjacency_matrix[neighbor * this->V + vertex] > 0);
 
         if (is_connected && !visited[neighbor]) {
           visited[neighbor] = true;
@@ -64,7 +88,7 @@ namespace sc_expansion {
 
     for (int neighbor = 0; neighbor < this->V; neighbor++) {
 
-      bool is_connected = ((*this)(vertex, neighbor) > 0) || ((*this)(neighbor, vertex) > 0);
+      bool is_connected = ((*this)(vertex, neighbor) > 0) || (this->adjacency_matrix[neighbor * this->V + vertex] > 0);
 
       if (is_connected) {
         if (colors[neighbor] == 0) {
@@ -96,19 +120,40 @@ namespace sc_expansion {
 
   // --- 2. Canonicalization (Min-Lex + Symmetry) ---
   void Graph::compute_canonical_form() {
-    this->canonical_matrix = this->adjacency_matrix;
+
+    // 1. Establish a canonical starting labeling by sorting vertices by degree (non-decreasing)
+    std::vector<int> p_sort(this->V);
+    std::iota(p_sort.begin(), p_sort.end(), 0);
+    std::stable_sort(p_sort.begin(), p_sort.end(), [this](int a, int b) { return this->degrees[a] < this->degrees[b]; });
+
+    std::vector<uint8_t> sorted_matrix(this->V * this->V);
+    std::vector<int> sorted_degrees(this->V);
+    for (int i = 0; i < this->V; i++) {
+      sorted_degrees[i] = this->degrees[p_sort[i]];
+      for (int j = 0; j < this->V; j++) { sorted_matrix[i * this->V + j] = (*this)(p_sort[i], p_sort[j]); }
+    }
+
+    this->canonical_matrix = sorted_matrix;
     int auto_count         = 0;
 
     std::vector<int> p(this->V);
-    std::iota(p.begin(), p.end(), 0); // {0, 1, 2, ...}
+    std::iota(p.begin(), p.end(), 0);
 
-    std::vector<uint8_t> candidate(this->V * this->V); // Allocate once
+    std::vector<uint8_t> candidate(this->V * this->V);
 
     do {
-      // Apply permutation: M'[i][j] = M[p[i]][p[j]]
-      // We map the row p[i] to position i
+      // 2. Only apply permutations that preserve the sorted degree profile
+      bool can_swap = true;
       for (int i = 0; i < this->V; i++) {
-        for (int j = 0; j < this->V; j++) { candidate[i * this->V + j] = (*this)(p[i], p[j]); }
+        if (sorted_degrees[p[i]] != sorted_degrees[i]) {
+          can_swap = false;
+          break;
+        }
+      }
+      if (!can_swap) continue;
+
+      for (int i = 0; i < this->V; i++) {
+        for (int j = 0; j < this->V; j++) { candidate[i * this->V + j] = sorted_matrix[p[i] * this->V + p[j]]; }
       }
 
       // Min-Lex Comparison
@@ -172,13 +217,35 @@ namespace sc_expansion {
 
     long count = 0;
 
-    // B. Try 4 Lattice Directions
-    const int dx[] = {1, -1, 0, 0};
-    const int dy[] = {0, 0, 1, -1};
+    // B. Lattice Directions
+    // Square lattice neighbors: (1,0), (-1,0), (0,1), (0,-1)
+    // Triangular lattice neighbors: (1,0), (-1,0), (-1,1), (0,1), (0,-1), (1,-1)
+    std::vector<int> dx, dy;
+    if (this->bipartite_only) {
+      dx = {1, -1, 0, 0};
+      dy = {0, 0, 1, -1};
+    } else {
+      dx = {1, -1, -1, 0, 0, 1};
+      dy = {0, 0, 1, 1, -1, -1};
+    }
 
     Point anchor_pos = coords[anchor];
 
-    for (int dir = 0; dir < 4; ++dir) {
+    auto is_neighbor = [this](Point p1, Point p2) {
+      int dx = p1.x - p2.x;
+      int dy = p1.y - p2.y;
+      if (this->bipartite_only) {
+        return std::abs(dx) + std::abs(dy) == 1;
+      } else {
+        // Triangular lattice neighbors: dist 1 in square sense OR (-1,1) or (1,-1)
+        if (std::abs(dx) + std::abs(dy) == 1) return true;
+        if (dx == -1 && dy == 1) return true;
+        if (dx == 1 && dy == -1) return true;
+        return false;
+      }
+    };
+
+    for (size_t dir = 0; dir < dx.size(); ++dir) {
       Point candidate_pos = Point(anchor_pos.x + dx[dir], anchor_pos.y + dy[dir]);
 
       // C. Check Consistency with ALL placed neighbors
@@ -190,8 +257,7 @@ namespace sc_expansion {
 
           if (links > 0) {
             // Must be exactly dist 1
-            int dist = std::abs(candidate_pos.x - coords[i].x) + std::abs(candidate_pos.y - coords[i].y);
-            if (dist != 1) {
+            if (!is_neighbor(candidate_pos, coords[i])) {
               valid = false;
               break;
             }
