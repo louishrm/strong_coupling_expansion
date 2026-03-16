@@ -40,7 +40,7 @@ template <typename Order> std::pair<double, double> compute_exact_integral_infin
 int main(int argc, char *argv[]) {
 
   if (argc < 6) {
-    if (mpi::communicator().rank() == 0) { std::cerr << "Usage: " << argv[0] << " order n_cycles U beta mu [alpha] [use_dual]" << std::endl; }
+    if (mpi::communicator().rank() == 0) { std::cerr << "Usage: " << argv[0] << " order n_cycles U beta mu [bipartite] [alpha] [use_dual]" << std::endl; }
     return 1;
   }
 
@@ -49,8 +49,9 @@ int main(int argc, char *argv[]) {
   double U     = std::stod(argv[3]);
   double beta  = std::stod(argv[4]);
   double mu    = std::stod(argv[5]);
-  double alpha = (argc > 6 ? std::stod(argv[6]) : 0.5);
-  bool use_dual = (argc > 7 ? std::stoi(argv[7]) != 0 : false);
+  bool bipartite = (argc > 6 ? std::stoi(argv[6]) != 0 : true);
+  double alpha = (argc > 7 ? std::stod(argv[7]) : 0.5);
+  bool use_dual = (argc > 8 ? std::stoi(argv[8]) != 0 : false);
 
   // initialize mpi
   mpi::environment env(argc, argv);
@@ -60,7 +61,7 @@ int main(int argc, char *argv[]) {
   if (world.rank() == 0) {
     std::cout << "Strong Coupling Monte Carlo" << std::endl;
     std::cout << "Number of MPI processes: " << world.size() << std::endl;
-    std::cout << "U=" << U << " beta=" << beta << " mu=" << mu << " alpha=" << alpha << " use_dual=" << use_dual << std::endl;
+    std::cout << "U=" << U << " beta=" << beta << " mu=" << mu << " bipartite=" << bipartite << " alpha=" << alpha << " use_dual=" << use_dual << std::endl;
   }
 
   // MC parameters
@@ -76,7 +77,7 @@ int main(int argc, char *argv[]) {
   Configuration* config_ptr = nullptr;
 
   if (use_dual) {
-    sc_expansion::Parameters<Dual> params_dual{Dual(U, 0.0), Dual(beta, 0.0), Dual(mu, 1.0)};
+    sc_expansion::Parameters<Dual> params_dual{Dual(U, 0.0), Dual(beta, 0.0), Dual(mu, 1.0), bipartite};
     if (world.rank() == 0) {
       std::cout << "Computing reference integral on master rank..." << std::endl;
       sc_expansion::FreeEnergyCalculator<Dual> calculator(params_dual, order);
@@ -96,7 +97,7 @@ int main(int argc, char *argv[]) {
       std::cout << "Done computing reference integral. Value: " << signed_reference_integral << std::endl;
     }
   } else {
-    sc_expansion::Parameters<double> params{U, beta, mu};
+    sc_expansion::Parameters<double> params{U, beta, mu, bipartite};
     if (world.rank() == 0) {
       std::cout << "Computing reference integral on master rank..." << std::endl;
       sc_expansion::FreeEnergyCalculator<double> calculator(params, order);
@@ -116,10 +117,10 @@ int main(int argc, char *argv[]) {
 
   // construct configuration (Every rank needs its own for MC)
   if (use_dual) {
-    sc_expansion::Parameters<Dual> params_dual{Dual(U, 0.0), Dual(beta, 0.0), Dual(mu, 1.0)};
+    sc_expansion::Parameters<Dual> params_dual{Dual(U, 0.0), Dual(beta, 0.0), Dual(mu, 1.0), bipartite};
     config_ptr = new Configuration(params_dual, order, alpha);
   } else {
-    sc_expansion::Parameters<double> params{U, beta, mu};
+    sc_expansion::Parameters<double> params{U, beta, mu, bipartite};
     config_ptr = new Configuration(params, order, alpha);
   }
   Configuration& config = *config_ptr;
