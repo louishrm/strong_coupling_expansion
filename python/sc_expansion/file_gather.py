@@ -27,10 +27,10 @@ else:
     extension = f"Omega_order_{order}_scan_mu_U={U}_beta={beta}_alpha={alpha}.h5"
 
 
-if bipartite: 
-    filename = f"./results/triangular_lattice"+extension
+if not bipartite: 
+    filename = f"./results/triangular_lattice_"+extension
 else:
-    filename = f"./results/square_lattice"+extension
+    filename = f"./results/square_lattice_"+extension
 
 
 # Creates the folder path if it's missing
