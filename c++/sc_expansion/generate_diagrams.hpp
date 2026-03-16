@@ -14,18 +14,24 @@ namespace sc_expansion {
     }
   };
 
+  std::vector<uint8_t> generate_n_cycle_adjacency_matrix(int n);
+
+  int calculate_n_cycle_free_multiplicity(int n, bool bipartite);
+
   class VacuumDiagramGenerator {
 
     public:
-    VacuumDiagramGenerator(int order);
+    VacuumDiagramGenerator(int order, bool bipartite_only = true);
 
     void generate();
-    const std::unordered_set<std::vector<uint8_t>, VectorHasher> &get_unique_graphs() const { return unique_graphs; }
+    const std::vector<Graph> &get_unique_graphs() const { return graphs; }
 
     private:
     int order;
+    bool bipartite_only;
     PartitionGenerator partitions;
-    std::unordered_set<std::vector<uint8_t>, VectorHasher> unique_graphs;
+    std::unordered_set<std::vector<uint8_t>, VectorHasher> unique_adjmats;
+    std::vector<Graph> graphs;
 
     void propose_create_process(const std::vector<int> &partition);
 
