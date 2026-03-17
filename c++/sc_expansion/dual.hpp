@@ -24,3 +24,16 @@ inline Dual exp(const Dual &xi) {
   double exp_val = std::exp(xi.value);
   return Dual(exp_val, exp_val * xi.derivative);
 }
+
+inline Dual pow(const Dual &xi, double p) {
+
+  double val = std::pow(xi.value, p);
+  double der = p * std::pow(xi.value, p - 1) * xi.derivative;
+  return Dual(val, der);
+}
+
+inline Dual sqrt(const Dual &xi) {
+  double sqrt_val = std::sqrt(xi.value);
+  double der      = 0.5 * xi.derivative / sqrt_val;
+  return Dual(sqrt_val, der);
+}
