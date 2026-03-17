@@ -8,9 +8,9 @@
 #include <fstream>
 #include <cmath>
 
-struct measure {
+template <typename T> struct measure {
 
-  Configuration *config;
+  Configuration<T> *config;
 
   // Accumulators for defensive importance sampling
   // We want to estimate I = I_ref * <integrand/W> / <reference_integrand/W>
@@ -21,7 +21,7 @@ struct measure {
   double signed_reference_integral;
   double mu;
 
-  measure(Configuration *config_, double reference_integral_, double signed_reference_integral_, int n_bins, int block_size, double mu_)
+  measure(Configuration<T> *config_, double reference_integral_, double signed_reference_integral_, int n_bins, int block_size, double mu_)
      : config(config_),
        acc_integrand(0.0, 0, n_bins, block_size + 100),
        acc_reference(0.0, 0, n_bins, block_size + 100),

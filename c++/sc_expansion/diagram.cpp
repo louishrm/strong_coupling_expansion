@@ -118,7 +118,7 @@ namespace sc_expansion {
 
   template <typename T>
   DiagramEvaluator<T>::DiagramEvaluator(Diagram const &diagram_, Parameters<T> const &params)
-     : diagram(diagram_), atom(params.U, params.beta, params.mu) {
+     : diagram(diagram_), atom(params) {
     int order = this->diagram.get_graph().get_order();
     this->current_taus.assign(order, -1.0);
     for (const Vertex &v : this->diagram.get_vertices()) {
@@ -213,7 +213,7 @@ namespace sc_expansion {
     T sign            = T(this->diagram.get_diagram_sign());
     T symmetry_factor = T(this->diagram.get_graph().get_symmetry_factor());
     T fm              = T(this->diagram.get_graph().get_free_multiplicity());
-    T prefactor       = (T(-1.0) / this->atom.beta) * sign / symmetry_factor * fm;
+    T prefactor       = (T(-1.0) / this->atom.params.beta) * sign / symmetry_factor * fm;
 
     return prefactor * sum;
   }
@@ -246,7 +246,7 @@ namespace sc_expansion {
     T sign            = T(this->diagram.get_diagram_sign());
     T symmetry_factor = T(this->diagram.get_graph().get_symmetry_factor());
     T fm              = T(1.0); // Fixed for dimer calculation
-    T prefactor       = (T(-1.0) / this->atom.beta) * sign / symmetry_factor * fm;
+    T prefactor       = (T(-1.0) / this->atom.params.beta) * sign / symmetry_factor * fm;
 
     return prefactor * sum;
   }

@@ -45,15 +45,13 @@ namespace sc_expansion {
   template <typename T> class HubbardAtom {
 
     public:
-    HubbardAtom(T U, T beta, T mu);
+    HubbardAtom(Parameters<T> const &params);
 
     T G0(std::vector<double> const &taus, std::vector<int> const &spins) const;
     T G0_infinite_U(std::vector<double> const &taus, std::vector<int> const &spins) const;
 
     // Internal members made public for testing and cumulant solver efficiency
-    T U;
-    T beta;
-    T mu;
+    Parameters<T> const &params;
 
     T Z;
     T Z_infinite_U;

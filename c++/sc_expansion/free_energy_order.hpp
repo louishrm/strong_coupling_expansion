@@ -15,7 +15,7 @@ namespace sc_expansion {
     T compute_sum_diagrams_dimer(std::vector<double> const &taus, bool infinite_U, bool use_cache) const;
 
     private:
-    Parameters<T> params;
+    Parameters<T> const &params;
     int order;
     std::deque<Diagram> diagrams;
     std::vector<DiagramEvaluator<T>> evaluators;

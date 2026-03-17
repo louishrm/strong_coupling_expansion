@@ -3,7 +3,7 @@
 #include <triqs/mc_tools/random_generator.hpp>
 
 // Optimized Move Struct
-struct move {
+template <typename T> struct move {
   double current_weight;
 
   // Proposed values
@@ -16,10 +16,10 @@ struct move {
   double old_tau;
   double new_tau;
 
-  Configuration *config;
+  Configuration<T> *config;
   triqs::mc_tools::random_generator &RNG;
 
-  move(Configuration *config_, triqs::mc_tools::random_generator &RNG_) : config(config_), RNG(RNG_) {
+  move(Configuration<T> *config_, triqs::mc_tools::random_generator &RNG_) : config(config_), RNG(RNG_) {
     // Cache initial weight
     current_weight = config->metropolis_weight;
   }

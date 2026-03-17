@@ -26,10 +26,11 @@ class HubbardAtomTest : public ::testing::Test {
   double U    = 8.0;
   double beta = 1.0;
   double mu   = 2.0;
+  Parameters<double> params{U, beta, mu};
 
   std::unique_ptr<HubbardAtom<double>> atom;
 
-  void SetUp() override { atom = std::make_unique<HubbardAtom<double>>(U, beta, mu); }
+  void SetUp() override { atom = std::make_unique<HubbardAtom<double>>(params); }
 };
 
 TEST_F(HubbardAtomTest, CumulantOrderOneMatchesExactResult) {
@@ -161,15 +162,18 @@ TEST_F(HubbardAtomTest, InfiniteUCumulantOrder2MatchesExactResult) {
 }
 
 TEST(HubbardAtomDualTest, ParticleHoleSymmetryCumulant) {
-  double U     = 8.0;
-  double beta  = 1.0;
-  double delta = 0.1;
+  double U_val    = 8.0;
+  double beta_val = 1.0;
+  double delta    = 0.1;
 
-  Dual mu1(U / 2.0 + delta, 1.0);
-  Dual mu2(U / 2.0 - delta, 1.0);
+  Dual mu1_val(U_val / 2.0 + delta, 1.0);
+  Dual mu2_val(U_val / 2.0 - delta, 1.0);
 
-  HubbardAtom<Dual> atom1(U, beta, mu1);
-  HubbardAtom<Dual> atom2(U, beta, mu2);
+  Parameters<Dual> params1{Dual(U_val, 0.0), Dual(beta_val, 0.0), mu1_val};
+  Parameters<Dual> params2{Dual(U_val, 0.0), Dual(beta_val, 0.0), mu2_val};
+
+  HubbardAtom<Dual> atom1(params1);
+  HubbardAtom<Dual> atom2(params2);
 
   ArgList u1 = {{0.8, 0}, {0.4, 1}};
   ArgList p1 = {{0.6, 0}, {0.2, 1}};
@@ -184,9 +188,10 @@ TEST(HubbardAtomDualTest, ParticleHoleSymmetryCumulant) {
 TEST(HubbardAtomDualTest, DualMu_VanishInNonInteractingLimit) {
   double U_val    = 0.0;
   double beta_val = 1.0;
-  Dual mu(0.5, 1.0); // mu = 0.5, dmu/dmu = 1
+  Dual mu_val(0.5, 1.0); // mu = 0.5, dmu/dmu = 1
 
-  HubbardAtom<Dual> atom(Dual(U_val, 0.0), Dual(beta_val, 0.0), mu);
+  Parameters<Dual> params{Dual(U_val, 0.0), Dual(beta_val, 0.0), mu_val};
+  HubbardAtom<Dual> atom(params);
 
   // 2-particle cumulant (4 operators)
   ArgList unprimed = {{0.8, 0}, {0.4, 1}};

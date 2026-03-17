@@ -136,10 +136,10 @@ namespace sc_expansion {
   }();
 
   template <typename T>
-  HubbardAtom<T>::HubbardAtom(T U_, T beta_, T mu_) : U(U_), beta(beta_), mu(mu_) {
-    this->Z            = T(1.0) + T(2.0) * exp(beta * mu) + exp(beta * (T(2.0) * mu - U)); //Partition function at finite U
-    this->Z_infinite_U = T(1.0) + T(2.0) * exp(beta * mu);                                 //Partition function at infinite U
-    this->E            = {T(0.0), -mu, -mu, U - T(2.0) * mu};
+  HubbardAtom<T>::HubbardAtom(Parameters<T> const &params_) : params(params_) {
+    this->Z            = T(1.0) + T(2.0) * exp(params.beta * params.mu) + exp(params.beta * (T(2.0) * params.mu - params.U)); //Partition function at finite U
+    this->Z_infinite_U = T(1.0) + T(2.0) * exp(params.beta * params.mu);                                 //Partition function at infinite U
+    this->E            = {T(0.0), -params.mu, -params.mu, params.U - T(2.0) * params.mu};
   }
 
   template <typename T>
@@ -172,7 +172,7 @@ namespace sc_expansion {
 
       // Add to value for Dual properly
       if (current_state == initial_state) {
-        current_trace_val = current_trace_val * exp(-this->beta * this->E[current_state]);
+        current_trace_val = current_trace_val * exp(-this->params.beta * this->E[current_state]);
         G0_value = G0_value + current_trace_val;
       }
     }
@@ -193,7 +193,7 @@ namespace sc_expansion {
     int first_op = args.ops[0];
     if (first_op >= 2) {
       // First operator is a creation operator
-      G0_value = exp(this->beta * this->mu) / this->Z_infinite_U;
+      G0_value = exp(this->params.beta * this->params.mu) / this->Z_infinite_U;
     } else {
       // First operator is a destruction operator
       G0_value = T(1.0) / this->Z_infinite_U;

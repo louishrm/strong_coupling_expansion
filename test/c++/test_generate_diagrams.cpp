@@ -182,3 +182,11 @@ TEST(GenerateDiagramsTest, Order8DiagramsBipartite) {
   const auto &graphs = gen.get_unique_graphs();
   EXPECT_EQ(graphs.size(), 32);
 }
+
+// TEST(GenerateDiagramsTest, Order10DiagramsBipartite) {
+//   VacuumDiagramGenerator gen(10);
+//   gen.generate();
+
+//   const auto &graphs = gen.get_unique_graphs();
+//   std::cout << "Order 10 bipartite diagrams: " << graphs.size() << std::endl;
+// }

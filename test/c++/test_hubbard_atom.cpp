@@ -108,10 +108,11 @@ class HubbardAtomTest : public ::testing::Test {
   double U    = 8.0;
   double beta = 1.0;
   double mu   = 2.0;
+  Parameters<double> params{U, beta, mu};
 
   std::unique_ptr<HubbardAtom<double>> atom;
 
-  void SetUp() override { atom = std::make_unique<HubbardAtom<double>>(U, beta, mu); }
+  void SetUp() override { atom = std::make_unique<HubbardAtom<double>>(params); }
 };
 
 TEST_F(HubbardAtomTest, ConstructorStateEnergies) {
@@ -226,11 +227,14 @@ TEST(HubbardAtomDualTest, G0IsParticleHoleSymmetric) {
   double beta  = 1.0;
   double delta = 0.1;
 
-  Dual mu1(U / 2.0 + delta, 1.0);
-  Dual mu2(U / 2.0 - delta, 1.0);
+  Dual mu1_val(U / 2.0 + delta, 1.0);
+  Dual mu2_val(U / 2.0 - delta, 1.0);
 
-  HubbardAtom<Dual> atom1(U, beta, mu1);
-  HubbardAtom<Dual> atom2(U, beta, mu2);
+  Parameters<Dual> params1{Dual(U, 0.0), Dual(beta, 0.0), mu1_val};
+  Parameters<Dual> params2{Dual(U, 0.0), Dual(beta, 0.0), mu2_val};
+
+  HubbardAtom<Dual> atom1(params1);
+  HubbardAtom<Dual> atom2(params2);
 
   std::vector<double> taus = {0.8, 0.6, 0.4, 0.2};
   std::vector<int> spins   = {0, 0, 1, 1}; // up, up, down, down

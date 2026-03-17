@@ -11,7 +11,7 @@
 using namespace sc_expansion;
 
 template <typename Order> std::pair<double, double> compute_exact_integral_infinite_U(Order &o, int n, double beta) {
-  //Return \int |U_inf| d tau and \int U_inf d tau (both abs and signed version)
+  //Return \int ||U_inf|| d tau and \int U_inf d tau (both abs and signed version)
   double sum_abs    = 0.0;
   double sum_signed = 0.0;
 
@@ -45,7 +45,7 @@ class DiagramTest : public ::testing::Test {
 
   std::unique_ptr<HubbardAtom<double>> atom;
 
-  void SetUp() override { atom = std::make_unique<HubbardAtom<double>>(U, beta, mu); }
+  void SetUp() override { atom = std::make_unique<HubbardAtom<double>>(params); }
 };
 
 TEST_F(DiagramTest, DiagramSignIsCorrect) {

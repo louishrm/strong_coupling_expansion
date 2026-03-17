@@ -8,7 +8,7 @@ namespace sc_expansion {
 
   template <typename T>
   FreeEnergyCalculator<T>::FreeEnergyCalculator(Parameters<T> const &params_, int order_) : params(params_), order(order_) {
-    VacuumDiagramGenerator gen(this->order, params_.bipartite);
+    VacuumDiagramGenerator gen(this->order, params.bipartite);
     gen.generate();
     const auto &unique_graphs = gen.get_unique_graphs();
 

@@ -67,10 +67,11 @@ namespace sc_expansion {
 
   // Wrapper class for Python to easily compute cumulants for spin 0
   class CumulantHelper {
+    Parameters<double> params;
     HubbardAtom<double> atom;
 
     public:
-    CumulantHelper(double U, double beta, double mu) : atom(U, beta, mu) {}
+    CumulantHelper(double U, double beta, double mu) : params{U, beta, mu}, atom(params) {}
 
     double compute(std::vector<double> taus) {
       if (taus.size() % 2 != 0) { throw std::invalid_argument("CumulantHelper::compute: input vector must have even size (2n)."); }

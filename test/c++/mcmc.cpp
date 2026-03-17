@@ -13,9 +13,7 @@
 #include <numeric>
 #include <algorithm>
 
-double Zat(double U, double beta, double mu) { return 1 + 2.0 * std::exp(beta * mu) + std::exp(beta * (2.0 * mu - U)); }
-
-template <typename Order> std::pair<double, double> compute_exact_integral_infinite_U(Order &o, int n, double beta) {
+template <typename T, typename Order> std::pair<double, double> compute_exact_integral_infinite_U(Order &o, int n, double beta) {
   //Return \int |U_inf| d tau and \int U_inf d tau (both abs and signed version)
   std::vector<double> taus(n);
   std::iota(taus.begin(), taus.end(), 0.0);
@@ -23,9 +21,15 @@ template <typename Order> std::pair<double, double> compute_exact_integral_infin
   double sum_abs    = 0.0;
   double sum_signed = 0.0;
   do {
-    double val = o.compute_sum_diagrams(taus, true, false);
-    sum_abs += std::abs(val);
-    sum_signed += val;
+    if constexpr (std::is_same_v<T, Dual>) {
+      double val = o.compute_sum_diagrams(taus, true, false).derivative;
+      sum_abs += std::abs(val);
+      sum_signed += val;
+    } else {
+      double val = o.compute_sum_diagrams(taus, true, false);
+      sum_abs += std::abs(val);
+      sum_signed += val;
+    }
   } while (std::next_permutation(taus.begin(), taus.end()));
 
   double fact = 1.0;
@@ -37,75 +41,27 @@ template <typename Order> std::pair<double, double> compute_exact_integral_infin
   return result;
 }
 
-int main(int argc, char *argv[]) {
+template <typename T>
+void run_mc(mpi::communicator &world, int order, int n_cycles, double U, double beta, double mu, bool bipartite, double alpha, int n_warmup_cycles,
+            int length_cycle, std::string random_name, int random_seed, int verbosity) {
 
-  if (argc < 6) {
-    if (mpi::communicator().rank() == 0) { std::cerr << "Usage: " << argv[0] << " order n_cycles U beta mu [bipartite] [alpha] [use_dual]" << std::endl; }
-    return 1;
-  }
-
-  int order    = std::stoi(argv[1]);
-  int n_cycles = std::stoi(argv[2]);
-  double U     = std::stod(argv[3]);
-  double beta  = std::stod(argv[4]);
-  double mu    = std::stod(argv[5]);
-  bool bipartite = (argc > 6 ? std::stoi(argv[6]) != 0 : true);
-  double alpha = (argc > 7 ? std::stod(argv[7]) : 0.5);
-  bool use_dual = (argc > 8 ? std::stoi(argv[8]) != 0 : false);
-
-  // initialize mpi
-  mpi::environment env(argc, argv);
-  mpi::communicator world;
-
-  // greeting
-  if (world.rank() == 0) {
-    std::cout << "Strong Coupling Monte Carlo" << std::endl;
-    std::cout << "Number of MPI processes: " << world.size() << std::endl;
-    std::cout << "U=" << U << " beta=" << beta << " mu=" << mu << " bipartite=" << bipartite << " alpha=" << alpha << " use_dual=" << use_dual << std::endl;
-  }
-
-  // MC parameters
-  int length_cycle        = 1;
-  int n_warmup_cycles     = 2000;
-  std::string random_name = "";
-  int random_seed         = 32186222 + world.rank() * 786512;
-  int verbosity           = (world.rank() == 0 ? 2 : 0);
-
-  // Parameters of the model and Monte Carlo initialization
-  double reference_integral = 0.0;
-  double signed_reference_integral = 0.0;
-  Configuration* config_ptr = nullptr;
-
-  if (use_dual) {
-    sc_expansion::Parameters<Dual> params_dual{Dual(U, 0.0), Dual(beta, 0.0), Dual(mu, 1.0), bipartite};
-    if (world.rank() == 0) {
-      std::cout << "Computing reference integral on master rank..." << std::endl;
-      sc_expansion::FreeEnergyCalculator<Dual> calculator(params_dual, order);
-      std::vector<double> taus(order);
-      std::iota(taus.begin(), taus.end(), 0.0);
-      double sum_abs    = 0.0;
-      double sum_signed = 0.0;
-      do {
-        double val = calculator.compute_sum_diagrams(taus, true, false).derivative;
-        sum_abs += std::abs(val);
-        sum_signed += val;
-      } while (std::next_permutation(taus.begin(), taus.end()));
-      double fact = 1.0;
-      for (int i = 1; i <= order; ++i) fact *= i;
-      reference_integral = (std::pow(beta, order) / fact) * sum_abs;
-      signed_reference_integral = (std::pow(beta, order) / fact) * sum_signed;
-      std::cout << "Done computing reference integral. Value: " << signed_reference_integral << std::endl;
-    }
+  sc_expansion::Parameters<T> params;
+  if constexpr (std::is_same_v<T, Dual>) {
+    params = {Dual(U, 0.0), Dual(beta, 0.0), Dual(mu, 1.0), bipartite};
   } else {
-    sc_expansion::Parameters<double> params{U, beta, mu, bipartite};
-    if (world.rank() == 0) {
-      std::cout << "Computing reference integral on master rank..." << std::endl;
-      sc_expansion::FreeEnergyCalculator<double> calculator(params, order);
-      std::pair<double, double> reference_vals = compute_exact_integral_infinite_U(calculator, order, beta);
-      reference_integral                = reference_vals.first;
-      signed_reference_integral         = reference_vals.second;
-      std::cout << "Done computing reference integral. Value: " << signed_reference_integral << std::endl;
-    }
+    params = {U, beta, mu, bipartite};
+  }
+
+  double reference_integral        = 0.0;
+  double signed_reference_integral = 0.0;
+
+  if (world.rank() == 0) {
+    std::cout << "Computing reference integral on master rank..." << std::endl;
+    sc_expansion::FreeEnergyCalculator<T> calculator(params, order);
+    std::pair<double, double> reference_vals = compute_exact_integral_infinite_U<T>(calculator, order, beta);
+    reference_integral                       = reference_vals.first;
+    signed_reference_integral                = reference_vals.second;
+    std::cout << "Done computing reference integral. Value: " << signed_reference_integral << std::endl;
   }
 
   // Broadcast reference values to all ranks
@@ -115,23 +71,15 @@ int main(int argc, char *argv[]) {
   // Construct a Monte Carlo loop
   triqs::mc_tools::mc_generic<double> StrongCouplingMC(random_name, random_seed, verbosity);
 
-  // construct configuration (Every rank needs its own for MC)
-  if (use_dual) {
-    sc_expansion::Parameters<Dual> params_dual{Dual(U, 0.0), Dual(beta, 0.0), Dual(mu, 1.0), bipartite};
-    config_ptr = new Configuration(params_dual, order, alpha);
-  } else {
-    sc_expansion::Parameters<double> params{U, beta, mu, bipartite};
-    config_ptr = new Configuration(params, order, alpha);
-  }
-  Configuration& config = *config_ptr;
+  // construct configuration
+  Configuration<T> config(params, order, alpha);
 
-  long total_cycles = n_cycles * world.size(); // Total samples across all cores
-  int n_bins        = 50;                      // Standard choice for Jackknife
-  int block_size    = (n_cycles / n_bins) + 1;
+  int n_bins     = 50; // Standard choice for Jackknife
+  int block_size = (n_cycles / n_bins) + 1;
 
   // add moves and measures
-  measure my_measure(&config, reference_integral, signed_reference_integral, n_bins, block_size, mu);
-  StrongCouplingMC.add_move(move(&config, StrongCouplingMC.get_rng()), "time_swap");
+  measure<T> my_measure(&config, reference_integral, signed_reference_integral, n_bins, block_size, mu);
+  StrongCouplingMC.add_move(move<T>(&config, StrongCouplingMC.get_rng()), "time_swap");
   StrongCouplingMC.add_measure(my_measure, "defensive_measure");
 
   auto start_time = std::chrono::high_resolution_clock::now();
@@ -152,29 +100,47 @@ int main(int argc, char *argv[]) {
 
     std::cout << "Exact result (Infinite U, Order " << order << "): " << signed_reference_integral << std::endl;
   }
+}
 
-  delete config_ptr;
+int main(int argc, char *argv[]) {
+
+  if (argc < 6) {
+    if (mpi::communicator().rank() == 0) { std::cerr << "Usage: " << argv[0] << " order n_cycles U beta mu [bipartite] [alpha] [use_dual]" << std::endl; }
+    return 1;
+  }
+
+  int order      = std::stoi(argv[1]);
+  int n_cycles   = std::stoi(argv[2]);
+  double U       = std::stod(argv[3]);
+  double beta    = std::stod(argv[4]);
+  double mu      = std::stod(argv[5]);
+  bool bipartite = (argc > 6 ? std::stoi(argv[6]) != 0 : true);
+  double alpha   = (argc > 7 ? std::stod(argv[7]) : 0.5);
+  bool use_dual  = (argc > 8 ? std::stoi(argv[8]) != 0 : false);
+
+  // initialize mpi
+  mpi::environment env(argc, argv);
+  mpi::communicator world;
+
+  // greeting
+  if (world.rank() == 0) {
+    std::cout << "Strong Coupling Monte Carlo" << std::endl;
+    std::cout << "Number of MPI processes: " << world.size() << std::endl;
+    std::cout << "U=" << U << " beta=" << beta << " mu=" << mu << " bipartite=" << bipartite << " alpha=" << alpha << " use_dual=" << use_dual << std::endl;
+  }
+
+  // MC parameters
+  int length_cycle        = 1;
+  int n_warmup_cycles     = 2000;
+  std::string random_name = "";
+  int random_seed         = 32186222 + world.rank() * 786512;
+  int verbosity           = (world.rank() == 0 ? 2 : 0);
+
+  if (use_dual) {
+    run_mc<Dual>(world, order, n_cycles, U, beta, mu, bipartite, alpha, n_warmup_cycles, length_cycle, random_name, random_seed, verbosity);
+  } else {
+    run_mc<double>(world, order, n_cycles, U, beta, mu, bipartite, alpha, n_warmup_cycles, length_cycle, random_name, random_seed, verbosity);
+  }
+
   return 0;
 }
-
-/*
-std::vector<sc_expansion::adjmat> diagram_mats_4() {
-  sc_expansion::adjmat D4a = {{0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}, {1, 0, 0, 0}}; //4-cycle
-  sc_expansion::adjmat D4b = {{0, 1, 1}, {1, 0, 0}, {1, 0, 0}};                        //3-cycle with double lines
-  sc_expansion::adjmat D4c = {{0, 2}, {2, 0}};                                         //2-cycle with double lines
-  return {D4a, D4b, D4c};
-}
-
-std::vector<sc_expansion::adjmat> diagram_mats_6() {
-
-  sc_expansion::adjmat D6a = {{0, 1, 0, 0, 0, 0}, {0, 0, 1, 0, 0, 0}, {0, 0, 0, 1, 0, 0},
-                              {0, 0, 0, 0, 1, 0}, {0, 0, 0, 0, 0, 1}, {1, 0, 0, 0, 0, 0}};                          //6-cycle
-  sc_expansion::adjmat D6b = {{0, 3}, {3, 0}};                                                                      //watermelon triple
-  sc_expansion::adjmat D6c = {{0, 1, 1, 1}, {1, 0, 0, 0}, {1, 0, 0, 0}, {1, 0, 0, 0}};                              //petal with 4 vertice
-  sc_expansion::adjmat D6d = {{0, 1, 1, 0, 0}, {1, 0, 0, 0, 0}, {0, 0, 0, 1, 0}, {0, 0, 0, 0, 1}, {1, 0, 0, 0, 0}}; //square +digon
-  sc_expansion::adjmat D6e = {{0, 1, 1, 0}, {1, 0, 0, 1}, {1, 0, 0, 0}, {0, 1, 0, 0}};                              //crab diagram
-  sc_expansion::adjmat D6f = {{0, 2, 1}, {2, 0, 0}, {1, 0, 0}};                                                     //watermelon double + digon
-  sc_expansion::adjmat D6g = {{0, 2, 0, 0}, {1, 0, 1, 0}, {0, 0, 0, 1}, {1, 0, 0, 0}};                              //square with one double line
-  return {D6a, D6b, D6c, D6d, D6e, D6f, D6g};
-}
-*/
