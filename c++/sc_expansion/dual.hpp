@@ -19,6 +19,9 @@ struct Dual {
 
   Dual operator-() const { return Dual(-value, -derivative); }
 
+  bool operator==(const Dual &other) const { return value == other.value && derivative == other.derivative; }
+  bool operator!=(const Dual &other) const { return !(*this == other); }
+
   // Scalar operations
   Dual operator*(double scalar) const { return Dual(value * scalar, derivative * scalar); }
   Dual operator/(double scalar) const { return Dual(value / scalar, derivative / scalar); }
