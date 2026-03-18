@@ -79,17 +79,17 @@ namespace sc_expansion {
   }
 
   template <typename T>
-  const std::array<Transition, 16> HubbardAtom<T>::lookup_table = []() {
-    std::array<Transition, 16> table;
+  const std::array<Transition, HubbardAtom<T>::N_STATES * HubbardAtom<T>::N_OPS> HubbardAtom<T>::lookup_table = []() {
+    std::array<Transition, HubbardAtom<T>::N_STATES * HubbardAtom<T>::N_OPS> table;
 
     // Iterate through all 4 states (00, 01, 10, 11)
-    for (int state = 0; state < 4; ++state) {
+    for (int state = 0; state < HubbardAtom<T>::N_STATES; ++state) {
 
       // Iterate through all 4 operators (0=c_up, 1=c_down, 2=cdag_up, 3=cdag_down)
-      for (int op = 0; op < 4; ++op) {
+      for (int op = 0; op < HubbardAtom<T>::N_OPS; ++op) {
 
         // The 1D array index: (State * 4) + Operator
-        int index = (state << 2) | op;
+        int index = (state * HubbardAtom<T>::N_OPS) | op;
 
         int next_state = 0;
         double mel     = 0.0;
@@ -136,8 +136,8 @@ namespace sc_expansion {
   }();
 
   template <typename T> HubbardAtom<T>::HubbardAtom(Parameters<T> const &params_) : params(params_) {
-    this->Z = T(1.0) + 2.0 * exp(params.beta * params.mu) + exp(params.beta * (2.0 * params.mu - params.U)); //Partition function at finite U
-    this->Z_infinite_U = T(1.0) + 2.0 * exp(params.beta * params.mu);                                        //Partition function at infinite U
+    this->Z = T(1.0) + 2.0 * exp(params.beta * params.mu) + exp(params.beta * (2.0 * params.mu - params.U)); // Partition function at finite U
+    this->Z_infinite_U = T(1.0) + 2.0 * exp(params.beta * params.mu);                                        // Partition function at infinite U
     this->E            = {T(0.0), -params.mu, -params.mu, params.U - 2.0 * params.mu};
   }
 
@@ -145,7 +145,7 @@ namespace sc_expansion {
     Args args(taus, spins);
     T G0_value = T(0.0);
 
-    //get the only two states that the list op in the sorted list can act on
+    // get the only two states that the list op in the sorted list can act on
     int last_op = args.ops.back();
 
     for (int initial_state : this->valid_start_states[last_op]) {
@@ -155,7 +155,7 @@ namespace sc_expansion {
 
       for (int i = args.order - 1; i >= 0; --i) {
 
-        int table_index = current_state * 4 + args.ops[i];
+        int table_index = current_state * HubbardAtom<T>::N_OPS + args.ops[i];
         Transition t    = this->lookup_table[table_index];
 
         if (t.matrix_element == 0.0) {
@@ -200,13 +200,13 @@ namespace sc_expansion {
   }
 
   template <typename T> std::pair<T, int> fermion_operator_act(int op, int state) {
-    int action  = (op >> 2) & 1; //0 destroy, 1 create
-    int orbital = op & 3;        //0: 1down 1: 2down 2: 1up 3: 2up
+    int action  = (op >> 2) & 1; // 0 destroy, 1 create
+    int orbital = op & 3;        // 0: 1down 1: 2down 2: 1up 3: 2up
 
-    //check occupation of the orbital
+    // check occupation of the orbital
     int occupation = (state >> orbital) & 1;
-    if (occupation == action) { //the bits have to be different for the operator to act non-trivially
-      return {T(0.0), -1};      //zero mel
+    if (occupation == action) { // the bits have to be different for the operator to act non-trivially
+      return {T(0.0), -1};      // zero mel
     }
 
     int new_state = state ^ (1 << orbital);
@@ -219,6 +219,7 @@ namespace sc_expansion {
 
   template <typename T> HubbardDimer<T>::HubbardDimer(Parameters<T> const &params_, T t_) : params(params_), t(t_) {
     this->compute_eigenstates();
+    this->compute_transition_table();
 
     // Compute Z = sum(exp(-beta * E_i))
     this->Z = T(0.0);
@@ -231,18 +232,18 @@ namespace sc_expansion {
 
     this->all_eigenstates[0] = Eigenstate<T>{{{0, T(1.0)}}, T(0.0), 0};
 
-    //N=1, Sz=-1/2 |down,0> ± |0,down>
+    // N=1, Sz=-1/2 |down,0> ± |0,down>
     this->all_eigenstates[1] = Eigenstate<T>{{{1, T(SQRT2_INV)}, {2, T(SQRT2_INV)}}, -this->params.t - this->params.mu, 1};
     this->all_eigenstates[2] = Eigenstate<T>{{{1, T(SQRT2_INV)}, {2, -T(SQRT2_INV)}}, this->params.t - this->params.mu, 1};
 
-    //N=1, Sz=+1/2 |up,0> ± |0,up>
+    // N=1, Sz=+1/2 |up,0> ± |0,up>
     this->all_eigenstates[3] = Eigenstate<T>{{{4, T(SQRT2_INV)}, {8, T(SQRT2_INV)}}, -this->params.t - this->params.mu, 1};
     this->all_eigenstates[4] = Eigenstate<T>{{{4, T(SQRT2_INV)}, {8, -T(SQRT2_INV)}}, this->params.t - this->params.mu, 1};
 
-    //N=2, Sz=-1 |down,down>
+    // N=2, Sz=-1 |down,down>
     this->all_eigenstates[5] = Eigenstate<T>{{{3, T(1.0)}}, -2.0 * this->params.mu, 2};
 
-    //N=2, Sz=0, parity = even
+    // N=2, Sz=0, parity = even
     // a(|down up, 0> + |0, down up>) + b(|down, up> + |up, down>)
     T Ep              = Eplus(this->t, this->params.U, this->params.mu);
     T Em              = Eminus(this->t, this->params.U, this->params.mu);
@@ -254,24 +255,60 @@ namespace sc_expansion {
     this->all_eigenstates[6] = Eigenstate<T>{{{5, T(norm_plus)}, {10, T(norm_plus)}, {9, T(component_plus)}, {6, T(component_plus)}}, Ep, 2};
     this->all_eigenstates[7] = Eigenstate<T>{{{5, T(norm_minus)}, {10, T(norm_minus)}, {9, T(component_minus)}, {6, T(component_minus)}}, Em, 2};
 
-    //N=2, Sz=0, parity = odd
+    // N=2, Sz=0, parity = odd
     //|down up, 0> - |0, down up> and |up, down> - |down,up>
     this->all_eigenstates[8] = Eigenstate<T>{{{5, T(SQRT2_INV)}, {10, -T(SQRT2_INV)}}, this->params.U - 2.0 * this->params.mu, 2};
     this->all_eigenstates[9] = Eigenstate<T>{{{9, T(SQRT2_INV)}, {6, -T(SQRT2_INV)}}, -2.0 * this->params.mu, 2};
 
-    //N=2, Sz=+1 |up,up>
+    // N=2, Sz=+1 |up,up>
     this->all_eigenstates[10] = Eigenstate<T>{{{12, T(1.0)}}, -2.0 * this->params.mu, 2};
 
-    //N=3, Sz = -1/2, |down up, down> ± |down, down up>
+    // N=3, Sz = -1/2, |down up, down> ± |down, down up>
     this->all_eigenstates[11] = Eigenstate<T>{{{7, T(SQRT2_INV)}, {11, T(SQRT2_INV)}}, this->params.U + this->params.t - 3.0 * this->params.mu, 3};
-    this->all_eigenstates[12] = Eigenstate<T>{{{7, T(SQRT2_INV)}, {11, -T(SQRT2_INV)}}, this->params.U - this->params.t - 3.0 * this->params.mu, 3};
+    this->all_eigenstates[12] =
+       Eigenstate<T>{{{7, T(SQRT2_INV)}, {11, -T(SQRT2_INV)}}, this->params.U - this->params.t - 3.0 * this->params.mu, 3};
 
-    //N=3, Sz = +1/2, |down up, up> ± |up, down up>
-    this->all_eigenstates[13] = Eigenstate<T>{{{13, T(SQRT2_INV)}, {14, T(SQRT2_INV)}}, this->params.U + this->params.t - 3.0 * this->params.mu, 3};
-    this->all_eigenstates[14] = Eigenstate<T>{{{13, T(SQRT2_INV)}, {14, -T(SQRT2_INV)}}, this->params.U - this->params.t - 3.0 * this->params.mu, 3};
+    // N=3, Sz = +1/2, |down up, up> ± |up, down up>
+    this->all_eigenstates[13] =
+       Eigenstate<T>{{{13, T(SQRT2_INV)}, {14, T(SQRT2_INV)}}, this->params.U + this->params.t - 3.0 * this->params.mu, 3};
+    this->all_eigenstates[14] =
+       Eigenstate<T>{{{13, T(SQRT2_INV)}, {14, -T(SQRT2_INV)}}, this->params.U - this->params.t - 3.0 * this->params.mu, 3};
 
-    //N=4, Sz=0 |down up, down up>
+    // N=4, Sz=0 |down up, down up>
     this->all_eigenstates[15] = Eigenstate<T>{{{15, T(1.0)}}, 2.0 * this->params.U - 4.0 * this->params.mu, 4};
+  }
+
+  template <typename T> void HubbardDimer<T>::compute_transition_table() {
+
+    for (int op_index = 0; op_index < this->N_OPS; ++op_index) {
+      for (int eigenv_ket_index = 0; eigenv_ket_index < this->N_STATES; ++eigenv_ket_index) {
+
+        for (int eigenv_bra_index = 0; eigenv_bra_index < this->N_STATES; ++eigenv_bra_index) {
+
+          T matrix_element = T(0.0);
+          for (auto const &[ket_basis_index, ket_coeff] : this->all_eigenstates[eigenv_ket_index].coefficients) {
+            auto [mel, new_state] = fermion_operator_act<T>(op_index, ket_basis_index);
+
+            if (new_state != -1) {
+              for (auto const &[bra_basis_index, bra_coeff] : this->all_eigenstates[eigenv_bra_index].coefficients) {
+                if (bra_basis_index == new_state) { matrix_element = matrix_element + bra_coeff * mel * ket_coeff; }
+              }
+            }
+          }
+
+          auto is_zero = [](auto const &val) {
+            if constexpr (std::is_same_v<std::decay_t<decltype(val)>, Dual>) { return std::abs(val.value) < 1e-15; }
+            else {
+              return std::abs(val) < 1e-15;
+            }
+          };
+
+          if (!is_zero(matrix_element)) {
+            this->transition_table[op_index][eigenv_ket_index].transitions.push_back({eigenv_bra_index, matrix_element});
+          }
+        }
+      }
+    }
   }
 
   template class HubbardAtom<double>;
