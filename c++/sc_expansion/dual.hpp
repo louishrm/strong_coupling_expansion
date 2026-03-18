@@ -18,6 +18,11 @@ struct Dual {
   }
 
   Dual operator-() const { return Dual(-value, -derivative); }
+
+  // Scalar operations
+  Dual operator*(double scalar) const { return Dual(value * scalar, derivative * scalar); }
+  Dual operator/(double scalar) const { return Dual(value / scalar, derivative / scalar); }
+  friend Dual operator*(double scalar, const Dual &d) { return d * scalar; }
 };
 
 inline Dual exp(const Dual &xi) {
