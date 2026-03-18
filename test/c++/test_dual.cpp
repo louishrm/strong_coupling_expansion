@@ -101,3 +101,14 @@ TEST(DualTest, ScalarOperations) {
   EXPECT_DOUBLE_EQ(res3.value, 2.0 / 3.0);
   EXPECT_DOUBLE_EQ(res3.derivative, 0.5 / 3.0);
 }
+
+TEST(DualTest, Equality) {
+  Dual d1(2.0, 0.5);
+  Dual d2(2.0, 0.5);
+  Dual d3(2.0, 0.6);
+  Dual d4(2.1, 0.5);
+
+  EXPECT_TRUE(d1 == d2);
+  EXPECT_FALSE(d1 == d3);
+  EXPECT_FALSE(d1 == d4);
+}
