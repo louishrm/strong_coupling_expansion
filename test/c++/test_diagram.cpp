@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 #include <cmath>
 #include <numeric>
-#include "sc_expansion/hubbard_atom.hpp"
+#include "sc_expansion/hubbard_solver.hpp"
 #include "sc_expansion/cumulant.hpp"
 #include "sc_expansion/diagram.hpp"
 #include "sc_expansion/graph.hpp"
@@ -41,7 +41,7 @@ class DiagramTest : public ::testing::Test {
   double U    = 8.0;
   double beta = 1.0;
   double mu   = 2.0;
-  Parameters<double> params{U, beta, mu};
+  Parameters<double> params{U, beta, mu, 0.0, true};
 
   std::unique_ptr<HubbardAtom<double>> atom;
 
@@ -147,7 +147,7 @@ TEST_F(DiagramTest, InfiniteUDiagramConstantInSimplex) {
 
 TEST_F(DiagramTest, ExactIntegralInfiniteUFreeEnergy) {
 
-  Parameters<double> params_2{8.0, 3.0, 2.0};
+  Parameters<double> params_2{8.0, 3.0, 2.0, 0.0, true};
   FreeEnergyCalculator<double> calculator_4(params_2, 4);
   auto result_4 = compute_exact_integral_infinite_U(calculator_4, 4, params_2.beta);
 

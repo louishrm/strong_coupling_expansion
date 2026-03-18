@@ -1,5 +1,5 @@
 //#include "sc_expansion/sc_expansion.hpp"
-#include "../c++/sc_expansion/hubbard_atom.hpp"
+#include "../c++/sc_expansion/hubbard_solver.hpp"
 
 #include <cmath>
 #include <iostream>

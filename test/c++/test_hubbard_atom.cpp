@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 #include <cmath>
-#include "../c++/sc_expansion/hubbard_atom.hpp"
+#include "../c++/sc_expansion/hubbard_solver.hpp"
 #include "../c++/sc_expansion/dual.hpp"
 #include <iostream>
 #include <vector>
@@ -108,7 +108,7 @@ class HubbardAtomTest : public ::testing::Test {
   double U    = 8.0;
   double beta = 1.0;
   double mu   = 2.0;
-  Parameters<double> params{U, beta, mu};
+  Parameters<double> params{U, beta, mu, 0.0, true};
 
   std::unique_ptr<HubbardAtom<double>> atom;
 
@@ -230,8 +230,8 @@ TEST(HubbardAtomDualTest, G0IsParticleHoleSymmetric) {
   Dual mu1_val(U / 2.0 + delta, 1.0);
   Dual mu2_val(U / 2.0 - delta, 1.0);
 
-  Parameters<Dual> params1{Dual(U, 0.0), Dual(beta, 0.0), mu1_val};
-  Parameters<Dual> params2{Dual(U, 0.0), Dual(beta, 0.0), mu2_val};
+  Parameters<Dual> params1{Dual(U, 0.0), Dual(beta, 0.0), mu1_val, Dual(0.0, 0.0), true};
+  Parameters<Dual> params2{Dual(U, 0.0), Dual(beta, 0.0), mu2_val, Dual(0.0, 0.0), true};
 
   HubbardAtom<Dual> atom1(params1);
   HubbardAtom<Dual> atom2(params2);

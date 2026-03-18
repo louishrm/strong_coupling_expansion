@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 #include <cmath>
-#include "../c++/sc_expansion/hubbard_atom.hpp"
+#include "../c++/sc_expansion/hubbard_solver.hpp"
 #include "../c++/sc_expansion/cumulant.hpp"
 #include "../c++/sc_expansion/dual.hpp"
 
@@ -26,7 +26,7 @@ class HubbardAtomTest : public ::testing::Test {
   double U    = 8.0;
   double beta = 1.0;
   double mu   = 2.0;
-  Parameters<double> params{U, beta, mu};
+  Parameters<double> params{U, beta, mu, 0.0, true};
 
   std::unique_ptr<HubbardAtom<double>> atom;
 
@@ -169,8 +169,8 @@ TEST(HubbardAtomDualTest, ParticleHoleSymmetryCumulant) {
   Dual mu1_val(U_val / 2.0 + delta, 1.0);
   Dual mu2_val(U_val / 2.0 - delta, 1.0);
 
-  Parameters<Dual> params1{Dual(U_val, 0.0), Dual(beta_val, 0.0), mu1_val};
-  Parameters<Dual> params2{Dual(U_val, 0.0), Dual(beta_val, 0.0), mu2_val};
+  Parameters<Dual> params1{Dual(U_val, 0.0), Dual(beta_val, 0.0), mu1_val, Dual(0.0, 0.0), true};
+  Parameters<Dual> params2{Dual(U_val, 0.0), Dual(beta_val, 0.0), mu2_val, Dual(0.0, 0.0), true};
 
   HubbardAtom<Dual> atom1(params1);
   HubbardAtom<Dual> atom2(params2);
@@ -190,7 +190,7 @@ TEST(HubbardAtomDualTest, DualMu_VanishInNonInteractingLimit) {
   double beta_val = 1.0;
   Dual mu_val(0.5, 1.0); // mu = 0.5, dmu/dmu = 1
 
-  Parameters<Dual> params{Dual(U_val, 0.0), Dual(beta_val, 0.0), mu_val};
+  Parameters<Dual> params{Dual(U_val, 0.0), Dual(beta_val, 0.0), mu_val, Dual(0.0, 0.0), true};
   HubbardAtom<Dual> atom(params);
 
   // 2-particle cumulant (4 operators)

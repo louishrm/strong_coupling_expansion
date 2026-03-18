@@ -1,5 +1,5 @@
 // #include "../../c++/sc_expansion/diagram.hpp"
-// #include "../../c++/sc_expansion/hubbard_atom.hpp"
+// #include "../../c++/sc_expansion/hubbard_solver.hpp"
 // #include "../../c++/sc_expansion/cumulant.hpp"
 // #include <chrono>
 

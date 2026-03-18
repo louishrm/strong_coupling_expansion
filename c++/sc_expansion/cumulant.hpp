@@ -1,7 +1,7 @@
 #ifndef CUMULANT_HPP
 #define CUMULANT_HPP
 
-#include "hubbard_atom.hpp"
+#include "hubbard_solver.hpp"
 #include <vector>
 #include <unordered_map>
 #include <cstdint>

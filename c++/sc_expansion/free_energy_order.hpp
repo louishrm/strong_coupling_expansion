@@ -2,7 +2,7 @@
 #include <vector>
 #include <deque>
 #include "diagram.hpp"
-#include "hubbard_atom.hpp"
+#include "hubbard_solver.hpp"
 
 namespace sc_expansion {
 

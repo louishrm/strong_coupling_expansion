@@ -4,7 +4,7 @@
 #include <numeric>   // For std::accumulate
 #include <algorithm> // For std::next_permutation
 #include <queue>
-#include "./hubbard_atom.hpp"
+#include "./hubbard_solver.hpp"
 #include "./cumulant.hpp"
 #include "./graph.hpp" // Include Graph for compute_free_multiplicity logic
 #include "./dual.hpp"

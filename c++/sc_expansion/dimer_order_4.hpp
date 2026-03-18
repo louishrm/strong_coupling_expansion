@@ -1,5 +1,5 @@
 #include "diagram.hpp"
-#include "hubbard_atom.hpp"
+#include "hubbard_solver.hpp"
 #include "cumulant.hpp"
 
 namespace sc_expansion {

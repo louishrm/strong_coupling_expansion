@@ -47,9 +47,9 @@ void run_mc(mpi::communicator &world, int order, int n_cycles, double U, double 
 
   sc_expansion::Parameters<T> params;
   if constexpr (std::is_same_v<T, Dual>) {
-    params = {Dual(U, 0.0), Dual(beta, 0.0), Dual(mu, 1.0), bipartite};
+    params = {Dual(U, 0.0), Dual(beta, 0.0), Dual(mu, 1.0), Dual(0.0, 0.0), bipartite};
   } else {
-    params = {U, beta, mu, bipartite};
+    params = {U, beta, mu, 0.0, bipartite};
   }
 
   double reference_integral        = 0.0;
