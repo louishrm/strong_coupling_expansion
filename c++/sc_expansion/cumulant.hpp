@@ -11,9 +11,6 @@ namespace sc_expansion {
   template <typename T>
   class CumulantSolver {
     public:
-    using Arg     = std::pair<double, int>;
-    using ArgList = std::vector<Arg>;
-
     // Cache Key: pair<unprimed_mask, primed_mask>
     struct CacheKey {
       uint64_t u_mask;
@@ -30,13 +27,13 @@ namespace sc_expansion {
     };
 
     private:
-    // References to the original full lists (The "Master" lists)
-    const ArgList &master_unprimed;
-    const ArgList &master_primed;
+    // Master lists derived from taus and ops
+    std::vector<double> master_taus;
+    std::vector<int> master_ops;
     const HubbardAtom<T> &atom;
     bool infinite_U = false;
 
-    T call_bare(const ArgList &u, const ArgList &p) const;
+    T call_bare(uint64_t mask_u, uint64_t mask_p) const;
 
     // Memoization Table
     std::unordered_map<CacheKey, T, KeyHasher> memo;
@@ -49,7 +46,7 @@ namespace sc_expansion {
                              const std::vector<int> &global_map_p);
 
     public:
-    CumulantSolver(const ArgList &u, const ArgList &p, const HubbardAtom<T> &a, bool infinite_U);
+    CumulantSolver(const std::vector<double> &taus, const std::vector<int> &ops, const HubbardAtom<T> &a, bool infinite_U);
 
     mutable int cache_hits   = 0;
     mutable int cache_misses = 0;
@@ -62,7 +59,7 @@ namespace sc_expansion {
   };
 
   template <typename T>
-  T compute_cumulant_decomposition(ArgList const &unprimed, ArgList const &primed, HubbardAtom<T> const &atom,
+  T compute_cumulant_decomposition(std::vector<double> const &taus, std::vector<int> const &ops, HubbardAtom<T> const &atom,
                                         bool infinite_U = false, bool verbose = false);
 
   // Wrapper class for Python to easily compute cumulants for spin 0
@@ -77,15 +74,16 @@ namespace sc_expansion {
       if (taus.size() % 2 != 0) { throw std::invalid_argument("CumulantHelper::compute: input vector must have even size (2n)."); }
       size_t n = taus.size() / 2;
 
-      ArgList u, p;
-      u.reserve(n);
-      p.reserve(n);
+      std::vector<double> inter_taus(2 * n);
+      std::vector<int> inter_ops(2 * n);
 
       for (size_t i = 0; i < n; ++i) {
-        u.push_back({taus[i], 0});     // First n elements
-        p.push_back({taus[n + i], 0}); // Last n elements
+        inter_taus[2 * i + 1] = taus[i]; // unprimed
+        inter_ops[2 * i + 1] = 0;        // spin 0, action 0 (destroy)
+        inter_taus[2 * i] = taus[n + i]; // primed
+        inter_ops[2 * i] = 1;            // spin 0, action 1 (create)
       }
-      return compute_cumulant_decomposition(u, p, atom);
+      return compute_cumulant_decomposition(inter_taus, inter_ops, atom);
     }
   };
 

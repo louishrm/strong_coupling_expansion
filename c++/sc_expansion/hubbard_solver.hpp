@@ -11,6 +11,7 @@
 #include <tuple>
 #include <cmath>
 #include "dual.hpp"
+#include "operator_sequence.hpp"
 
 namespace sc_expansion {
 
@@ -23,20 +24,6 @@ namespace sc_expansion {
     T mu;
     T t            = T(0.0); // Only used for the dimer, but included here for convenience
     bool bipartite = true;
-  };
-
-  struct Args {
-
-    std::vector<double> taus;
-    std::vector<int> spins;
-    std::vector<int> ops; // 0: cup, 1: cdn, 2: cdag_up, 3: cdag_dn
-    double permutation_sign;
-    int order;
-
-    Args(std::vector<double> taus, std::vector<int> spins);
-
-    void sort_args();
-    bool verify_consecutive_terms_infinite_U() const;
   };
 
   struct Transition {
@@ -62,8 +49,8 @@ namespace sc_expansion {
 
     HubbardAtom(Parameters<T> const &params);
 
-    T G0(std::vector<double> const &taus, std::vector<int> const &spins) const;
-    T G0_infinite_U(std::vector<double> const &taus, std::vector<int> const &spins) const;
+    T G0(std::vector<double> const &taus, std::vector<int> const &ops) const;
+    T G0_infinite_U(std::vector<double> const &taus, std::vector<int> const &ops) const;
 
     // Internal members made public for testing and cumulant solver efficiency
     Parameters<T> const &params;
@@ -75,10 +62,10 @@ namespace sc_expansion {
     static const std::array<Transition, N_STATES * N_OPS> lookup_table;
 
     static constexpr int valid_start_states[N_OPS][2] = {
-       {1, 3}, // op 0 (c_up):       Needs state 1 (|up>) or 3 (|up down>)
-       {2, 3}, // op 1 (c_down):     Needs state 2 (|down>) or 3 (|up down>)
-       {0, 2}, // op 2 (cdag_up):    Needs state 0 (|0>) or 2 (|down>)
-       {0, 1}  // op 3 (cdag_down):  Needs state 0 (|0>) or 1 (|up>)
+       {2, 3}, // op 0 (c_dn):       Needs state 2 (|down>) or 3 (|up down>)
+       {0, 1}, // op 1 (cdag_dn):    Needs state 0 (|0>) or 1 (|up>)
+       {1, 3}, // op 2 (c_up):       Needs state 1 (|up>) or 3 (|up down>)
+       {0, 2}  // op 3 (cdag_up):    Needs state 0 (|0>) or 2 (|down>)
     };
   };
 

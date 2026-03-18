@@ -4,80 +4,6 @@
 
 namespace sc_expansion {
 
-  Args::Args(std::vector<double> taus_, std::vector<int> spins_) : taus(std::move(taus_)), spins(std::move(spins_)) {
-    if (taus.size() != spins.size()) { throw std::runtime_error("Error in Args constructor: taus and spins must have the same size"); }
-
-    this->order            = taus.size();
-    this->permutation_sign = 1.0; // Placeholder, will be set after sorting
-    this->sort_args();
-  }
-
-  void Args::sort_args() {
-    int n = this->taus.size();
-    std::vector<int> argsort(n);
-    std::iota(argsort.begin(), argsort.end(), 0);
-
-    std::vector<int> ops_local(n); // 0 = cup, 1 = cdn, 2 = cdag_up, 3 = cdag_dn
-
-    for (size_t i = 0; i < n; ++i) {
-
-      if (i % 2 == 0) {
-        ops_local[i] = 2 + this->spins[i];
-      } // Even index: creation operator (cdag_up or cdag_dn)
-      else {
-        ops_local[i] = this->spins[i];
-      } // Odd index: annihilation operator (cup or cdn)
-    }
-
-    std::stable_sort(argsort.begin(), argsort.end(), [&](int i, int j) { return this->taus[i] > this->taus[j]; });
-
-    this->permutation_sign = compute_permutation_sign(argsort);
-
-    std::vector<double> sorted_times(n);
-    std::vector<int> sorted_ops(n);
-
-    for (size_t i = 0; i < n; ++i) {
-      sorted_times[i] = this->taus[argsort[i]];
-      sorted_ops[i]   = ops_local[argsort[i]];
-    }
-
-    this->taus = std::move(sorted_times);
-    this->ops  = std::move(sorted_ops);
-  }
-
-  bool Args::verify_consecutive_terms_infinite_U() const {
-    int n = this->order;
-
-    // 2. Internal Sequence Checks
-    for (int i = 0; i + 1 < n; ++i) {
-
-      int op_late  = this->ops[i];     // Applied second
-      int op_early = this->ops[i + 1]; // Applied first
-
-      bool early_is_create = (op_early >= 2);
-      bool late_is_create  = (op_late >= 2);
-
-      // Rule A: Strict Alternation
-      if (early_is_create == late_is_create) return false;
-
-      // Rule B: Spin Conservation while occupied
-      if (early_is_create) {
-        if (op_late != op_early - 2) return false;
-      }
-    }
-
-    int op_beta = this->ops[0];     // The very last operator applied (latest time)
-    int op_zero = this->ops[n - 1]; // The very first operator applied (earliest time)
-
-    bool beta_is_create = (op_beta >= 2);
-
-    if (beta_is_create) {
-      if (op_zero != op_beta - 2) { return false; }
-    }
-
-    return true;
-  }
-
   template <typename T>
   const std::array<Transition, HubbardAtom<T>::N_STATES * HubbardAtom<T>::N_OPS> HubbardAtom<T>::lookup_table = []() {
     std::array<Transition, HubbardAtom<T>::N_STATES * HubbardAtom<T>::N_OPS> table;
@@ -85,7 +11,8 @@ namespace sc_expansion {
     // Iterate through all 4 states (00, 01, 10, 11)
     for (int state = 0; state < HubbardAtom<T>::N_STATES; ++state) {
 
-      // Iterate through all 4 operators (0=c_up, 1=c_down, 2=cdag_up, 3=cdag_down)
+      // Iterate through all 4 operators (Bit 0: Action, Bit 1: Spin)
+      // 0=c_dn, 1=cdag_dn, 2=c_up, 3=cdag_up
       for (int op = 0; op < HubbardAtom<T>::N_OPS; ++op) {
 
         // The 1D array index: (State * 4) + Operator
@@ -95,8 +22,8 @@ namespace sc_expansion {
         double mel     = 0.0;
 
         // Decode the operator type
-        bool is_create = (op >= 2);     // Ops 2 and 3 are creation
-        bool is_down   = (op % 2 != 0); // Ops 1 and 3 are down spin
+        bool is_create = (op & 1) == 1;     // Bit 0 is action (1 = create)
+        bool is_down   = ((op >> 1) & 1) == 0; // Bit 1 is spin (0 = down)
 
         // Decode the current state's orbital occupancies
         // Bit 0 (right) is UP, Bit 1 (left) is DOWN
@@ -141,21 +68,23 @@ namespace sc_expansion {
     this->E            = {T(0.0), -params.mu, -params.mu, params.U - 2.0 * params.mu};
   }
 
-  template <typename T> T HubbardAtom<T>::G0(std::vector<double> const &taus, std::vector<int> const &spins) const {
-    Args args(taus, spins);
+  template <typename T> T HubbardAtom<T>::G0(std::vector<double> const &taus, std::vector<int> const &ops) const {
+    OperatorSequence seq(taus, ops);
     T G0_value = T(0.0);
 
+    if (!seq.verify_flavor_alternation(0)) return T(0.0);
+
     // get the only two states that the list op in the sorted list can act on
-    int last_op = args.ops.back();
+    int last_op = seq.ops.back();
 
     for (int initial_state : this->valid_start_states[last_op]) {
 
       int current_state   = initial_state;
       T current_trace_val = T(1.0);
 
-      for (int i = args.order - 1; i >= 0; --i) {
+      for (int i = seq.order - 1; i >= 0; --i) {
 
-        int table_index = current_state * HubbardAtom<T>::N_OPS + args.ops[i];
+        int table_index = current_state * HubbardAtom<T>::N_OPS + seq.ops[i];
         Transition t    = this->lookup_table[table_index];
 
         if (t.matrix_element == 0.0) {
@@ -164,7 +93,7 @@ namespace sc_expansion {
         }
         int next_state    = t.connected_state;
         T energy_diff     = this->E[next_state] - this->E[current_state];
-        current_trace_val = current_trace_val * t.matrix_element * exp(args.taus[i] * energy_diff);
+        current_trace_val = current_trace_val * t.matrix_element * exp(seq.taus[i] * energy_diff);
         current_state     = next_state;
       }
 
@@ -175,20 +104,20 @@ namespace sc_expansion {
       }
     }
 
-    return T(1.0) / this->Z * args.permutation_sign * G0_value;
+    return T(1.0) / this->Z * seq.permutation_sign * G0_value;
   }
 
-  template <typename T> T HubbardAtom<T>::G0_infinite_U(std::vector<double> const &taus, std::vector<int> const &spins) const {
-    Args args(taus, spins);
+  template <typename T> T HubbardAtom<T>::G0_infinite_U(std::vector<double> const &taus, std::vector<int> const &ops) const {
+    OperatorSequence seq(taus, ops);
     T G0_value = T(0.0);
 
-    if (!args.verify_consecutive_terms_infinite_U()) { return T(0.0); }
+    if (!seq.verify_infinite_U_constraints()) { return T(0.0); }
 
     // If the sequence is valid, we can directly compute the contribution from the first operator.
     // The contribution from the rest of the sequence is guaranteed to be 1 due to the strict alternation and spin conservation rules.
 
-    int first_op = args.ops[0];
-    if (first_op >= 2) {
+    int first_op = seq.ops[0];
+    if ((first_op & 1) == 1) { // Action is Bit 0 (1 = create)
       // First operator is a creation operator
       G0_value = exp(this->params.beta * this->params.mu) / this->Z_infinite_U;
     } else {
@@ -196,7 +125,7 @@ namespace sc_expansion {
       G0_value = T(1.0) / this->Z_infinite_U;
     }
 
-    return args.permutation_sign * G0_value;
+    return seq.permutation_sign * G0_value;
   }
 
   template <typename T> std::pair<T, int> fermion_operator_act(int op, int state) {
