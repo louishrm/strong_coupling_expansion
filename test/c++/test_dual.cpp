@@ -62,3 +62,42 @@ TEST(DualTest, Exp) {
   EXPECT_DOUBLE_EQ(res.value, expected_val);
   EXPECT_DOUBLE_EQ(res.derivative, expected_val * 2.0);
 }
+
+TEST(DualTest, Sqrt) {
+  // (sqrt(u))' = 0.5 * u' / sqrt(u)
+  Dual d1(4.0, 2.0);
+  Dual res = sqrt(d1);
+  EXPECT_DOUBLE_EQ(res.value, 2.0);
+  // 0.5 * 2.0 / 2.0 = 0.5
+  EXPECT_DOUBLE_EQ(res.derivative, 0.5);
+}
+
+TEST(DualTest, Power) {
+  // (u^p)' = p * u^(p-1) * u'
+  Dual d1(2.0, 3.0);
+  double p = 3.0;
+  Dual res = pow(d1, p);
+  EXPECT_DOUBLE_EQ(res.value, 8.0);
+  // 3.0 * 2.0^2 * 3.0 = 3.0 * 4.0 * 3.0 = 36.0
+  EXPECT_DOUBLE_EQ(res.derivative, 36.0);
+}
+
+TEST(DualTest, ScalarOperations) {
+  Dual d1(2.0, 0.5);
+  double scalar = 3.0;
+
+  // Dual * scalar
+  Dual res1 = d1 * scalar;
+  EXPECT_DOUBLE_EQ(res1.value, 6.0);
+  EXPECT_DOUBLE_EQ(res1.derivative, 1.5);
+
+  // scalar * Dual
+  Dual res2 = scalar * d1;
+  EXPECT_DOUBLE_EQ(res2.value, 6.0);
+  EXPECT_DOUBLE_EQ(res2.derivative, 1.5);
+
+  // Dual / scalar
+  Dual res3 = d1 / scalar;
+  EXPECT_DOUBLE_EQ(res3.value, 2.0 / 3.0);
+  EXPECT_DOUBLE_EQ(res3.derivative, 0.5 / 3.0);
+}
