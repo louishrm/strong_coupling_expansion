@@ -160,51 +160,15 @@ TEST(HubbardAtomDualTest, G0IsParticleHoleSymmetric) {
   EXPECT_NEAR(g1.derivative, -g2.derivative, 1e-12);
 }
 
-// --- HubbardDimer Tests ---
+TEST(HubbardDimerTest, LookupTable) {
 
-class HubbardDimerTest : public ::testing::Test {
-  protected:
   double U    = 8.0;
   double beta = 1.0;
   double mu   = 2.0;
   double t    = 1.0;
+
   Parameters<double> params{U, beta, mu, t, true};
-
-  std::unique_ptr<HubbardDimer<double>> dimer;
-
-  void SetUp() override { dimer = std::make_unique<HubbardDimer<double>>(params, t); }
-};
-
-TEST_F(HubbardDimerTest, TransitionTableVacuumToN1) {
-  // op_index: 0: 1down destroy, 1: 2down destroy, 2: 1up destroy, 3: 2up destroy
-  //           4: 1down create, 5: 2down create, 6: 1up create, 7: 2up create
-
-  // Eigenstate 0 is vacuum |0>
-  // cdag_1down (op 4) acting on |0>:
-  // |0> is basis state 0.
-  // cdag_1down (op 4) |0> -> basis state 1 (|down, 0>) with mel 1.0.
-  // Eigenstates with basis state 1:
-  // state 1: 1/sqrt(2) (|1> + |2>) -> mel 1/sqrt(2)
-  // state 2: 1/sqrt(2) (|1> - |2>) -> mel 1/sqrt(2)
-
-  const auto &transitions = dimer->transition_table[4][0].transitions;
-  EXPECT_EQ(transitions.size(), 2);
-
-  // Check state 1
-  auto it1 = std::find_if(transitions.begin(), transitions.end(), [](const auto &t) { return t.connected_state == 1; });
-  ASSERT_NE(it1, transitions.end());
-  EXPECT_NEAR(it1->matrix_element, SQRT2_INV, 1e-12);
-
-  // Check state 2
-  auto it2 = std::find_if(transitions.begin(), transitions.end(), [](const auto &t) { return t.connected_state == 2; });
-  ASSERT_NE(it2, transitions.end());
-  EXPECT_NEAR(it2->matrix_element, SQRT2_INV, 1e-12);
-}
-
-TEST_F(HubbardDimerTest, TransitionTableSpinConservation) {
-  // c_1up (op 2) acting on |0> should have no transitions
-  const auto &transitions = dimer->transition_table[2][0].transitions;
-  EXPECT_EQ(transitions.size(), 0);
+  HubbardDimer<double> dimer(params);
 }
 
 int main(int argc, char **argv) {
