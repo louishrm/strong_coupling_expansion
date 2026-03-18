@@ -69,7 +69,7 @@ namespace sc_expansion {
 
     void check_vertex(int v_idx, std::vector<double> const &taus) const;
     void recompute_vertex(int v_idx, std::vector<double> const &taus) const;
-    std::pair<ArgList, ArgList> get_local_cumul_args(int v_idx, std::vector<double> const &taus, uint32_t local_mask) const;
+    std::pair<std::vector<double>, std::vector<int>> get_local_cumul_args(int v_idx, std::vector<double> const &taus, uint32_t local_mask) const;
   };
 
   // class Diagram {

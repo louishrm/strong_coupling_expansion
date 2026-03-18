@@ -150,24 +150,37 @@ namespace sc_expansion {
   }
 
   template <typename T>
-  std::pair<ArgList, ArgList> DiagramEvaluator<T>::get_local_cumul_args(int v_idx, std::vector<double> const &taus, uint32_t local_mask) const {
+  std::pair<std::vector<double>, std::vector<int>> DiagramEvaluator<T>::get_local_cumul_args(int v_idx, std::vector<double> const &taus, uint32_t local_mask) const {
     const auto &v = this->diagram.get_vertices()[v_idx];
-    ArgList unprimed_args, primed_args;
+
+    int degree = v.outgoing_lines.size(); // assuming outgoing == incoming
+    std::vector<double> inter_taus(2 * degree);
+    std::vector<int> inter_ops(2 * degree);
 
     int bit_pos = 0;
-    for (int idx : v.outgoing_lines) {
+    // outgoing_lines -> unprimed (destroy, action = 0), odd indices
+    for (size_t i = 0; i < v.outgoing_lines.size(); ++i) {
+      int idx = v.outgoing_lines[i];
       int spin = (local_mask >> bit_pos) & 1;
-      unprimed_args.push_back({taus[idx], spin});
+
+      inter_taus[2 * i + 1] = taus[idx];
+      inter_ops[2 * i + 1] = (spin << 1) | 0; // Spin in bit 1, Action 0 in bit 0
+
       bit_pos++;
     }
 
-    for (int idx : v.incoming_lines) {
+    // incoming_lines -> primed (create, action = 1), even indices
+    for (size_t i = 0; i < v.incoming_lines.size(); ++i) {
+      int idx = v.incoming_lines[i];
       int spin = (local_mask >> bit_pos) & 1;
-      primed_args.push_back({taus[idx], spin});
+
+      inter_taus[2 * i] = taus[idx];
+      inter_ops[2 * i] = (spin << 1) | 1; // Spin in bit 1, Action 1 in bit 0
+
       bit_pos++;
     }
 
-    return {unprimed_args, primed_args};
+    return {inter_taus, inter_ops};
   }
 
   template <typename T> void DiagramEvaluator<T>::recompute_vertex(int v_idx, std::vector<double> const &taus) const {
