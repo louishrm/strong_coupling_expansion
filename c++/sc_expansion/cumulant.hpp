@@ -8,12 +8,12 @@
 
 namespace sc_expansion {
 
-  template <typename T>
+  using Arg     = std::pair<double, int>;
+  using ArgList = std::vector<Arg>;
+
+  template <int N_sites, typename T>
   class CumulantSolver {
     public:
-    using Arg     = std::pair<double, int>;
-    using ArgList = std::vector<Arg>;
-
     // Cache Key: pair<unprimed_mask, primed_mask>
     struct CacheKey {
       uint64_t u_mask;
@@ -33,7 +33,7 @@ namespace sc_expansion {
     // References to the original full lists (The "Master" lists)
     const ArgList &master_unprimed;
     const ArgList &master_primed;
-    const HubbardAtom<T> &atom;
+    const HubbardSolver<N_sites, T> &solver;
     bool infinite_U = false;
 
     T call_bare(const ArgList &u, const ArgList &p) const;
@@ -49,7 +49,7 @@ namespace sc_expansion {
                              const std::vector<int> &global_map_p);
 
     public:
-    CumulantSolver(const ArgList &u, const ArgList &p, const HubbardAtom<T> &a, bool infinite_U);
+    CumulantSolver(const ArgList &u, const ArgList &p, const HubbardSolver<N_sites, T> &s, bool infinite_U);
 
     mutable int cache_hits   = 0;
     mutable int cache_misses = 0;
@@ -61,33 +61,9 @@ namespace sc_expansion {
     T compute_cumulant_decomposition();
   };
 
-  template <typename T>
-  T compute_cumulant_decomposition(ArgList const &unprimed, ArgList const &primed, HubbardAtom<T> const &atom,
+  template <int N_sites, typename T>
+  T compute_cumulant_decomposition(ArgList const &unprimed, ArgList const &primed, HubbardSolver<N_sites, T> const &solver,
                                         bool infinite_U = false, bool verbose = false);
-
-  // Wrapper class for Python to easily compute cumulants for spin 0
-  class CumulantHelper {
-    Parameters<double> params;
-    HubbardAtom<double> atom;
-
-    public:
-    CumulantHelper(double U, double beta, double mu) : params{U, beta, mu}, atom(params) {}
-
-    double compute(std::vector<double> taus) {
-      if (taus.size() % 2 != 0) { throw std::invalid_argument("CumulantHelper::compute: input vector must have even size (2n)."); }
-      size_t n = taus.size() / 2;
-
-      ArgList u, p;
-      u.reserve(n);
-      p.reserve(n);
-
-      for (size_t i = 0; i < n; ++i) {
-        u.push_back({taus[i], 0});     // First n elements
-        p.push_back({taus[n + i], 0}); // Last n elements
-      }
-      return compute_cumulant_decomposition(u, p, atom);
-    }
-  };
 
 } // namespace sc_expansion
 
