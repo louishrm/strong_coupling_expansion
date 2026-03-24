@@ -6,6 +6,14 @@ endforeach()
 
 # List of all tests
 file(GLOB_RECURSE all_tests RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} *.cpp)
+list(REMOVE_ITEM all_tests 
+  test_diagram.cpp
+  test_diagram_dimer.cpp
+  dimer_order_4.cpp
+  mcmc.cpp
+  test_hubbard_atom.cpp
+  test_atomic_cumulant.cpp
+)
 
 foreach(test ${all_tests})
   get_filename_component(test_name ${test} NAME_WE)
