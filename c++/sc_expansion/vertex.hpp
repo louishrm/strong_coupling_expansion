@@ -1,47 +1,81 @@
 #pragma once
 
 #include <vector>
+#include <unordered_map>
 #include "args.hpp"
 #include "cumulant.hpp"
 #include "dual.hpp"
 
 namespace sc_expansion {
 
-  struct VertexCacheKey {
-    std::vector<int> op_indices; // Specific actions (Site, Spin, Dag)
-    std::vector<double> taus;    // Specific times from the MCMC
-    bool infinite_U;             // Whether we are in the high-U limit
+  // The key for global memoization. 
+  // It uses the CANONICAL (time-sorted) operator and time arrays.
+  template <int N_sites, typename T>
+  struct CanonicalVertexKey {
+    std::vector<double> taus_u;
+    std::vector<double> taus_p;
+    std::vector<uint8_t> ops_u;
+    std::vector<uint8_t> ops_p;
+    bool infinite_U;
 
-    bool operator==(const VertexCacheKey &other) const {
-      return op_indices == other.op_indices && taus == other.taus && infinite_U == other.infinite_U; //times are always exactly preserved if unchanged
+    bool operator==(const CanonicalVertexKey &other) const {
+      return infinite_U == other.infinite_U && taus_u == other.taus_u && taus_p == other.taus_p &&
+             ops_u == other.ops_u && ops_p == other.ops_p;
     }
   };
 
-  struct VertexCacheHasher {
-    std::size_t operator()(const VertexCacheKey &k) const {
-      // Use a robust hash combine (e.g., boost::hash_combine style)
+  template <int N_sites, typename T>
+  struct CanonicalVertexHasher {
+    std::size_t operator()(const CanonicalVertexKey<N_sites, T> &k) const {
       std::size_t h = 0;
-      for (int op : k.op_indices) h ^= std::hash<int>{}(op) + 0x9e3779b9 + (h << 6) + (h >> 2);
-      for (double t : k.taus) h ^= std::hash<double>{}(t) + 0x9e3779b9 + (h << 6) + (h >> 2);
+      auto combine = [&](auto const& v) {
+          for (auto const& x : v) h ^= std::hash<std::decay_t<decltype(x)>>{}(x) + 0x9e3779b9 + (h << 6) + (h >> 2);
+      };
+      combine(k.taus_u); combine(k.taus_p);
+      combine(k.ops_u);  combine(k.ops_p);
       h ^= std::hash<bool>{}(k.infinite_U) + 0x9e3779b9 + (h << 6) + (h >> 2);
       return h;
     }
   };
 
-  template <int N_sites, typename T> class VertexType {
-
+  // VertexType acts as the "Instruction Manual" and the "Shared Spreadsheet"
+  template <int N_sites, typename T> 
+  class VertexType {
     public:
-    VertexType(int n_legs);
+    explicit VertexType(int n_legs);
 
-    T evaluate(std::vector<double> const &taus, std::vector<int> const &op_indices, HubbardSolver<N_sites, T> const &solver, bool infinite_U) const;
+    // Entry point for the physics calculation.
+    // Takes potentially unordered Args and handles sign-reversal for caching.
+    T evaluate_canonical(Args<N_sites, T> const &unprimed, Args<N_sites, T> const &primed, 
+                        HubbardSolver<N_sites, T> const &solver, bool infinite_U) const;
 
     private:
     int n_legs;
-
-    mutable std::unordered_map<VertexCacheKey, T, VertexCacheHasher> global_cache;
-
-    std::pair<ArgList, ArgList> map_args_to_list(std::vector<double> const &taus, std::vector<int> const &op_indices) const;
+    // The Global Cache (Shared Spreadsheet)
+    mutable std::unordered_map<CanonicalVertexKey<N_sites, T>, T, CanonicalVertexHasher<N_sites, T>> global_cache;
   };
 
-  class VertexInstance {};
+  // VertexInstance is the specific "LEGO brick" in a Diagram
+  template <int N_sites, typename T>
+  class VertexInstance {
+    public:
+    VertexInstance(VertexType<N_sites, T>* type_, std::vector<int> tau_indices_, std::vector<uint8_t> op_ids_);
+
+    // Checks the local "sticky note" first, then the global spreadsheet
+    T get_value(const std::vector<double>& global_taus, 
+                const HubbardSolver<N_sites, T>& solver, 
+                bool infinite_U) const;
+
+    // Called by the Diagram when a tau index it depends on changes
+    void mark_dirty() { this->is_dirty = true; }
+
+    private:
+    VertexType<N_sites, T>* type;
+    std::vector<int> tau_indices;
+    std::vector<uint8_t> op_ids;
+
+    mutable T local_cache;
+    mutable bool is_dirty = true;
+  };
+
 } // namespace sc_expansion

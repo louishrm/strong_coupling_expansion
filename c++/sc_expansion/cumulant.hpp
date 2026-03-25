@@ -2,14 +2,12 @@
 #define CUMULANT_HPP
 
 #include "hubbard_solver.hpp"
+#include "args.hpp"
 #include <vector>
 #include <unordered_map>
 #include <cstdint>
 
 namespace sc_expansion {
-
-  using Arg     = std::pair<double, int>;
-  using ArgList = std::vector<Arg>;
 
   template <int N_sites, typename T>
   class CumulantSolver {
@@ -31,12 +29,12 @@ namespace sc_expansion {
 
     private:
     // References to the original full lists (The "Master" lists)
-    const ArgList &master_unprimed;
-    const ArgList &master_primed;
+    const Args<N_sites, T> &master_unprimed;
+    const Args<N_sites, T> &master_primed;
     const HubbardSolver<N_sites, T> &solver;
     bool infinite_U = false;
 
-    T call_bare(const ArgList &u, const ArgList &p) const;
+    T call_bare(const Args<N_sites, T> &u, const Args<N_sites, T> &p) const;
 
     // Memoization Table
     std::unordered_map<CacheKey, T, KeyHasher> memo;
@@ -49,7 +47,7 @@ namespace sc_expansion {
                              const std::vector<int> &global_map_p);
 
     public:
-    CumulantSolver(const ArgList &u, const ArgList &p, const HubbardSolver<N_sites, T> &s, bool infinite_U);
+    CumulantSolver(const Args<N_sites, T> &u, const Args<N_sites, T> &p, const HubbardSolver<N_sites, T> &s, bool infinite_U);
 
     mutable int cache_hits   = 0;
     mutable int cache_misses = 0;
@@ -62,7 +60,7 @@ namespace sc_expansion {
   };
 
   template <int N_sites, typename T>
-  T compute_cumulant_decomposition(ArgList const &unprimed, ArgList const &primed, HubbardSolver<N_sites, T> const &solver,
+  T compute_cumulant_decomposition(Args<N_sites, T> const &unprimed, Args<N_sites, T> const &primed, HubbardSolver<N_sites, T> const &solver,
                                         bool infinite_U = false, bool verbose = false);
 
 } // namespace sc_expansion

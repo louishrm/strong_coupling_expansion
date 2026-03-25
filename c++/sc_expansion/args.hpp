@@ -11,12 +11,14 @@ namespace sc_expansion {
 
     Args(std::vector<double> taus_, std::vector<FermionOperator<N_sites, T>> ops_);
 
-    int order;
+        int order;
     static constexpr int N_ORBITALS = 2 * N_sites; // Number of orbitals (spin up and down for each site)
 
     double permutation_sign; // sign from sorting operators by imaginary time
     void sort_args();
     bool operator_sequence_is_valid() const;
     bool operator_sequence_is_valid_infinite_U() const;
+
+    static std::pair<Args<N_sites, T>, Args<N_sites, T>> split_from_raw(std::vector<double> const &taus, std::vector<uint8_t> const &op_ids);
   };
 } // namespace sc_expansion

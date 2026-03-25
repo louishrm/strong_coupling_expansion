@@ -96,6 +96,28 @@ namespace sc_expansion {
     return false;
   }
 
+  template <int N_sites, typename T>
+  std::pair<Args<N_sites, T>, Args<N_sites, T>> Args<N_sites, T>::split_from_raw(std::vector<double> const &taus,
+                                                                               std::vector<uint8_t> const &op_ids) {
+    if (taus.size() != op_ids.size()) { throw std::runtime_error("Error in Args::split_from_raw: taus and op_ids must have the same size"); }
+
+    std::vector<double> t_u, t_p;
+    std::vector<FermionOperator<N_sites, T>> o_u, o_p;
+
+    for (size_t i = 0; i < taus.size(); ++i) {
+      FermionOperator<N_sites, T> op(op_ids[i]);
+      if (op.get_action() == 0) { // Destruction
+        t_u.push_back(taus[i]);
+        o_u.push_back(op);
+      } else { // Creation
+        t_p.push_back(taus[i]);
+        o_p.push_back(op);
+      }
+    }
+    // Note: The Args constructor automatically performs the canonical time-sorting and computes the permutation_sign.
+    return {Args<N_sites, T>(std::move(t_u), std::move(o_u)), Args<N_sites, T>(std::move(t_p), std::move(o_p))};
+  }
+
   template struct Args<1, double>;
   template struct Args<1, Dual>;
   template struct Args<2, double>;

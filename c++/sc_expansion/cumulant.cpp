@@ -89,21 +89,23 @@ namespace {
 namespace sc_expansion {
 
   template <int N_sites, typename T>
-  CumulantSolver<N_sites, T>::CumulantSolver(const ArgList &u, const ArgList &p, const HubbardSolver<N_sites, T> &s, bool infinite_U_)
+  CumulantSolver<N_sites, T>::CumulantSolver(const Args<N_sites, T> &u, const Args<N_sites, T> &p, const HubbardSolver<N_sites, T> &s, bool infinite_U_)
      : master_unprimed(u), master_primed(p), solver(s), infinite_U(infinite_U_) {
 
     // Pre-calculate spin masks
-    for (size_t i = 0; i < u.size(); ++i) {
-      if (u[i].second == 1) this->master_spin_mask_u |= (1ULL << i);
+    for (size_t i = 0; i < u.ops.size(); ++i) {
+      uint8_t orbital = u.ops[i].get_orbital_index();
+      // Spin up if orbital >= N_sites
+      if (orbital >= N_sites) this->master_spin_mask_u |= (1ULL << i);
     }
-    for (size_t i = 0; i < p.size(); ++i) {
-      if (p[i].second == 1) this->master_spin_mask_p |= (1ULL << i);
+    for (size_t i = 0; i < p.ops.size(); ++i) {
+        uint8_t orbital = p.ops[i].get_orbital_index();
+        if (orbital >= N_sites) this->master_spin_mask_p |= (1ULL << i);
     }
   }
 
-  template <int N_sites, typename T>
-  T CumulantSolver<N_sites, T>::call_bare(const ArgList &u, const ArgList &p) const {
-    int n = u.size();
+  template <int N_sites, typename T> T CumulantSolver<N_sites, T>::call_bare(const Args<N_sites, T> &u, const Args<N_sites, T> &p) const {
+    int n = u.order;
     std::vector<double> taus;
     std::vector<FermionOperator<N_sites, T>> ops;
     taus.reserve(2 * n);
@@ -111,11 +113,11 @@ namespace sc_expansion {
 
     for (int i = 0; i < n; ++i) {
       // Creation (primed)
-      taus.push_back(p[i].first);
-      ops.push_back(FermionOperator<N_sites, T>((1 << N_sites) | p[i].second));
+      taus.push_back(p.taus[i]);
+      ops.push_back(p.ops[i]);
       // Destruction (unprimed)
-      taus.push_back(u[i].first);
-      ops.push_back(FermionOperator<N_sites, T>(u[i].second));
+      taus.push_back(u.taus[i]);
+      ops.push_back(u.ops[i]);
     }
 
     Args<N_sites, T> args(std::move(taus), std::move(ops));
@@ -125,14 +127,14 @@ namespace sc_expansion {
   // Recursive Distributor (Fixed Sign Logic)
   template <int N_sites, typename T>
   T CumulantSolver<N_sites, T>::distribute_primed(const std::vector<uint64_t> &u_partition_masks, int u_idx, uint64_t current_p_pool,
-                                           const std::vector<int> &global_map_u, const std::vector<int> &global_map_p) {
+                                                  const std::vector<int> &global_map_u, const std::vector<int> &global_map_p) {
 
     // Base Case
     if (u_idx == u_partition_masks.size()) { return T(1.0); }
 
-    uint64_t u_mask  = u_partition_masks[u_idx];
-    int needed_k     = popcount(u_mask);
-    T sum_terms = T(0.0);
+    uint64_t u_mask = u_partition_masks[u_idx];
+    int needed_k    = popcount(u_mask);
+    T sum_terms     = T(0.0);
 
     for_each_subset(current_p_pool, needed_k, [&](uint64_t p_submask) {
       // 1. Calculate Local Sign for this step
@@ -169,8 +171,7 @@ namespace sc_expansion {
     return sum_terms;
   }
 
-  template <int N_sites, typename T>
-  T CumulantSolver<N_sites, T>::solve(uint64_t mask_u, uint64_t mask_p) {
+  template <int N_sites, typename T> T CumulantSolver<N_sites, T>::solve(uint64_t mask_u, uint64_t mask_p) {
 
     // 1. Check Spin Conservation
     if (popcount(mask_u & master_spin_mask_u) != popcount(mask_p & master_spin_mask_p)) return T(0.0);
@@ -202,22 +203,34 @@ namespace sc_expansion {
 
     // 4. Base Case: Order 1
     if (order == 1) {
-      ArgList args_u   = {master_unprimed[global_map_u[0]]};
-      ArgList args_p   = {master_primed[global_map_p[0]]};
+      Args<N_sites, T> args_u({master_unprimed.taus[global_map_u[0]]}, {master_unprimed.ops[global_map_u[0]]});
+      Args<N_sites, T> args_p({master_primed.taus[global_map_p[0]]}, {master_primed.ops[global_map_p[0]]});
       return memo[key] = this->call_bare(args_u, args_p);
     }
 
     // 5. Compute G0_n
-    ArgList current_args_u, current_args_p;
-    current_args_u.reserve(order);
-    current_args_p.reserve(order);
-    for (int idx : global_map_u) current_args_u.push_back(master_unprimed[idx]);
-    for (int idx : global_map_p) current_args_p.push_back(master_primed[idx]);
+    std::vector<double> current_taus_u, current_taus_p;
+    std::vector<FermionOperator<N_sites, T>> current_ops_u, current_ops_p;
+    current_taus_u.reserve(order);
+    current_ops_u.reserve(order);
+    current_taus_p.reserve(order);
+    current_ops_p.reserve(order);
+    for (int idx : global_map_u) {
+        current_taus_u.push_back(master_unprimed.taus[idx]);
+        current_ops_u.push_back(master_unprimed.ops[idx]);
+    }
+    for (int idx : global_map_p) {
+        current_taus_p.push_back(master_primed.taus[idx]);
+        current_ops_p.push_back(master_primed.ops[idx]);
+    }
+
+    Args<N_sites, T> current_args_u(current_taus_u, current_ops_u);
+    Args<N_sites, T> current_args_p(current_taus_p, current_ops_p);
 
     T G0n = this->call_bare(current_args_u, current_args_p);
 
     // 6. Subtraction Term Logic
-    T low_order_cumulants = T(0.0);
+    T low_order_cumulants           = T(0.0);
     const auto &unprimed_partitions = get_partitions(order);
 
     for (const auto &partition : unprimed_partitions) {
@@ -250,17 +263,16 @@ namespace sc_expansion {
     return memo[key] = G0n + low_order_cumulants;
   }
 
-  template <int N_sites, typename T>
-  T CumulantSolver<N_sites, T>::compute_cumulant_decomposition() {
-    uint64_t full_mask = (this->master_unprimed.size() == 64) ? ~0ULL : (1ULL << this->master_unprimed.size()) - 1;
+  template <int N_sites, typename T> T CumulantSolver<N_sites, T>::compute_cumulant_decomposition() {
+    uint64_t full_mask = (this->master_unprimed.order == 64) ? ~0ULL : (1ULL << this->master_unprimed.order) - 1;
     return this->solve(full_mask, full_mask);
   }
 
   template <int N_sites, typename T>
-  T compute_cumulant_decomposition(ArgList const &unprimed, ArgList const &primed, HubbardSolver<N_sites, T> const &solver,
-                                        bool infinite_U, bool verbose) {
-    if (unprimed.size() != primed.size()) throw std::invalid_argument("Size mismatch in compute_cumulant_decomposition");
-    if (unprimed.empty()) throw std::invalid_argument("Empty list in compute_cumulant_decomposition");
+  T compute_cumulant_decomposition(Args<N_sites, T> const &unprimed, Args<N_sites, T> const &primed, HubbardSolver<N_sites, T> const &solver, bool infinite_U,
+                                   bool verbose) {
+    if (unprimed.order != primed.order) throw std::invalid_argument("Size mismatch in compute_cumulant_decomposition");
+    if (unprimed.order == 0) throw std::invalid_argument("Empty list in compute_cumulant_decomposition");
 
     CumulantSolver<N_sites, T> solver_obj(unprimed, primed, solver, infinite_U);
     T result = solver_obj.compute_cumulant_decomposition();
@@ -274,13 +286,13 @@ namespace sc_expansion {
   template class CumulantSolver<2, double>;
   template class CumulantSolver<2, Dual>;
 
-  template double compute_cumulant_decomposition<1, double>(ArgList const &unprimed, ArgList const &primed, HubbardSolver<1, double> const &solver,
-                                        bool infinite_U, bool verbose);
-  template Dual compute_cumulant_decomposition<1, Dual>(ArgList const &unprimed, ArgList const &primed, HubbardSolver<1, Dual> const &solver,
-                                        bool infinite_U, bool verbose);
-  template double compute_cumulant_decomposition<2, double>(ArgList const &unprimed, ArgList const &primed, HubbardSolver<2, double> const &solver,
-                                        bool infinite_U, bool verbose);
-  template Dual compute_cumulant_decomposition<2, Dual>(ArgList const &unprimed, ArgList const &primed, HubbardSolver<2, Dual> const &solver,
-                                        bool infinite_U, bool verbose);
+  template double compute_cumulant_decomposition<1, double>(Args<1, double> const &unprimed, Args<1, double> const &primed, HubbardSolver<1, double> const &solver,
+                                                            bool infinite_U, bool verbose);
+  template Dual compute_cumulant_decomposition<1, Dual>(Args<1, Dual> const &unprimed, Args<1, Dual> const &primed, HubbardSolver<1, Dual> const &solver,
+                                                        bool infinite_U, bool verbose);
+  template double compute_cumulant_decomposition<2, double>(Args<2, double> const &unprimed, Args<2, double> const &primed, HubbardSolver<2, double> const &solver,
+                                                            bool infinite_U, bool verbose);
+  template Dual compute_cumulant_decomposition<2, Dual>(Args<2, Dual> const &unprimed, Args<2, Dual> const &primed, HubbardSolver<2, Dual> const &solver,
+                                                        bool infinite_U, bool verbose);
 
 } // namespace sc_expansion

@@ -116,9 +116,9 @@ namespace sc_expansion {
     this->diagram_sign = (num_loops % 2 == 0) ? 1 : -1;
   }
 
-  template <typename T>
-  DiagramEvaluator<T>::DiagramEvaluator(Diagram const &diagram_, Parameters<T> const &params)
-     : diagram(diagram_), atom(params) {
+  template <int N_sites, typename T>
+  DiagramEvaluator<N_sites, T>::DiagramEvaluator(Diagram const &diagram_, Parameters<T> const &params)
+     : diagram(diagram_), solver(params) {
     int order = this->diagram.get_graph().get_order();
     this->current_taus.assign(order, -1.0);
     for (const Vertex &v : this->diagram.get_vertices()) {
@@ -127,7 +127,7 @@ namespace sc_expansion {
     }
   }
 
-  template <typename T> void DiagramEvaluator<T>::check_vertex(int v_idx, std::vector<double> const &taus) const {
+  template <int N_sites, typename T> void DiagramEvaluator<N_sites, T>::check_vertex(int v_idx, std::vector<double> const &taus) const {
     const auto &v     = diagram.get_vertices()[v_idx];
     bool is_corrupted = false;
 
@@ -149,28 +149,36 @@ namespace sc_expansion {
     if (is_corrupted) { this->recompute_vertex(v_idx, taus); }
   }
 
-  template <typename T>
-  std::pair<ArgList, ArgList> DiagramEvaluator<T>::get_local_cumul_args(int v_idx, std::vector<double> const &taus, uint32_t local_mask) const {
+  template <int N_sites, typename T>
+  std::pair<Args<N_sites, T>, Args<N_sites, T>> DiagramEvaluator<N_sites, T>::get_local_cumul_args(int v_idx, std::vector<double> const &taus, uint32_t local_mask) const {
     const auto &v = this->diagram.get_vertices()[v_idx];
-    ArgList unprimed_args, primed_args;
+    std::vector<double> taus_u, taus_p;
+    std::vector<FermionOperator<N_sites, T>> ops_u, ops_p;
 
     int bit_pos = 0;
     for (int idx : v.outgoing_lines) {
       int spin = (local_mask >> bit_pos) & 1;
-      unprimed_args.push_back({taus[idx], spin});
+      // For N_sites=1: 0=down, 1=up
+      // For N_sites=2: orbital indices: 0=site0_down, 1=site1_down, 2=site0_up, 3=site1_up
+      // We always use site 0 for vertex operators in dimer case
+      int orbital = (N_sites == 1) ? spin : (spin == 0 ? 0 : 2);
+      taus_u.push_back(taus[idx]);
+      ops_u.push_back(FermionOperator<N_sites, T>(orbital)); // Destruction
       bit_pos++;
     }
 
     for (int idx : v.incoming_lines) {
       int spin = (local_mask >> bit_pos) & 1;
-      primed_args.push_back({taus[idx], spin});
+      int orbital = (N_sites == 1) ? spin : (spin == 0 ? 0 : 2);
+      taus_p.push_back(taus[idx]);
+      ops_p.push_back(FermionOperator<N_sites, T>((1 << N_sites) | orbital)); // Creation
       bit_pos++;
     }
 
-    return {unprimed_args, primed_args};
+    return {Args<N_sites, T>(taus_u, ops_u), Args<N_sites, T>(taus_p, ops_p)};
   }
 
-  template <typename T> void DiagramEvaluator<T>::recompute_vertex(int v_idx, std::vector<double> const &taus) const {
+  template <int N_sites, typename T> void DiagramEvaluator<N_sites, T>::recompute_vertex(int v_idx, std::vector<double> const &taus) const {
     const auto &v = diagram.get_vertices()[v_idx];
     std::vector<bool> already_done(1 << v.degree(), false);
 
@@ -178,14 +186,14 @@ namespace sc_expansion {
       if (already_done[mask]) continue;
 
       auto args                         = this->get_local_cumul_args(v_idx, taus, mask);
-      this->cache_finite[v_idx][mask]   = compute_cumulant_decomposition(args.first, args.second, this->atom, false);
-      this->cache_infinite[v_idx][mask] = compute_cumulant_decomposition(args.first, args.second, this->atom, true);
+      this->cache_finite[v_idx][mask]   = compute_cumulant_decomposition(args.first, args.second, this->solver, false);
+      this->cache_infinite[v_idx][mask] = compute_cumulant_decomposition(args.first, args.second, this->solver, true);
 
       already_done[mask] = true;
     }
   }
 
-  template <typename T> T DiagramEvaluator<T>::evaluate_at_taus(std::vector<double> const &taus, bool infinite_U, bool use_cache) const {
+  template <int N_sites, typename T> T DiagramEvaluator<N_sites, T>::evaluate_at_taus(std::vector<double> const &taus, bool infinite_U, bool use_cache) const {
     int V = this->diagram.get_vertices().size();
     for (int v = 0; v < V; ++v) { this->check_vertex(v, taus); }
     this->current_taus = taus;
@@ -205,7 +213,7 @@ namespace sc_expansion {
           product = product * cache[v_idx][mask];
         } else {
           auto args = this->get_local_cumul_args(v_idx, taus, mask);
-          product   = product * compute_cumulant_decomposition(args.first, args.second, this->atom, infinite_U);
+          product   = product * compute_cumulant_decomposition(args.first, args.second, this->solver, infinite_U);
         }
       }
       sum = sum + T(weights[g_idx]) * product;
@@ -213,12 +221,12 @@ namespace sc_expansion {
     T sign            = T(this->diagram.get_diagram_sign());
     T symmetry_factor = T(this->diagram.get_graph().get_symmetry_factor());
     T fm              = T(this->diagram.get_graph().get_free_multiplicity());
-    T prefactor       = (T(-1.0) / this->atom.params.beta) * sign / symmetry_factor * fm;
+    T prefactor       = (T(-1.0) / this->solver.params.beta) * sign / symmetry_factor * fm;
 
     return prefactor * sum;
   }
 
-  template <typename T> T DiagramEvaluator<T>::evaluate_at_taus_dimer(std::vector<double> const &taus, bool infinite_U, bool use_cache) const {
+  template <int N_sites, typename T> T DiagramEvaluator<N_sites, T>::evaluate_at_taus_dimer(std::vector<double> const &taus, bool infinite_U, bool use_cache) const {
     int V = this->diagram.get_vertices().size();
     for (int v = 0; v < V; ++v) { this->check_vertex(v, taus); }
     this->current_taus = taus;
@@ -238,7 +246,7 @@ namespace sc_expansion {
           product = product * cache[v_idx][mask];
         } else {
           auto args = this->get_local_cumul_args(v_idx, taus, mask);
-          product   = product * compute_cumulant_decomposition(args.first, args.second, this->atom, infinite_U);
+          product   = product * compute_cumulant_decomposition(args.first, args.second, this->solver, infinite_U);
         }
       }
       sum = sum + T(weights[g_idx]) * product;
@@ -246,11 +254,13 @@ namespace sc_expansion {
     T sign            = T(this->diagram.get_diagram_sign());
     T symmetry_factor = T(this->diagram.get_graph().get_symmetry_factor());
     T fm              = T(1.0); // Fixed for dimer calculation
-    T prefactor       = (T(-1.0) / this->atom.params.beta) * sign / symmetry_factor * fm;
+    T prefactor       = (T(-1.0) / this->solver.params.beta) * sign / symmetry_factor * fm;
 
     return prefactor * sum;
   }
 
-  template class DiagramEvaluator<double>;
-  template class DiagramEvaluator<Dual>;
+  template class DiagramEvaluator<1, double>;
+  template class DiagramEvaluator<1, Dual>;
+  template class DiagramEvaluator<2, double>;
+  template class DiagramEvaluator<2, Dual>;
 } // namespace sc_expansion
