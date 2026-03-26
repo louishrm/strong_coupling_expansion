@@ -92,7 +92,7 @@ TEST(FermionOperatorTest, SparseMatrixAtomic) {
 
   // Create simple eigenstates for the atomic case
   // |0>, |down>, |up>, |up down>
-  std::vector<Eigenstate<double>> eigenstates(4);
+  std::array<Eigenstate<double>, 4> eigenstates;
   eigenstates[0].coefficients = {{0, 1.0}};
   eigenstates[1].coefficients = {{1, 1.0}};
   eigenstates[2].coefficients = {{2, 1.0}};
@@ -120,4 +120,45 @@ TEST(FermionOperatorTest, SparseMatrixAtomic) {
   }
   EXPECT_TRUE(found1);
   EXPECT_TRUE(found2);
+}
+
+TEST(FermionOperatorTest, SpinFlip) {
+
+  FermionOperator<1, double> cdag_up = FermionOperator<1, double>(3);
+  auto flipped_op                    = cdag_up.apply_spin_flip();
+
+  EXPECT_EQ(flipped_op.get_orbital_index(), 0); // Should now be cdag_down
+  EXPECT_EQ(flipped_op.get_action(), 1);        // Still a creation operator
+
+  FermionOperator<2, double> c_1u = FermionOperator<2, double>(2); //010 = c1up
+  auto flipped_c_1u               = c_1u.apply_spin_flip();
+
+  EXPECT_EQ(flipped_c_1u.get_orbital_index(), 0); // Should now be c1down
+  EXPECT_EQ(flipped_c_1u.get_action(), 0);        // Still annihilation operator
+
+  FermionOperator<2, double> cdag_2d = FermionOperator<2, double>(5); //101 cdag_2down
+  auto flipped_cdag_2d               = cdag_2d.apply_spin_flip();
+
+  EXPECT_EQ(flipped_cdag_2d.get_orbital_index(), 3); // Should now be cdag_2up
+  EXPECT_EQ(flipped_cdag_2d.get_action(), 1);        // Still a creation operator
+}
+
+TEST(FermionOperatorTest, Reflection) {
+
+  FermionOperator<1, double> cdag_up = FermionOperator<1, double>(3);
+  auto swapped_op                    = cdag_up.apply_reflection();
+  EXPECT_EQ(swapped_op.get_orbital_index(), 1); // Should now be cdag_up
+  EXPECT_EQ(swapped_op.get_action(), 1);        // Still a creation operator
+
+  FermionOperator<2, double> c_1u = FermionOperator<2, double>(2); //010 = c1up
+  auto swapped_c_1u               = c_1u.apply_reflection();
+
+  EXPECT_EQ(swapped_c_1u.get_orbital_index(), 3); // Should now be c1down
+  EXPECT_EQ(swapped_c_1u.get_action(), 0);        // Still annihilation operator
+
+  FermionOperator<2, double> cdag_2d = FermionOperator<2, double>(5); //101 cdag_2down
+  auto swapped_cdag_2d               = cdag_2d.apply_reflection();
+
+  EXPECT_EQ(swapped_cdag_2d.get_orbital_index(), 0); // Should now be cdag_1down
+  EXPECT_EQ(swapped_cdag_2d.get_action(), 1);        // Still a creation operator
 }
