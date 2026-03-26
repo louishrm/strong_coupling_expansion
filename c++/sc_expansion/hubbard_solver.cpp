@@ -8,9 +8,8 @@ namespace sc_expansion {
     for (int i = 0; i < N_OPS; ++i) { this->operators[i] = FermionOperator<N_sites, T>(static_cast<uint8_t>(i)); }
 
     this->compute_eigenstates();
-    this->compute_transition_table();
-
     for (int i = 0; i < N_OPS; ++i) { this->operator_matrices[i] = this->operators[i].compute_sparse_matrix(this->all_eigenstates); }
+    this->compute_transition_table();
 
     // Precompute exp(-beta * E_i)
     using std::exp;
@@ -88,36 +87,9 @@ namespace sc_expansion {
   }
 
   template <int N_sites, typename T> void HubbardSolver<N_sites, T>::compute_transition_table() {
-    auto is_zero = [](auto const &val) {
-      if constexpr (std::is_same_v<std::decay_t<decltype(val)>, Dual>) {
-        return std::abs(val.value) < 1e-15;
-      } else {
-        return std::abs(val) < 1e-15;
-      }
-    };
-
     for (int op_idx = 0; op_idx < N_OPS; ++op_idx) {
-      auto const &op = this->operators[op_idx];
-      for (int ket_idx = 0; ket_idx < N_STATES; ++ket_idx) {
-        auto const &ket = this->all_eigenstates[ket_idx];
-        for (int bra_idx = 0; bra_idx < N_STATES; ++bra_idx) {
-          auto const &bra = this->all_eigenstates[bra_idx];
-          T overlap       = T(0.0);
-
-          for (const auto &[basis_idx, coeff] : ket.coefficients) {
-            auto transition = op.act_on_state(FockState<N_sites>(basis_idx));
-            if (transition.matrix_element == 0.0) continue;
-
-            for (const auto &[bra_basis_idx, bra_coeff] : bra.coefficients) {
-              if (bra_basis_idx == transition.connected_state) {
-                overlap = overlap + coeff * T(transition.matrix_element) * bra_coeff;
-                break;
-              }
-            }
-          }
-
-          if (!is_zero(overlap)) { this->transition_table[op_idx][ket_idx].transitions.push_back({bra_idx, overlap}); }
-        }
+      for (const auto &entry : this->operator_matrices[op_idx].entries) {
+        this->transition_table[op_idx][entry.col].transitions.push_back({entry.row, entry.value});
       }
     }
   }

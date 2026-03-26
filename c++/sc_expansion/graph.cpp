@@ -6,7 +6,8 @@
 
 namespace sc_expansion {
 
-  Graph::Graph(std::vector<uint8_t> adjacency_matrix_, int V_, bool bipartite_only_) : adjacency_matrix(adjacency_matrix_), V(V_), canonical_matrix(adjacency_matrix_), bipartite_only(bipartite_only_) {
+  Graph::Graph(std::vector<uint8_t> adjacency_matrix_, int V_, bool bipartite_only_)
+     : adjacency_matrix(adjacency_matrix_), V(V_), canonical_matrix(adjacency_matrix_), bipartite_only(bipartite_only_) {
 
     // Calculate Order (Total number of lines)
     this->order = 0;
@@ -30,9 +31,17 @@ namespace sc_expansion {
     }
   }
 
-  Graph::Graph(std::vector<uint8_t> adjacency_matrix_, int V_, int automorphism_count_, int symmetry_factor_, int free_multiplicity_, bool bipartite_only_)
-    : adjacency_matrix(adjacency_matrix_), V(V_), canonical_matrix(adjacency_matrix_), connected(true), bipartite(true), bipartite_only(bipartite_only_),
-      automorphism_count(automorphism_count_), symmetry_factor(symmetry_factor_), free_multiplicity(free_multiplicity_) {
+  Graph::Graph(std::vector<uint8_t> adjacency_matrix_, int V_, int automorphism_count_, int symmetry_factor_, int free_multiplicity_,
+               bool bipartite_only_)
+     : adjacency_matrix(adjacency_matrix_),
+       V(V_),
+       canonical_matrix(adjacency_matrix_),
+       connected(true),
+       bipartite(true),
+       bipartite_only(bipartite_only_),
+       automorphism_count(automorphism_count_),
+       symmetry_factor(symmetry_factor_),
+       free_multiplicity(free_multiplicity_) {
 
     // Calculate Order (Total number of lines)
     this->order = 0;

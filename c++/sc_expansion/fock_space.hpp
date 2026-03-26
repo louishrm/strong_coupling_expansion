@@ -48,20 +48,13 @@ namespace sc_expansion {
     Transition<T> act_on_state(FockState<N_sites> const &fock_state) const;
     T compute_matrix_element(Eigenstate<T> const &bra, Eigenstate<T> const &ket) const;
 
-    template <typename Container> SparseMatrix<T> compute_sparse_matrix(Container const &eigenstates) const {
-      SparseMatrix<T> matrix;
-      for (std::size_t i = 0; i < eigenstates.size(); ++i) {
-        for (std::size_t j = 0; j < eigenstates.size(); ++j) {
-          T mel = this->compute_matrix_element(eigenstates[i], eigenstates[j]);
-          if (mel != T(0.0)) { matrix.entries.push_back({static_cast<int>(i), static_cast<int>(j), mel, eigenstates[i].energy - eigenstates[j].energy}); }
-        }
-      }
-      return matrix;
-    }
+    FermionOperator<N_sites, T> apply_spin_flip() const;
+    FermionOperator<N_sites, T> apply_reflection() const;
 
+    static constexpr uint8_t N_STATES     = 1 << (2 * N_sites); //4^N_sites
     static constexpr uint8_t ACTION_BIT   = (1 << N_sites);
     static constexpr uint8_t ORBITAL_MASK = ACTION_BIT - 1;
-    static constexpr uint8_t N_STATES     = 1 << (2 * N_sites); //4^N_sites
-  };
 
+    SparseMatrix<T> compute_sparse_matrix(std::array<Eigenstate<T>, N_STATES> const &all_eigenstates) const;
+  };
 } // namespace sc_expansion

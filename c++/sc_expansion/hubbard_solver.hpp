@@ -45,8 +45,8 @@ namespace sc_expansion {
     // Accessors for testing
     T get_Z() const { return this->Z; }
     T get_exp_beta_E(int i) const { return this->exp_beta_E[i]; }
-    const Eigenstate<T>& get_eigenstate(int i) const { return this->all_eigenstates[i]; }
-    const SparseMatrix<T>& get_operator_matrix(int op_idx) const { return this->operator_matrices[op_idx]; }
+    const Eigenstate<T> &get_eigenstate(int i) const { return this->all_eigenstates[i]; }
+    const SparseMatrix<T> &get_operator_matrix(int op_idx) const { return this->operator_matrices[op_idx]; }
 
     private:
     constexpr static int N_STATES     = 1 << (2 * N_sites); // 4 states for atom, 16 for dimer
