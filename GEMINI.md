@@ -34,5 +34,3 @@
 ## 6. Code Style
 - **Classes and Structs** names are always in PascalCase, header files only include the declaration of members and functions. Implementation is always done in .cpp including constructor. Members referenced using this->. 
 
-## 7. Todo
-@./TODO.md
