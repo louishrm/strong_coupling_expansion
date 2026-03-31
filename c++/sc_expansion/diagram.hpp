@@ -6,7 +6,7 @@
 #include <queue>
 #include "./hubbard_solver.hpp"
 #include "./cumulant.hpp"
-#include "./graph.hpp" // Include Graph for compute_free_multiplicity logic
+#include "./graph.hpp"
 #include "./dual.hpp"
 
 namespace sc_expansion {

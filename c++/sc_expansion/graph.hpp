@@ -21,6 +21,7 @@ namespace sc_expansion {
     std::vector<uint8_t> get_canonical_form() const { return this->canonical_matrix; }
     double get_free_multiplicity() const { return (double)this->free_multiplicity; }
     bool get_bipartite() const { return this->bipartite; }
+    bool get_bipartite_only() const { return this->bipartite_only; }
 
     private:
     std::vector<uint8_t> adjacency_matrix;
@@ -41,15 +42,5 @@ namespace sc_expansion {
     void check_if_bipartite();
     void compute_canonical_form();
     void compute_free_multiplicity();
-
-    // Helper structs and methods for free multiplicity
-    struct Point {
-      int x;
-      int y;
-      Point() : x(0), y(0) {}
-      Point(int x_, int y_) : x(x_), y(y_) {}
-    };
-
-    long solve_embedding_recursive(int placed_count, std::vector<bool> &placed, std::vector<Point> &coords);
   };
 } // namespace sc_expansion

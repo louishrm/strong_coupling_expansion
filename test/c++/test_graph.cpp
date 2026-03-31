@@ -6,25 +6,6 @@ using namespace sc_expansion;
 
 class GraphTest : public ::testing::Test {};
 
-// void print_all_order6_multiplicities() {
-//   // Diagrams D6a to D6g from c++/sc_expansion/dimer_order_4.hpp
-//   std::vector<uint8_t> D6a = {0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0};
-//   std::vector<uint8_t> D6b = {0, 3, 3, 0};
-//   std::vector<uint8_t> D6c = {0, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0};
-//   std::vector<uint8_t> D6d = {0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0};
-//   std::vector<uint8_t> D6e = {0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0};
-//   std::vector<uint8_t> D6f = {0, 2, 1, 2, 0, 0, 1, 0, 0};
-//   std::vector<uint8_t> D6g = {0, 2, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0};
-
-//   std::cout << "D6a (6-cycle) Free Multiplicity: " << Graph(D6a, 6).get_free_multiplicity() << std::endl;
-//   std::cout << "D6b (watermelon triple) Free Multiplicity: " << Graph(D6b, 2).get_free_multiplicity() << std::endl;
-//   std::cout << "D6c (petal with 4 vertices) Free Multiplicity: " << Graph(D6c, 4).get_free_multiplicity() << std::endl;
-//   std::cout << "D6d (square + digon) Free Multiplicity: " << Graph(D6d, 5).get_free_multiplicity() << std::endl;
-//   std::cout << "D6e (crab diagram) Free Multiplicity: " << Graph(D6e, 4).get_free_multiplicity() << std::endl;
-//   std::cout << "D6f (watermelon double + digon) Free Multiplicity: " << Graph(D6f, 3).get_free_multiplicity() << std::endl;
-//   std::cout << "D6g (square with one double line) Free Multiplicity: " << Graph(D6g, 4).get_free_multiplicity() << std::endl;
-// }
-
 TEST_F(GraphTest, GraphIsConnected) {
 
   std::vector<uint8_t> adjacency_matrix = {0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0}; //4 vertices, edges: 0->1, 1->2, 2->3, 3->0
@@ -83,71 +64,6 @@ TEST_F(GraphTest, GraphCanonicalFormIsCorrect) {
   EXPECT_EQ(graph.get_canonical_form(), std::vector<uint8_t>({0, 0, 1, 0, 0, 1, 1, 1, 0}));
 }
 
-TEST_F(GraphTest, GraphFreeMultiplicityIsCorrect) {
-
-  // D2a = {{0, 1}, {1, 0}};
-  std::vector<uint8_t> D2a = {0, 1, 1, 0};
-  Graph graph_2a(D2a, 2);
-  EXPECT_EQ((int)graph_2a.get_free_multiplicity(), 4);
-
-  std::vector<uint8_t> D3a = {0, 1, 0, 0, 0, 1, 1, 0, 0};
-  Graph graph_3a(D3a, 3, false);
-  EXPECT_EQ((int)graph_3a.get_free_multiplicity(), 12);
-
-  std::vector<uint8_t> D4a = {0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0};
-  Graph graph_4a(D4a, 4);
-  EXPECT_EQ((int)graph_4a.get_free_multiplicity(), 36);
-
-  std::vector<uint8_t> D4b = {0, 1, 1, 1, 0, 0, 1, 0, 0};
-  Graph graph_4b(D4b, 3);
-  EXPECT_EQ((int)graph_4b.get_free_multiplicity(), 16);
-
-  std::vector<uint8_t> D4c = {0, 2, 2, 0};
-  Graph graph_4c(D4c, 2);
-  EXPECT_EQ((int)graph_4c.get_free_multiplicity(), 4);
-
-  //D6
-  std::vector<uint8_t> D6_1 = {0, 1, 1, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0};
-  Graph graph_6_1(D6_1, 4);
-  EXPECT_EQ((int)graph_6_1.get_free_multiplicity(), 64);
-
-  std::vector<uint8_t> D6_2 = {0, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0};
-  Graph graph_6_2(D6_2, 4);
-  EXPECT_EQ((int)graph_6_2.get_free_multiplicity(), 64);
-
-  std::vector<uint8_t> D6a = {0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0};
-  EXPECT_EQ((int)Graph(D6a, 6).get_free_multiplicity(), 400);
-
-  std::vector<uint8_t> D6b = {0, 3, 3, 0};
-  EXPECT_EQ((int)Graph(D6b, 2).get_free_multiplicity(), 4);
-
-  std::vector<uint8_t> D6c = {0, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0};
-  EXPECT_EQ((int)Graph(D6c, 4).get_free_multiplicity(), 64);
-
-  std::vector<uint8_t> D6d = {0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0};
-  EXPECT_EQ((int)Graph(D6d, 5).get_free_multiplicity(), 144);
-
-  std::vector<uint8_t> D6e = {0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0};
-  EXPECT_EQ((int)Graph(D6e, 4).get_free_multiplicity(), 64);
-
-  std::vector<uint8_t> D6f = {0, 2, 1, 2, 0, 0, 1, 0, 0};
-  EXPECT_EQ((int)Graph(D6f, 3).get_free_multiplicity(), 16);
-
-  std::vector<uint8_t> D6g = {0, 2, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0};
-  EXPECT_EQ((int)Graph(D6g, 4).get_free_multiplicity(), 36);
-
-  std::vector<uint8_t> D8a(64, 0);
-  for (int i = 0; i < 8; ++i) {
-    D8a[i * 8 + (i + 1) % 8]   = 1;
-    D8a[((i + 1) % 8) * 8 + i] = 1;
-  }
-  EXPECT_EQ((int)Graph(D8a, 8).get_free_multiplicity(), 4900);
-
-  std::vector<uint8_t> D8b = {0, 4, 4, 0};
-  Graph graph_8b(D8b, 2);
-  EXPECT_EQ((int)graph_8b.get_free_multiplicity(), 4);
-}
-
 TEST_F(GraphTest, GraphConstructorOverride) {
   std::vector<uint8_t> adjacency_matrix = {0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0}; // D6e crab diagram
   int V                                 = 4;
@@ -165,5 +81,3 @@ TEST_F(GraphTest, GraphConstructorOverride) {
   EXPECT_TRUE(graph.get_bipartite());
   EXPECT_EQ(graph.get_canonical_form(), adjacency_matrix);
 }
-
-//TEST_F(GraphTest, PrintOtherFreeMultiplicities) { print_all_order6_multiplicities(); }

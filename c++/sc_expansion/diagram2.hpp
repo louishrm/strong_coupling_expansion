@@ -1,12 +1,13 @@
 #pragma once
 
 #include <vector>
+#include <map>
 #include <numeric>   // For std::accumulate
 #include <algorithm> // For std::next_permutation
 #include <queue>
 #include "./hubbard_solver.hpp"
 #include "./cumulant.hpp"
-#include "./graph.hpp" // Include Graph for compute_free_multiplicity logic
+#include "./graph.hpp"
 #include "./dual.hpp"
 #include "./fock_space.hpp"
 #include "./vertex.hpp"
@@ -75,6 +76,18 @@ namespace sc_expansion {
     double weight;                           // Number of configurations in the symmetry orbit
   };
 
+  // Stores a unique spatial embedding pattern for the dimer (N_sites=2) case.
+  // Each entry in `directions` is 0 (left/dx<0) or 1 (right/dx>0) for the corresponding hopping line.
+  // `weight` is the total number of lattice embeddings producing this pattern.
+  struct SpatialConfiguration {
+    std::vector<uint8_t> directions; // Per hopping line: 0=left, 1=right
+    double weight;
+  };
+
+  // Lattice embedding count for a graph on the square (bipartite) or triangular (non-bipartite) lattice.
+  // Moved here from Graph — this is the N_sites=1 (single-site) free multiplicity.
+  int compute_lattice_free_multiplicity(Graph const &graph);
+
   template <int N_sites, typename T> class Diagram2 {
 
     public:
@@ -82,15 +95,34 @@ namespace sc_expansion {
 
     T evaluate(std::vector<double> const &taus, HubbardSolver<N_sites, T> const &solver, bool infinite_U);
 
+    const std::vector<SpatialConfiguration> &get_spatial_configurations() const { return this->spatial_configurations; }
+
+    double get_free_multiplicity() const {
+      double total = 0.0;
+      for (auto const &sc : this->spatial_configurations) { total += sc.weight; }
+      return total;
+    }
+
     private:
     Graph const &graph;
     std::vector<VertexInstance<N_sites, T>> vertices;
     std::vector<OrbitalConfiguration> valid_configurations;
+    std::vector<SpatialConfiguration> spatial_configurations;
     Lines hopping_lines;
 
     void compute_hopping_lines();
-    void setup_vertices();
+    void setup_vertices(std::vector<VertexType<N_sites, T> *> const &vertex_types);
+    void compute_spatial_configurations();
     void compute_valid_configurations();
     void compute_diagram_sign();
+
+    // Helpers for dimer spatial embedding on the triangular superlattice
+    void solve_dimer_embedding(int placed_count, std::vector<bool> &placed, std::vector<std::pair<int, int>> &coords,
+                               std::map<std::vector<uint8_t>, int> &config_counts) const;
+
+    std::vector<uint8_t> canonicalize_directions(std::vector<uint8_t> const &dirs,
+                                                 std::vector<std::vector<int>> const &automorphisms) const;
+
+    std::vector<uint8_t> apply_automorphism_to_directions(std::vector<uint8_t> const &dirs, std::vector<int> const &perm) const;
   };
 }; // namespace sc_expansion

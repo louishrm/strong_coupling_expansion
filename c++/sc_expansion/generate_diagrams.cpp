@@ -163,7 +163,6 @@ namespace sc_expansion {
     if it hasn't, add it to the hash table*/
     if (!graph.get_connectivity()) return;                      //discard disconnected graphs
     if (this->bipartite_only && !graph.get_bipartite()) return; //discard non-bipartite graphs only if requested
-    if (graph.get_free_multiplicity() <= 0) return;             //discard graphs that cannot be embedded on the lattice
 
     std::vector<uint8_t> canonical = graph.get_canonical_form();
     if (this->unique_adjmats.find(canonical) == this->unique_adjmats.end()) {
