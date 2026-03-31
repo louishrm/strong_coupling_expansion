@@ -1,5 +1,6 @@
 #include "args.hpp"
 #include "dual.hpp"
+#include <stdexcept>
 #include <numeric>
 #include <algorithm>
 
