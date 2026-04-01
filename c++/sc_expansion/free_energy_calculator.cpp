@@ -11,41 +11,39 @@ namespace sc_expansion {
 
   template <int N_sites, typename T>
   FreeEnergyCalculator<N_sites, T>::FreeEnergyCalculator(Parameters<T> const &params_, int order_, int override_fm_)
-     : params(params_), order(order_) {
+     : params(params_), order(order_), solver(params_) {
     VacuumDiagramGenerator gen(this->order, params.bipartite);
     gen.generate();
     const auto &unique_graphs = gen.get_unique_graphs();
 
+    std::vector<VertexType<N_sites, T> *> empty_vt;
+
     for (auto const &g : unique_graphs) {
       if (override_fm_ >= 0) {
-        // Reconstruct graph with overridden free multiplicity (e.g. fm=1 for 2-site benchmark)
-        Graph g_mod(g.get_canonical_form(), g.get_V(), g.get_automorphism_count(), (int)g.get_symmetry_factor(), override_fm_,
+        this->graphs.emplace_back(g.get_canonical_form(), g.get_V(), g.get_automorphism_count(), (int)g.get_symmetry_factor(), override_fm_,
                     g.get_bipartite_only());
-        this->diagrams.emplace_back(g_mod);
       } else {
-        this->diagrams.emplace_back(g);
+        this->graphs.emplace_back(g);
       }
+      this->diagrams.emplace_back(this->graphs.back(), empty_vt);
     }
-
-    for (auto const &diag : this->diagrams) { this->evaluators.emplace_back(diag, this->params); }
   }
 
   template <int N_sites, typename T>
   T FreeEnergyCalculator<N_sites, T>::compute_sum_diagrams(std::vector<double> const &taus, bool infinite_U, bool use_cache) const {
     T sum = T(0.0);
-    for (auto const &evaluator : this->evaluators) { sum = sum + evaluator.evaluate_at_taus(taus, infinite_U, use_cache); }
+    for (auto &diagram : this->diagrams) { sum = sum + const_cast<Diagram<N_sites, T>&>(diagram).evaluate(taus, this->solver, infinite_U); }
     return sum;
   }
 
   template <int N_sites, typename T>
   T FreeEnergyCalculator<N_sites, T>::compute_sum_diagrams_dimer(std::vector<double> const &taus, bool infinite_U, bool use_cache) const {
     T sum = T(0.0);
-    for (auto const &evaluator : this->evaluators) { sum = sum + evaluator.evaluate_at_taus_dimer(taus, infinite_U, use_cache); }
+    for (auto &diagram : this->diagrams) { sum = sum + const_cast<Diagram<N_sites, T>&>(diagram).evaluate(taus, this->solver, infinite_U); }
     return sum;
   }
 
-  template <int N_sites, typename T>
-  std::pair<double, double> FreeEnergyCalculator<N_sites, T>::compute_infinite_U_coefficient(bool dimer) const {
+  template <int N_sites, typename T> std::pair<double, double> FreeEnergyCalculator<N_sites, T>::compute_infinite_U_coefficient(bool dimer) const {
     int n = this->order;
     std::vector<double> taus(n);
     std::iota(taus.begin(), taus.end(), 0.0);

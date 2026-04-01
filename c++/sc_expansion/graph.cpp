@@ -185,7 +185,7 @@ namespace sc_expansion {
     this->symmetry_factor = auto_count * factorial_product;
   }
 
-  // Forward declaration — implementation lives in diagram2.cpp
+  // Forward declaration — implementation lives in diagram.cpp
   int compute_lattice_free_multiplicity(Graph const &graph);
 
   void Graph::compute_free_multiplicity() { this->free_multiplicity = compute_lattice_free_multiplicity(*this); }

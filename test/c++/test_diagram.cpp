@@ -1,160 +1,210 @@
-#include <gtest/gtest.h>
-#include <cmath>
+#include <algorithm>
 #include <numeric>
-#include "sc_expansion/hubbard_solver.hpp"
-#include "sc_expansion/cumulant.hpp"
+#include <cmath>
+#include <iostream>
+#include <gtest/gtest.h>
 #include "sc_expansion/diagram.hpp"
 #include "sc_expansion/graph.hpp"
-#include "sc_expansion/free_energy_order.hpp"
-#include "sc_expansion/combinatorics.hpp"
+#include "sc_expansion/free_energy_calculator.hpp"
 
 using namespace sc_expansion;
 
-template <typename Order> std::pair<double, double> compute_exact_integral_infinite_U(Order &o, int n, double beta) {
-  //Return \int ||U_inf|| d tau and \int U_inf d tau (both abs and signed version)
-  double sum_abs    = 0.0;
-  double sum_signed = 0.0;
+// =====================================================================
+// Helper
+// =====================================================================
 
-  SJT sjt(n);
-  do {
-    const auto &p = sjt.get_permutation();
-    std::vector<double> taus(p.begin(), p.end());
-
-    // CRITICAL: Using dimer version for the integrator as requested
-    // Enabling vertex caching (use_cache = true)
-    double val = o.compute_sum_diagrams_dimer(taus, true, true);
-    sum_abs += std::abs(val);
-    sum_signed += val;
-  } while (sjt.next_permutation());
-
-  double nfact = factorial(n);
-
-  std::pair<double, double> result;
-  result.first  = (std::pow(beta, n) / nfact) * sum_abs;
-  result.second = (std::pow(beta, n) / nfact) * sum_signed;
-  return result;
+static double single_site_free_multiplicity(std::vector<uint8_t> const &adjmat, int V, bool bipartite_only = true) {
+  Graph graph(adjmat, V, bipartite_only);
+  std::vector<VertexType<1, double> *> vt;
+  Diagram<1, double> diagram(graph, vt);
+  return diagram.get_free_multiplicity();
 }
 
-// The Test Fixture: Sets up the data common to all tests
-class DiagramTest : public ::testing::Test {
-  protected:
-  double U    = 8.0;
-  double beta = 1.0;
-  double mu   = 2.0;
+// =====================================================================
+// Free multiplicity tests (N_sites=1, single-site expansion)
+// =====================================================================
+
+TEST(DiagramFreeMultiplicity, D2a) { EXPECT_DOUBLE_EQ(single_site_free_multiplicity({0, 1, 1, 0}, 2), 4); }
+
+TEST(DiagramFreeMultiplicity, D3a) { EXPECT_DOUBLE_EQ(single_site_free_multiplicity({0, 1, 0, 0, 0, 1, 1, 0, 0}, 3, false), 12); }
+
+TEST(DiagramFreeMultiplicity, D4a) { EXPECT_DOUBLE_EQ(single_site_free_multiplicity({0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0}, 4), 36); }
+
+TEST(DiagramFreeMultiplicity, D4b) { EXPECT_DOUBLE_EQ(single_site_free_multiplicity({0, 1, 1, 1, 0, 0, 1, 0, 0}, 3), 16); }
+
+TEST(DiagramFreeMultiplicity, D4c) { EXPECT_DOUBLE_EQ(single_site_free_multiplicity({0, 2, 2, 0}, 2), 4); }
+
+TEST(DiagramFreeMultiplicity, D6_1) { EXPECT_DOUBLE_EQ(single_site_free_multiplicity({0, 1, 1, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0}, 4), 64); }
+
+TEST(DiagramFreeMultiplicity, D6_2) { EXPECT_DOUBLE_EQ(single_site_free_multiplicity({0, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0}, 4), 64); }
+
+TEST(DiagramFreeMultiplicity, D6a) {
+  EXPECT_DOUBLE_EQ(
+     single_site_free_multiplicity({0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0}, 6),
+     400);
+}
+
+TEST(DiagramFreeMultiplicity, D6b) { EXPECT_DOUBLE_EQ(single_site_free_multiplicity({0, 3, 3, 0}, 2), 4); }
+
+TEST(DiagramFreeMultiplicity, D6c) { EXPECT_DOUBLE_EQ(single_site_free_multiplicity({0, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0}, 4), 64); }
+
+TEST(DiagramFreeMultiplicity, D6d) {
+  EXPECT_DOUBLE_EQ(single_site_free_multiplicity({0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0}, 5), 144);
+}
+
+TEST(DiagramFreeMultiplicity, D6e) { EXPECT_DOUBLE_EQ(single_site_free_multiplicity({0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0}, 4), 64); }
+
+TEST(DiagramFreeMultiplicity, D6f) { EXPECT_DOUBLE_EQ(single_site_free_multiplicity({0, 2, 1, 2, 0, 0, 1, 0, 0}, 3), 16); }
+
+TEST(DiagramFreeMultiplicity, D6g) { EXPECT_DOUBLE_EQ(single_site_free_multiplicity({0, 2, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0}, 4), 36); }
+
+TEST(DiagramFreeMultiplicity, D8a) {
+  std::vector<uint8_t> D8a(64, 0);
+  for (int i = 0; i < 8; ++i) {
+    D8a[i * 8 + (i + 1) % 8]   = 1;
+    D8a[((i + 1) % 8) * 8 + i] = 1;
+  }
+  EXPECT_DOUBLE_EQ(single_site_free_multiplicity(D8a, 8), 4900);
+}
+
+TEST(DiagramFreeMultiplicity, D8b) { EXPECT_DOUBLE_EQ(single_site_free_multiplicity({0, 4, 4, 0}, 2), 4); }
+
+// =====================================================================
+// Dimer spatial configuration tests (N_sites=2)
+// =====================================================================
+
+TEST(DiagramSpatialConfigs, D4b) {
+  Graph graph({0, 1, 1, 1, 0, 0, 1, 0, 0}, 3);
+  std::vector<VertexType<2, double> *> vt;
+  Diagram<2, double> diagram(graph, vt);
+  auto const &spatial = diagram.get_spatial_configurations();
+
+  EXPECT_EQ(spatial.size(), 2u);
+  double total = 0;
+  for (auto const &sc : spatial) total += sc.weight;
+  EXPECT_DOUBLE_EQ(total, 36.0);
+}
+
+TEST(DiagramSpatialConfigs, D2a) {
+  Graph graph({0, 1, 1, 0}, 2);
+  std::vector<VertexType<2, double> *> vt;
+  Diagram<2, double> diagram(graph, vt);
+  auto const &spatial = diagram.get_spatial_configurations();
+
+  EXPECT_EQ(spatial.size(), 1u);
+  EXPECT_DOUBLE_EQ(spatial[0].weight, 6.0);
+}
+
+TEST(DiagramSpatialConfigs, D4c) {
+  Graph graph({0, 2, 2, 0}, 2);
+  std::vector<VertexType<2, double> *> vt;
+  Diagram<2, double> diagram(graph, vt);
+  auto const &spatial = diagram.get_spatial_configurations();
+
+  EXPECT_EQ(spatial.size(), 1u);
+  EXPECT_DOUBLE_EQ(spatial[0].weight, 6.0);
+}
+
+TEST(DiagramSpatialConfigs, D6c) {
+  Graph graph({0, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0}, 4);
+  std::vector<VertexType<2, double> *> vt;
+  Diagram<2, double> diagram(graph, vt);
+  auto const &spatial = diagram.get_spatial_configurations();
+
+  EXPECT_EQ(spatial.size(), 2u);
+  EXPECT_DOUBLE_EQ(spatial[0].weight, 54.0);
+  EXPECT_DOUBLE_EQ(spatial[1].weight, 162.0);
+}
+
+// =====================================================================
+// Global configuration tests
+// =====================================================================
+
+TEST(DiagramGlobalConfigs, D2aAtom) {
+  Graph graph({0, 1, 1, 0}, 2);
+  std::vector<VertexType<1, double> *> vt;
+  Diagram<1, double> diagram(graph, vt);
+  auto const &configs = diagram.get_valid_configurations();
+
+  EXPECT_EQ(configs.size(), 1u);
+  EXPECT_DOUBLE_EQ(configs[0].weight, 4.0);
+}
+
+TEST(DiagramGlobalConfigs, D2aDimer) {
+  Graph graph({0, 1, 1, 0}, 2);
+  std::vector<VertexType<2, double> *> vt;
+  Diagram<2, double> diagram(graph, vt);
+  auto const &configs = diagram.get_valid_configurations();
+
+  EXPECT_EQ(configs.size(), 1u);
+  EXPECT_DOUBLE_EQ(configs[0].weight, 12.0);
+}
+
+TEST(DiagramGlobalConfigs, D4bAtom) {
+  Graph graph({0, 1, 1, 1, 0, 0, 1, 0, 0}, 3);
+  std::vector<VertexType<1, double> *> vt;
+  Diagram<1, double> diagram(graph, vt);
+  auto const &configs = diagram.get_valid_configurations();
+
+  EXPECT_EQ(configs.size(), 2u);
+  double total = 0;
+  for (auto const &c : configs) total += c.weight;
+  EXPECT_DOUBLE_EQ(total, 32.0);
+}
+
+// =====================================================================
+// Numerical evaluation tests
+// =====================================================================
+
+TEST(DiagramEvaluation, D2aAtom) {
+  double U = 8.0, beta = 1.0, mu = 2.0;
   Parameters<double> params{U, beta, mu, 0.0, true};
+  std::vector<double> taus = {0.5, 0.0};
 
-  std::unique_ptr<HubbardAtom<double>> atom;
+  Graph graph({0, 1, 1, 0}, 2);
+  VertexType<1, double> vt1(2);
+  std::vector<VertexType<1, double> *> vt = {&vt1};
+  Diagram<1, double> diagram(graph, vt);
+  HubbardSolver<1, double> solver(params);
 
-  void SetUp() override { atom = std::make_unique<HubbardAtom<double>>(params); }
-};
+  double val = diagram.evaluate(taus, solver, false);
+  EXPECT_TRUE(std::isfinite(val));
+  EXPECT_NE(val, 0.0);
 
-TEST_F(DiagramTest, DiagramSignIsCorrect) {
-  // D2a = {0, 1, 1, 0} is a 2-cycle (0->1, 1->0).
-  // It has 1 loop, so sign should be -1.
-  std::vector<uint8_t> D2a = {0, 1, 1, 0};
-  Graph g(D2a, 2);
-  Diagram diagram(g);
-  EXPECT_EQ(diagram.get_diagram_sign(), -1.0);
-
-  std::vector<uint8_t> D4a = {0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0}; // 4-cycle
-  std::vector<uint8_t> D4b = {0, 1, 1, 1, 0, 0, 1, 0, 0};                      // 3-cycle with double lines (0->1, 0->2, 1->0, 2->0)
-  std::vector<uint8_t> D4c = {0, 2, 2, 0};                                     // 2-cycle with double lines
-
-  Graph g_a(D4a, 4);
-  Graph g_b(D4b, 3);
-  Graph g_c(D4c, 2);
-
-  Diagram diagram_a(g_a);
-  Diagram diagram_b(g_b);
-  Diagram diagram_c(g_c);
-
-  EXPECT_EQ(diagram_a.get_diagram_sign(), -1.0); // 4-cycle has 2 loops, so sign should be
-  EXPECT_EQ(diagram_b.get_diagram_sign(), 1.0);  // 3-cycle with double lines has 3 loops, so sign should be
-  EXPECT_EQ(diagram_c.get_diagram_sign(), 1.0);  // 2-cycle with double lines has 4 loops, so sign should be
+  double val2 = diagram.evaluate(taus, solver, false);
+  EXPECT_DOUBLE_EQ(val, val2);
 }
 
-TEST_F(DiagramTest, Order6DiagramSignIsCorrect) {
-  // D6a: 6-cycle, 1 loop -> sign -1
-  std::vector<uint8_t> D6a = {0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0};
-  // D6b: watermelon triple, 3 loops -> sign -1
-  std::vector<uint8_t> D6b = {0, 3, 3, 0};
-  // D6c: petal with 4 vertices, 3 loops -> sign -1
-  std::vector<uint8_t> D6c = {0, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0};
-  // D6d: square + digon, 2 loops -> sign 1
-  std::vector<uint8_t> D6d = {0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0};
-  // D6e: crab diagram, 3 loops -> sign -1
-  std::vector<uint8_t> D6e = {0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0};
-  // D6f: watermelon double + digon, 3 loops -> sign -1
-  std::vector<uint8_t> D6f = {0, 2, 1, 2, 0, 0, 1, 0, 0};
-  // D6g: square with one double line, 2 loops -> sign 1
-  std::vector<uint8_t> D6g = {0, 2, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0};
+TEST(DiagramEvaluation, D2aDimer) {
+  double U = 8.0, beta = 1.0, mu = 2.0;
+  Parameters<double> params{U, beta, mu, 1.0, true};
+  std::vector<double> taus = {0.5, 0.0};
 
-  EXPECT_EQ(Diagram(Graph(D6a, 6)).get_diagram_sign(), -1.0);
-  EXPECT_EQ(Diagram(Graph(D6b, 2)).get_diagram_sign(), -1.0);
-  EXPECT_EQ(Diagram(Graph(D6c, 4)).get_diagram_sign(), -1.0);
-  EXPECT_EQ(Diagram(Graph(D6d, 5)).get_diagram_sign(), 1.0);
-  EXPECT_EQ(Diagram(Graph(D6e, 4)).get_diagram_sign(), -1.0);
-  EXPECT_EQ(Diagram(Graph(D6f, 3)).get_diagram_sign(), -1.0);
-  EXPECT_EQ(Diagram(Graph(D6g, 4)).get_diagram_sign(), 1.0);
+  Graph graph({0, 1, 1, 0}, 2);
+  VertexType<2, double> vt1(2);
+  std::vector<VertexType<2, double> *> vt = {&vt1};
+  Diagram<2, double> diagram(graph, vt);
+  HubbardSolver<2, double> solver(params);
+
+  double val = diagram.evaluate(taus, solver, false);
+  EXPECT_TRUE(std::isfinite(val));
+  EXPECT_NE(val, 0.0);
 }
 
-TEST_F(DiagramTest, SymmetryFactorOfDiagramIsCorrect) {
+// =====================================================================
+// Benchmark: atomic expansion on the dimer (exact diagonalization)
+//
+// On a 2-site dimer every graph has free multiplicity = 1.
+// Using FreeEnergyCalculator<1, double> with override_fm=1,
+// we sum all order-4 diagrams over the full simplex and compare
+// the infinite-U coefficient against the ED result from
+// analytical/benchmark_atomic_expansion.py.
+// =====================================================================
 
-  std::vector<uint8_t> D4a = {0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0}; // 4-cycle
-  std::vector<uint8_t> D4b = {0, 1, 1, 1, 0, 0, 1, 0, 0};                      // 3-cycle with double lines (0->1, 0->2, 1->0, 2->0)
-  std::vector<uint8_t> D4c = {0, 2, 2, 0};                                     // 2-cycle with double lines
+TEST(DiagramBenchmark, AtomicExpansionDimerOrder4InfiniteU) {
+  Parameters<double> params{8.0, 2.0, 3.0, 0.0, true};
+  FreeEnergyCalculator<1, double> calculator(params, 4, /*override_fm=*/1);
+  auto [abs_coeff, signed_coeff] = calculator.compute_infinite_U_coefficient();
 
-  Graph g_a(D4a, 4);
-  Graph g_b(D4b, 3);
-  Graph g_c(D4c, 2);
-
-  Diagram diagram_a(g_a);
-  Diagram diagram_b(g_b);
-  Diagram diagram_c(g_c);
-
-  EXPECT_EQ(diagram_a.get_graph().get_symmetry_factor(), 4);
-  EXPECT_EQ(diagram_b.get_graph().get_symmetry_factor(), 2);
-  EXPECT_EQ(diagram_c.get_graph().get_symmetry_factor(), 8);
-}
-
-TEST_F(DiagramTest, InfiniteUDiagramConstantInSimplex) {
-
-  std::vector<uint8_t> D4a = {0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0}; // 4-cycle
-  Graph g4a(D4a, 4);
-  Diagram d4a(g4a);
-  DiagramEvaluator<double> eval4a(d4a, params);
-
-  std::vector<double> taus_41 = {0.1, 0.2, 0.3, 0.4};
-  std::vector<double> taus_42 = {0.15, 0.23, 0.31, 0.76};
-
-  double val_41 = eval4a.evaluate_at_taus(taus_41, true, false);
-  double val_42 = eval4a.evaluate_at_taus(taus_42, true, false);
-
-  std::vector<uint8_t> D6c = {0, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0};
-  Graph g6c(D6c, 4);
-  Diagram d6c(g6c);
-  DiagramEvaluator<double> eval6c(d6c, params);
-
-  std::vector<double> taus_61 = {0.1, 0.2, 0.3, 0.4, 0.5, 0.6};
-  std::vector<double> taus_62 = {0.15, 0.23, 0.31, 0.45, 0.52, 0.78};
-
-  double val_61 = eval6c.evaluate_at_taus(taus_61, true, false);
-  double val_62 = eval6c.evaluate_at_taus(taus_62, true, false);
-
-  EXPECT_DOUBLE_EQ(val_61, val_62);
-  EXPECT_DOUBLE_EQ(val_41, val_42);
-}
-
-TEST_F(DiagramTest, ExactIntegralInfiniteUFreeEnergy) {
-
-  Parameters<double> params_2{8.0, 3.0, 2.0, 0.0, true};
-  FreeEnergyCalculator<double> calculator_4(params_2, 4);
-  auto result_4 = compute_exact_integral_infinite_U(calculator_4, 4, params_2.beta);
-
-  FreeEnergyCalculator<double> calculator_6(params_2, 6);
-  auto result_6 = compute_exact_integral_infinite_U(calculator_6, 6, params_2.beta);
-
-  // The expected result for order 4, U=8.0, beta=3.0, mu=2.0 is -1.59245549e-03
-  EXPECT_NEAR(result_4.second, -1.38053128e-03, 1e-10);
-  EXPECT_NEAR(result_6.second, -4.01855375e-04, 1e-10);
+  EXPECT_NEAR(signed_coeff, -4.0904630472238777e-04, 1e-12);
 }

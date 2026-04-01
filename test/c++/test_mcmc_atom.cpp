@@ -12,6 +12,7 @@
  *         (also works with 1 rank: ./test_mcmc_atom)
  */
 
+#include <gtest/gtest.h>
 #include "sc_expansion/atomic_configuration.hpp"
 #include "sc_expansion/free_energy_calculator.hpp"
 #include "sc_expansion/move.hpp"
@@ -20,14 +21,12 @@
 #include <triqs/utility/callbacks.hpp>
 #include <mpi/mpi.hpp>
 #include <h5/h5.hpp>
-#include <iostream>
 #include <cmath>
 #include <memory>
 #include <filesystem>
 
-int main(int argc, char **argv) {
+TEST(McmcAtom, Order4DimerCoefficient) {
 
-  mpi::environment env(argc, argv);
   mpi::communicator world;
 
   // =====================================================================
@@ -109,24 +108,20 @@ int main(int argc, char **argv) {
 
     double rel_err = std::abs(mc_mean - exact_coeff) / std::abs(exact_coeff);
 
-    std::cout << "=== MCMC AtomicConfiguration Test (order " << order << ", fm=" << override_fm << ") ===" << std::endl;
-    std::cout << "MPI ranks:          " << world.size() << std::endl;
-    std::cout << "Samples per rank:   " << n_cycles << std::endl;
     std::cout << "Exact (Python ED):  " << exact_coeff << std::endl;
     std::cout << "MC estimate:        " << mc_mean << std::endl;
     std::cout << "MC error:           " << mc_error << std::endl;
     std::cout << "Relative error:     " << rel_err << std::endl;
 
+    EXPECT_LT(rel_err, 0.10) << "MC estimate " << mc_mean << " deviates from exact " << exact_coeff << " by " << rel_err * 100 << "%";
+
     // Cleanup
     std::filesystem::remove_all("./results");
-
-    if (rel_err < 0.15) {
-      std::cout << "PASS" << std::endl;
-    } else {
-      std::cerr << "FAIL: relative error " << rel_err << " exceeds 15% tolerance" << std::endl;
-      return 1;
-    }
   }
+}
 
-  return 0;
+int main(int argc, char **argv) {
+  mpi::environment env(argc, argv);
+  ::testing::InitGoogleTest(&argc, argv);
+  return RUN_ALL_TESTS();
 }

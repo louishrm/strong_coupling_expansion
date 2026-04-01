@@ -19,8 +19,9 @@ namespace sc_expansion {
     private:
     Parameters<T> const &params;
     int order;
-    std::deque<Diagram> diagrams;
-    std::vector<DiagramEvaluator<N_sites, T>> evaluators;
+    std::deque<Graph> graphs;
+    std::deque<Diagram<N_sites, T>> diagrams;
+    HubbardSolver<N_sites, T> solver;
   };
 
 } // namespace sc_expansion

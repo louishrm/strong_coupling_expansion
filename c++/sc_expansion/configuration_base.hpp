@@ -27,7 +27,7 @@ template <typename T> class ConfigurationBase {
   virtual void commit_proposal() = 0;
 
   // Called by measure: expose the committed integrand values.
-  virtual double get_integrand() const = 0;
+  virtual double get_integrand() const           = 0;
   virtual double get_reference_integrand() const = 0; // returns 0 if unused
 
   int get_order() const { return this->order; }
