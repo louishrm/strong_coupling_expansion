@@ -1,5 +1,5 @@
 #pragma once
-#include "configuration.hpp"
+#include "configuration_base.hpp"
 #include <triqs/arrays.hpp>
 #include <triqs/stat/accumulator.hpp>
 #include "myjackknife.hpp"
@@ -10,7 +10,7 @@
 
 template <typename T> struct measure {
 
-  Configuration<T> *config;
+  ConfigurationBase<T> *config;
 
   // Accumulators for defensive importance sampling
   // We want to estimate I = I_ref * <integrand/W> / <reference_integrand/W>
@@ -21,7 +21,7 @@ template <typename T> struct measure {
   double signed_reference_integral;
   double mu;
 
-  measure(Configuration<T> *config_, double reference_integral_, double signed_reference_integral_, int n_bins, int block_size, double mu_)
+  measure(ConfigurationBase<T> *config_, double reference_integral_, double signed_reference_integral_, int n_bins, int block_size, double mu_)
      : config(config_),
        acc_integrand(0.0, 0, n_bins, block_size + 100),
        acc_reference(0.0, 0, n_bins, block_size + 100),
@@ -34,8 +34,8 @@ template <typename T> struct measure {
 
     // Safety check for W=0, though MC should not visit such states
     if (W > 0.0) {
-      acc_integrand << ((config->integrand - config->reference_integrand) / W);
-      acc_reference << (std::abs(config->reference_integrand) / W);
+      acc_integrand << ((config->get_integrand() - config->get_reference_integrand()) / W);
+      acc_reference << (std::abs(config->get_reference_integrand()) / W);
     }
   }
 
@@ -56,8 +56,6 @@ template <typename T> struct measure {
       std::cout << "Jackknife Mean:     " << std::get<0>(result) << std::endl;
       std::cout << "Jackknife Error:    " << std::get<1>(result) << std::endl;
 
-      // Ensure directory exists (basic check, usually handled by build system or user)
-      // For now, we assume 'results' directory exists or we write to current dir if needed.
       try {
         std::string filename = "./results/full_lattice_data_order_" + std::to_string(config->get_order()) + "_U_" + std::to_string(config->get_U())
            + "_beta_" + std::to_string(config->beta) + "_mu_" + std::to_string(mu) + (config->bipartite ? "_bipartite" : "_non_bipartite") + ".h5";

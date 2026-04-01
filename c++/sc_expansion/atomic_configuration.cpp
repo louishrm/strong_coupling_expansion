@@ -1,0 +1,59 @@
+#include "atomic_configuration.hpp"
+#include "dual.hpp"
+#include <triqs/mc_tools/random_generator.hpp>
+
+template <typename T>
+AtomicConfiguration<T>::AtomicConfiguration(sc_expansion::Parameters<T> const &params_, int order_, double alpha_)
+   : ConfigurationBase<T>(params_, order_), alpha(alpha_), integrand(0.0), reference_integrand(0.0), proposed_integrand(0.0),
+     proposed_reference_integrand(0.0), calculator(params_, order_) {
+
+  this->state.resize(this->order);
+  triqs::mc_tools::random_generator RNG("mt19937", 23432);
+  for (int i = 0; i < this->order; i++) { this->state[i] = RNG(this->beta); }
+
+  auto [finite_U, infinite_U] = this->compute_integrands();
+  this->integrand              = finite_U;
+  this->reference_integrand    = infinite_U;
+  this->metropolis_weight      = this->compute_weight(finite_U, infinite_U);
+}
+
+template <typename T> std::pair<double, double> AtomicConfiguration<T>::compute_integrands() const {
+  double finite_U   = 0.0;
+  double infinite_U = 0.0;
+
+  T finite_U_T   = this->calculator.compute_sum_diagrams(this->state, false, true);
+  T infinite_U_T = this->calculator.compute_sum_diagrams(this->state, true, true);
+
+  if constexpr (std::is_same_v<T, Dual>) {
+    finite_U   = finite_U_T.derivative;
+    infinite_U = infinite_U_T.derivative;
+  } else {
+    finite_U   = finite_U_T;
+    infinite_U = infinite_U_T;
+  }
+  return {finite_U, infinite_U};
+}
+
+template <typename T> double AtomicConfiguration<T>::compute_weight(double finite_U, double infinite_U) const {
+  return std::abs(finite_U - infinite_U) + this->alpha * std::abs(infinite_U);
+}
+
+template <typename T> double AtomicConfiguration<T>::evaluate_proposed() {
+  auto [finite_U, infinite_U]       = this->compute_integrands();
+  this->proposed_integrand          = finite_U;
+  this->proposed_reference_integrand = infinite_U;
+  return this->compute_weight(finite_U, infinite_U);
+}
+
+template <typename T> void AtomicConfiguration<T>::commit_proposal() {
+  this->integrand           = this->proposed_integrand;
+  this->reference_integrand = this->proposed_reference_integrand;
+  this->metropolis_weight   = this->compute_weight(this->integrand, this->reference_integrand);
+}
+
+template <typename T> double AtomicConfiguration<T>::get_integrand() const { return this->integrand; }
+
+template <typename T> double AtomicConfiguration<T>::get_reference_integrand() const { return this->reference_integrand; }
+
+template class AtomicConfiguration<double>;
+template class AtomicConfiguration<Dual>;
