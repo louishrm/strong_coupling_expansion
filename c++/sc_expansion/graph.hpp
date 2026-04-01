@@ -10,7 +10,8 @@ namespace sc_expansion {
 
     public:
     Graph(std::vector<uint8_t> adjacency_matrix, int V, bool bipartite_only = true);
-    Graph(std::vector<uint8_t> adjacency_matrix, int V, int automorphism_count, int symmetry_factor, int free_multiplicity, bool bipartite_only = true);
+    Graph(std::vector<uint8_t> adjacency_matrix, int V, int automorphism_count, int symmetry_factor, int free_multiplicity,
+          bool bipartite_only = true);
     uint8_t operator()(int i, int j) const;
 
     int get_V() const { return this->V; }
@@ -22,6 +23,7 @@ namespace sc_expansion {
     double get_free_multiplicity() const { return (double)this->free_multiplicity; }
     bool get_bipartite() const { return this->bipartite; }
     bool get_bipartite_only() const { return this->bipartite_only; }
+    int get_automorphism_count() const { return this->automorphism_count; }
 
     private:
     std::vector<uint8_t> adjacency_matrix;

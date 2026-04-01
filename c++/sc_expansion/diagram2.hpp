@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <map>
+#include <set>
 #include <numeric>   // For std::accumulate
 #include <algorithm> // For std::next_permutation
 #include <queue>
@@ -70,10 +71,18 @@ namespace sc_expansion {
     }
   };
 
-  // Storage for the orbit representative and its multiplicity
-  struct OrbitalConfiguration {
-    std::vector<uint16_t> vertex_config_ids; // Indices into vertices[v].unique_configs
-    double weight;                           // Number of configurations in the symmetry orbit
+  // Per-leg info at a vertex: which hopping line it belongs to and its role
+  struct LegInfo {
+    int line_index; // Index into hopping_lines
+    bool is_source; // true = annihilation (from_vertex), false = creation (to_vertex)
+  };
+
+  // A symmetry-reduced global configuration with its total weight.
+  // config stores the full op_id vector: legs at v0, then v1, ..., in hopping-line iteration order.
+  // weight = spatial_weight * orbit_size / automorphism_count
+  struct ValidGlobalConfig {
+    std::vector<uint8_t> config;
+    double weight;
   };
 
   // Stores a unique spatial embedding pattern for the dimer (N_sites=2) case.
@@ -103,12 +112,16 @@ namespace sc_expansion {
       return total;
     }
 
+    const std::vector<ValidGlobalConfig> &get_valid_configurations() const { return this->valid_configurations; }
+
     private:
     Graph const &graph;
-    std::vector<VertexInstance<N_sites, T>> vertices;
-    std::vector<OrbitalConfiguration> valid_configurations;
+    std::vector<VertexType<N_sites, T> *> vertex_type_ptrs; // Per-vertex VertexType* for caching (may be nullptr)
+    std::vector<ValidGlobalConfig> valid_configurations;
     std::vector<SpatialConfiguration> spatial_configurations;
+    std::vector<std::vector<LegInfo>> legs_per_vertex;
     Lines hopping_lines;
+    int diagram_sign = 1;
 
     void compute_hopping_lines();
     void setup_vertices(std::vector<VertexType<N_sites, T> *> const &vertex_types);

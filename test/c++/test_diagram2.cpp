@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include <algorithm>
 #include <numeric>
+#include <cmath>
 #include "sc_expansion/diagram2.hpp"
 #include "sc_expansion/graph.hpp"
 
@@ -140,6 +141,9 @@ TEST_F(Diagram2Test, D2aDimerSpatialConfigs) {
 
   ASSERT_EQ(spatial.size(), 1u);
   EXPECT_DOUBLE_EQ(spatial[0].weight, 6.0);
+  std::cout << "D2a spatial config directions: ";
+  for (auto dir : spatial[0].directions) { std::cout << (int)dir << " "; }
+  std::cout << std::endl;
 }
 
 // D4c (double digon / watermelon): 2 vertices, adjacency {0,2, 2,0}.
@@ -157,6 +161,10 @@ TEST_F(Diagram2Test, D4cDimerSpatialConfigs) {
 
   ASSERT_EQ(spatial.size(), 1u);
   EXPECT_DOUBLE_EQ(spatial[0].weight, 6.0);
+
+  std::cout << "D4c spatial config directions: ";
+  for (auto dir : spatial[0].directions) { std::cout << (int)dir << " "; }
+  std::cout << std::endl;
 }
 
 TEST_F(Diagram2Test, D6cDimerSpatialConfigs) {
@@ -172,6 +180,129 @@ TEST_F(Diagram2Test, D6cDimerSpatialConfigs) {
   ASSERT_EQ(spatial.size(), 2u);
   EXPECT_DOUBLE_EQ(spatial[0].weight, 54.0);
   EXPECT_DOUBLE_EQ(spatial[1].weight, 162.0);
+}
+
+// =====================================================================
+// Global configuration tests (orbital assignment + symmetry reduction)
+// =====================================================================
+
+// D2a, N_sites=1: digon, 2 vertices, fm=4, auto_count=2.
+// 2 lines, 2^2=4 spin assignments. Spin conservation forces s0=s1.
+// Valid: (D,D) and (U,U), related by SpinFlip -> 1 canonical, orbit_size=2.
+// Weight = 4 * 2 / 2 = 4.
+TEST_F(Diagram2Test, D2aAtomGlobalConfigs) {
+
+  std::vector<uint8_t> D2a = {0, 1, 1, 0};
+  Graph graph(D2a, 2);
+  std::vector<VertexType<1, double> *> vt;
+  Diagram2<1, double> diagram(graph, vt);
+
+  auto const &configs = diagram.get_valid_configurations();
+  ASSERT_EQ(configs.size(), 1u);
+  EXPECT_DOUBLE_EQ(configs[0].weight, 4.0);
+}
+
+// D2a, N_sites=2: digon on dimer superlattice.
+// 1 spatial config (weight=6), auto_count=2.
+// Spin conservation forces s0=s1 -> valid: (D,D) and (U,U).
+// Both map to same canonical under SpinFlip. Orbit under full group has size 4.
+// Weight = 6 * 4 / 2 = 12.  -> 1 canonical config.
+TEST_F(Diagram2Test, D2aDimerGlobalConfigs) {
+
+  std::vector<uint8_t> D2a = {0, 1, 1, 0};
+  Graph graph(D2a, 2);
+  std::vector<VertexType<2, double> *> vt;
+  Diagram2<2, double> diagram(graph, vt);
+
+  auto const &configs = diagram.get_valid_configurations();
+  ASSERT_EQ(configs.size(), 1u);
+  EXPECT_DOUBLE_EQ(configs[0].weight, 12.0);
+}
+
+// D4b, N_sites=1: 3 vertices, fm=16, auto_count=2.
+// 4 lines, valid spins: s0=s2, s1=s3 (from vertex 1,2 conservation).
+// 4 valid spin assignments: (DD), (DU), (UD), (UU).
+// (DD)<->(UU) via SpinFlip, (DU)<->(UD) via SpinFlip -> 2 canonicals.
+// Each orbit_size=2. Weight = 16 * 2 / 2 = 16 each.
+// Total weight = 32.
+TEST_F(Diagram2Test, D4bAtomGlobalConfigs) {
+
+  std::vector<uint8_t> D4b = {0, 1, 1, 1, 0, 0, 1, 0, 0};
+  Graph graph(D4b, 3);
+  std::vector<VertexType<1, double> *> vt;
+  Diagram2<1, double> diagram(graph, vt);
+
+  auto const &configs = diagram.get_valid_configurations();
+  ASSERT_EQ(configs.size(), 2u);
+
+  double total = 0;
+  for (auto const &c : configs) { total += c.weight; }
+  EXPECT_DOUBLE_EQ(total, 32.0);
+}
+
+// =====================================================================
+// Numerical evaluation tests
+// =====================================================================
+
+class Diagram2EvalTest : public ::testing::Test {
+  protected:
+  double U    = 8.0;
+  double beta = 1.0;
+  double mu   = 2.0;
+  Parameters<double> params{U, beta, mu, 0.0, true};
+};
+
+// D2a atom: compare Diagram2 evaluate against old DiagramEvaluator.
+// Old: prefactor = (-1/beta) * sign / symmetry_factor * fm
+//    = (-1/1) * (-1) / 2 * 4 = 2.0
+// New: prefactor = (-1/beta) * sign = (-1)*(-1) = 1.0
+//      weight per config = fm * orbit_size / auto_count = 4 * 2 / 2 = 4
+// Old sum = Σ_spins Π_v C_v.  New sum = Σ_canonical weight * Π_v C_v.
+// They should agree: old_result = new_result (both include all factors).
+TEST_F(Diagram2EvalTest, D2aAtomEvaluateIsFinite) {
+
+  std::vector<uint8_t> D2a = {0, 1, 1, 0};
+  Graph graph(D2a, 2);
+
+  // Create VertexTypes for caching: order 1 cumulant (degree 2)
+  VertexType<1, double> vt1(2); // 2 legs
+  std::vector<VertexType<1, double> *> vt = {&vt1};
+
+  Diagram2<1, double> diagram(graph, vt);
+  HubbardSolver<1, double> solver(params);
+
+  std::vector<double> taus = {0.5, 0.0};
+  double val = diagram.evaluate(taus, solver, false);
+
+  // The value should be finite and non-zero
+  EXPECT_TRUE(std::isfinite(val));
+  EXPECT_NE(val, 0.0);
+
+  // Test with VertexType cache: evaluate twice, should give the same result
+  double val2 = diagram.evaluate(taus, solver, false);
+  EXPECT_DOUBLE_EQ(val, val2);
+}
+
+// D2a dimer: evaluate on the triangular superlattice
+TEST_F(Diagram2EvalTest, D2aDimerEvaluateIsFinite) {
+
+  double t_dimer = 1.0;
+  Parameters<double> dimer_params{U, beta, mu, t_dimer, true};
+
+  std::vector<uint8_t> D2a = {0, 1, 1, 0};
+  Graph graph(D2a, 2);
+
+  VertexType<2, double> vt1(2);
+  std::vector<VertexType<2, double> *> vt = {&vt1};
+
+  Diagram2<2, double> diagram(graph, vt);
+  HubbardSolver<2, double> solver(dimer_params);
+
+  std::vector<double> taus = {0.5, 0.0};
+  double val = diagram.evaluate(taus, solver, false);
+
+  EXPECT_TRUE(std::isfinite(val));
+  EXPECT_NE(val, 0.0);
 }
 
 int main(int argc, char **argv) {
