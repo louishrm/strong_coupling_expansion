@@ -5,8 +5,7 @@
 #include "myjackknife.hpp"
 #include <iostream>
 #include <h5/h5.hpp>
-#include <fstream>
-#include <cmath>
+#include <filesystem>
 
 template <typename T> struct measure {
 
@@ -56,7 +55,7 @@ template <typename T> struct measure {
       std::cout << "Jackknife Mean:     " << std::get<0>(result) << std::endl;
       std::cout << "Jackknife Error:    " << std::get<1>(result) << std::endl;
 
-      try {
+      if (std::filesystem::is_directory("./results")) {
         std::string filename = "./results/full_lattice_data_order_" + std::to_string(config->get_order()) + "_U_" + std::to_string(config->get_U())
            + "_beta_" + std::to_string(config->beta) + "_mu_" + std::to_string(mu) + (config->bipartite ? "_bipartite" : "_non_bipartite") + ".h5";
         h5::file file(filename, 'w');
@@ -64,7 +63,7 @@ template <typename T> struct measure {
         h5_write(file, "error", std::get<1>(result));
         h5_write(file, "mu", mu);
         h5_write(file, "reference_integral", reference_integral);
-      } catch (...) { std::cerr << "Warning: Could not write HDF5 results file." << std::endl; }
+      }
     }
   }
 };

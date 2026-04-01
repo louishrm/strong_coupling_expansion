@@ -4,7 +4,7 @@
 #include "myjackknife.hpp"
 #include <iostream>
 #include <h5/h5.hpp>
-#include <cmath>
+#include <filesystem>
 
 template <typename T> struct measure_dimer {
 
@@ -36,14 +36,14 @@ template <typename T> struct measure_dimer {
       std::cout << "Mean sign:     " << std::get<0>(result) << std::endl;
       std::cout << "Sign error:    " << std::get<1>(result) << std::endl;
 
-      try {
+      if (std::filesystem::is_directory("./results")) {
         std::string filename = "./results/dimer_data_order_" + std::to_string(config->get_order()) + "_U_" + std::to_string(config->get_U()) + "_beta_"
            + std::to_string(config->beta) + "_mu_" + std::to_string(mu) + ".h5";
         h5::file file(filename, 'w');
         h5_write(file, "mean_sign", std::get<0>(result));
         h5_write(file, "sign_error", std::get<1>(result));
         h5_write(file, "mu", mu);
-      } catch (...) { std::cerr << "Warning: Could not write HDF5 results file." << std::endl; }
+      }
     }
   }
 };

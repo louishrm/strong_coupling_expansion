@@ -10,6 +10,8 @@ list(REMOVE_ITEM all_tests
   test_diagram.cpp
   test_diagram_dimer.cpp
   test_diagram2.cpp
+  test_mcmc.cpp
+  test_mcmc_atom.cpp
   dimer_order_4.cpp
   test_hubbard_atom.cpp
   test_atomic_cumulant.cpp
@@ -46,3 +48,11 @@ endforeach()
 add_executable(test_diagram2 test_diagram2.cpp)
 target_link_libraries(test_diagram2 ${PROJECT_NAME}::${PROJECT_NAME}_c ${PROJECT_NAME}_warnings)
 add_test(NAME test_diagram2 COMMAND test_diagram2)
+
+add_executable(test_mcmc test_mcmc.cpp)
+target_link_libraries(test_mcmc ${PROJECT_NAME}::${PROJECT_NAME}_c ${PROJECT_NAME}_warnings)
+add_test(NAME test_mcmc COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 4 ${CMAKE_CURRENT_BINARY_DIR}/test_mcmc)
+
+add_executable(test_mcmc_atom test_mcmc_atom.cpp)
+target_link_libraries(test_mcmc_atom ${PROJECT_NAME}::${PROJECT_NAME}_c ${PROJECT_NAME}_warnings)
+add_test(NAME test_mcmc_atom COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 4 ${CMAKE_CURRENT_BINARY_DIR}/test_mcmc_atom)

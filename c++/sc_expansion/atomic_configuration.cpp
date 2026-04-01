@@ -3,9 +3,9 @@
 #include <triqs/mc_tools/random_generator.hpp>
 
 template <typename T>
-AtomicConfiguration<T>::AtomicConfiguration(sc_expansion::Parameters<T> const &params_, int order_, double alpha_)
+AtomicConfiguration<T>::AtomicConfiguration(sc_expansion::Parameters<T> const &params_, int order_, double alpha_, int override_fm_)
    : ConfigurationBase<T>(params_, order_), alpha(alpha_), integrand(0.0), reference_integrand(0.0), proposed_integrand(0.0),
-     proposed_reference_integrand(0.0), calculator(params_, order_) {
+     proposed_reference_integrand(0.0), calculator(params_, order_, override_fm_) {
 
   this->state.resize(this->order);
   triqs::mc_tools::random_generator RNG("mt19937", 23432);

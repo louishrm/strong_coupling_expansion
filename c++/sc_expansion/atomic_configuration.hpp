@@ -6,7 +6,7 @@
 template <typename T> class AtomicConfiguration : public ConfigurationBase<T> {
 
   public:
-  AtomicConfiguration(sc_expansion::Parameters<T> const &params, int order, double alpha);
+  AtomicConfiguration(sc_expansion::Parameters<T> const &params, int order, double alpha, int override_fm = -1);
 
   double evaluate_proposed() override;
   void commit_proposal() override;

@@ -10,12 +10,22 @@
 namespace sc_expansion {
 
   template <int N_sites, typename T>
-  FreeEnergyCalculator<N_sites, T>::FreeEnergyCalculator(Parameters<T> const &params_, int order_) : params(params_), order(order_) {
+  FreeEnergyCalculator<N_sites, T>::FreeEnergyCalculator(Parameters<T> const &params_, int order_, int override_fm_)
+     : params(params_), order(order_) {
     VacuumDiagramGenerator gen(this->order, params.bipartite);
     gen.generate();
     const auto &unique_graphs = gen.get_unique_graphs();
 
-    for (auto const &g : unique_graphs) { this->diagrams.emplace_back(g); }
+    for (auto const &g : unique_graphs) {
+      if (override_fm_ >= 0) {
+        // Reconstruct graph with overridden free multiplicity (e.g. fm=1 for 2-site benchmark)
+        Graph g_mod(g.get_canonical_form(), g.get_V(), g.get_automorphism_count(), (int)g.get_symmetry_factor(), override_fm_,
+                    g.get_bipartite_only());
+        this->diagrams.emplace_back(g_mod);
+      } else {
+        this->diagrams.emplace_back(g);
+      }
+    }
 
     for (auto const &diag : this->diagrams) { this->evaluators.emplace_back(diag, this->params); }
   }

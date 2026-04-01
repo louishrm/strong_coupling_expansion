@@ -9,7 +9,7 @@ namespace sc_expansion {
   template <int N_sites, typename T>
   class FreeEnergyCalculator {
     public:
-    FreeEnergyCalculator(Parameters<T> const &params, int order);
+    FreeEnergyCalculator(Parameters<T> const &params, int order, int override_fm = -1);
 
     T compute_sum_diagrams(std::vector<double> const &taus, bool infinite_U, bool use_cache) const;
     T compute_sum_diagrams_dimer(std::vector<double> const &taus, bool infinite_U, bool use_cache) const;
