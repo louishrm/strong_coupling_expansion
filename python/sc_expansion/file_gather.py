@@ -11,6 +11,7 @@ parser.add_argument('beta', type=float, help='Inverse temperature beta')
 parser.add_argument('bipartite', type=int, help='Whether the lattice is bipartite (1 for True, 0 for False)')
 parser.add_argument('alpha', type=float, help='Alpha parameter for mcmc')
 parser.add_argument('dual', type=int, help='Whether to use dual representation (1 for True, 0 for False)')
+parser.add_argument('--n_sites', type=int, default=1, help='Number of sites in the cluster (1 for atom, 2 for dimer)')
 
 args = parser.parse_args()
 
@@ -27,10 +28,12 @@ else:
     extension = f"Omega_order_{order}_scan_mu_U={U}_beta={beta}_alpha={alpha}.h5"
 
 
-if not bipartite: 
-    filename = f"./results/triangular_lattice_"+extension
+cluster_prefix = "atom" if args.n_sites == 1 else "dimer"
+
+if not bipartite and args.n_sites == 1:
+    filename = f"./results/{cluster_prefix}_triangular_lattice_"+extension
 else:
-    filename = f"./results/square_lattice_"+extension
+    filename = f"./results/{cluster_prefix}_square_lattice_"+extension
 
 
 # Creates the folder path if it's missing
