@@ -14,6 +14,19 @@ DimerConfiguration<T>::DimerConfiguration(sc_expansion::Parameters<T> const &par
   this->metropolis_weight = std::abs(this->omega);
 }
 
+template <typename T>
+DimerConfiguration<T>::DimerConfiguration(sc_expansion::Parameters<T> const &params_, int order_,
+                                          std::vector<std::pair<int, int>> const &cluster_positions, int n_cluster_sites)
+   : ConfigurationBase<T>(params_, order_), omega(0.0), proposed_omega(0.0), calculator(params_, order_, cluster_positions, n_cluster_sites) {
+
+  this->state.resize(this->order);
+  triqs::mc_tools::random_generator RNG("mt19937", 23432);
+  for (int i = 0; i < this->order; i++) { this->state[i] = RNG(this->beta); }
+
+  this->omega             = this->compute_omega();
+  this->metropolis_weight = std::abs(this->omega);
+}
+
 template <typename T> double DimerConfiguration<T>::compute_omega() const {
   T val = this->calculator.compute_sum_diagrams_dimer(this->state, false, true);
   if constexpr (std::is_same_v<T, Dual>) {

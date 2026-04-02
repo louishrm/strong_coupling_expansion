@@ -30,6 +30,22 @@ namespace sc_expansion {
   }
 
   template <int N_sites, typename T>
+  FreeEnergyCalculator<N_sites, T>::FreeEnergyCalculator(Parameters<T> const &params_, int order_,
+                                                         std::vector<std::pair<int, int>> const &cluster_positions, int n_cluster_sites)
+     : params(params_), order(order_), solver(params_) {
+    VacuumDiagramGenerator gen(this->order, params.bipartite);
+    gen.generate();
+    const auto &unique_graphs = gen.get_unique_graphs();
+
+    std::vector<VertexType<N_sites, T> *> empty_vt;
+
+    for (auto const &g : unique_graphs) {
+      this->graphs.emplace_back(g);
+      this->diagrams.emplace_back(this->graphs.back(), empty_vt, cluster_positions, n_cluster_sites);
+    }
+  }
+
+  template <int N_sites, typename T>
   T FreeEnergyCalculator<N_sites, T>::compute_sum_diagrams(std::vector<double> const &taus, bool infinite_U, bool use_cache) const {
     T sum = T(0.0);
     for (auto &diagram : this->diagrams) { sum = sum + const_cast<Diagram<N_sites, T>&>(diagram).evaluate(taus, this->solver, infinite_U); }

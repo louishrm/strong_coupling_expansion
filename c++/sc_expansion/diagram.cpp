@@ -117,6 +117,20 @@ namespace sc_expansion {
   }
 
   // =====================================================================
+  // Constructor with cluster-restricted embedding
+  // =====================================================================
+  template <int N_sites, typename T>
+  Diagram<N_sites, T>::Diagram(Graph const &graph_, std::vector<VertexType<N_sites, T> *> const &vertex_types,
+                               std::vector<std::pair<int, int>> const &cluster_positions, int n_cluster_sites)
+     : graph(graph_) {
+    this->compute_hopping_lines();
+    this->compute_spatial_configurations_cluster(cluster_positions, n_cluster_sites);
+    this->setup_vertices(vertex_types);
+    this->compute_valid_configurations();
+    this->compute_diagram_sign();
+  }
+
+  // =====================================================================
   // compute_hopping_lines: enumerate all directed hopping lines from the adjacency matrix
   // =====================================================================
   template <int N_sites, typename T> void Diagram<N_sites, T>::compute_hopping_lines() {
@@ -219,6 +233,171 @@ namespace sc_expansion {
         config.directions = dirs;
         config.weight     = weight;
         this->spatial_configurations.push_back(config);
+      }
+    }
+  }
+
+  // =====================================================================
+  // compute_spatial_configurations_cluster: for N_sites=2, embed the graph
+  // on a finite cluster (given set of positions on the triangular superlattice).
+  // Sums over all starting positions for vertex 0, then divides by
+  // n_cluster_sites to get per-dimer weights.
+  // =====================================================================
+  template <int N_sites, typename T>
+  void Diagram<N_sites, T>::compute_spatial_configurations_cluster(std::vector<std::pair<int, int>> const &cluster_positions, int n_cluster_sites) {
+
+    if constexpr (N_sites == 1) {
+      // Not implemented for single-site clusters
+      return;
+    }
+
+    if constexpr (N_sites == 2) {
+      int V       = this->graph.get_V();
+      int n_lines = (int)this->hopping_lines.lines.size();
+
+      // --- Step 1: Enumerate all embeddings on the cluster ---
+      // Sum over all starting positions for vertex 0.
+      std::map<std::vector<uint8_t>, int> raw_counts;
+
+      for (auto const &start_pos : cluster_positions) {
+        std::vector<std::pair<int, int>> coords(V, {0, 0});
+        std::vector<bool> placed(V, false);
+        coords[0] = start_pos;
+        placed[0] = true;
+
+        this->solve_cluster_embedding(1, placed, coords, raw_counts, cluster_positions);
+      }
+
+      // --- Step 2: Compute graph automorphisms (same as infinite-lattice version) ---
+      std::vector<int> degrees(V, 0);
+      for (int i = 0; i < V; i++) {
+        for (int j = 0; j < V; j++) { degrees[i] += this->graph(i, j) + this->graph(j, i); }
+      }
+
+      std::vector<std::vector<int>> automorphisms;
+      std::vector<int> perm(V);
+      std::iota(perm.begin(), perm.end(), 0);
+
+      do {
+        bool degree_ok = true;
+        for (int i = 0; i < V; i++) {
+          if (degrees[perm[i]] != degrees[i]) {
+            degree_ok = false;
+            break;
+          }
+        }
+        if (!degree_ok) continue;
+
+        bool is_auto = true;
+        for (int i = 0; i < V && is_auto; i++) {
+          for (int j = 0; j < V && is_auto; j++) {
+            if (this->graph(i, j) != this->graph(perm[i], perm[j])) { is_auto = false; }
+          }
+        }
+
+        if (is_auto) { automorphisms.push_back(perm); }
+
+      } while (std::next_permutation(perm.begin(), perm.end()));
+
+      // --- Step 3: Canonicalize each raw config and merge ---
+      std::map<std::vector<uint8_t>, double> merged;
+      for (auto &[dirs, count] : raw_counts) {
+        auto canonical = this->canonicalize_directions(dirs, automorphisms);
+        merged[canonical] += count;
+      }
+
+      // --- Step 4: Store results, dividing by n_cluster_sites for per-dimer weights ---
+      for (auto &[dirs, weight] : merged) {
+        SpatialConfiguration config;
+        config.directions = dirs;
+        config.weight     = weight / (double)n_cluster_sites;
+        this->spatial_configurations.push_back(config);
+      }
+    }
+  }
+
+  // =====================================================================
+  // solve_cluster_embedding: recursive backtracking to place vertices on
+  // a finite set of cluster positions. Same logic as solve_dimer_embedding
+  // but tries only cluster positions instead of all 6 NN directions.
+  // =====================================================================
+  template <int N_sites, typename T>
+  void Diagram<N_sites, T>::solve_cluster_embedding(int placed_count, std::vector<bool> &placed, std::vector<std::pair<int, int>> &coords,
+                                                    std::map<std::vector<uint8_t>, int> &config_counts,
+                                                    std::vector<std::pair<int, int>> const &cluster_positions) const {
+
+    int V = this->graph.get_V();
+
+    // Base case: all vertices placed — compute direction vector
+    if (placed_count == V) {
+      int n_lines = (int)this->hopping_lines.lines.size();
+      std::vector<uint8_t> dirs(n_lines);
+
+      for (int k = 0; k < n_lines; k++) {
+        int from    = this->hopping_lines.lines[k].from_vertex;
+        int to      = this->hopping_lines.lines[k].to_vertex;
+        int dn1     = coords[to].first - coords[from].first;
+        int dn2     = coords[to].second - coords[from].second;
+        int dx_real = 2 * dn1 + dn2;
+        dirs[k]     = (dx_real > 0) ? 1 : 0;
+      }
+
+      config_counts[dirs]++;
+      return;
+    }
+
+    // Find an unplaced vertex (target) connected to a placed vertex (anchor)
+    int anchor = -1, target = -1;
+    for (int c = 0; c < V; ++c) {
+      if (!placed[c]) {
+        for (int p = 0; p < V; ++p) {
+          if (placed[p]) {
+            uint8_t links = this->graph(c, p) + this->graph(p, c);
+            if (links > 0) {
+              target = c;
+              anchor = p;
+              goto found_cluster_target;
+            }
+          }
+        }
+      }
+    }
+  found_cluster_target:;
+    if (target == -1) return;
+
+    auto is_triangular_neighbor = [](int x1, int y1, int x2, int y2) -> bool {
+      int ddx = x1 - x2;
+      int ddy = y1 - y2;
+      if (std::abs(ddx) + std::abs(ddy) == 1) return true;
+      if (ddx == -1 && ddy == 1) return true;
+      if (ddx == 1 && ddy == -1) return true;
+      return false;
+    };
+
+    // Try placing target at each cluster position
+    for (auto const &pos : cluster_positions) {
+      int cx = pos.first;
+      int cy = pos.second;
+
+      // Check consistency with ALL placed vertices
+      bool valid = true;
+      for (int i = 0; i < V; ++i) {
+        if (placed[i]) {
+          uint8_t links = this->graph(target, i) + this->graph(i, target);
+          if (links > 0) {
+            if (!is_triangular_neighbor(cx, cy, coords[i].first, coords[i].second)) {
+              valid = false;
+              break;
+            }
+          }
+        }
+      }
+
+      if (valid) {
+        coords[target] = {cx, cy};
+        placed[target] = true;
+        this->solve_cluster_embedding(placed_count + 1, placed, coords, config_counts, cluster_positions);
+        placed[target] = false;
       }
     }
   }

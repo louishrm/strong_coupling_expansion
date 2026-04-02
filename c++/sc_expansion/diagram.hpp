@@ -101,6 +101,11 @@ namespace sc_expansion {
     public:
     explicit Diagram(Graph const &graph, std::vector<VertexType<N_sites, T> *> const &vertex_types);
 
+    // Cluster-restricted embedding: spatial configs computed from only the given positions.
+    // Weights are divided by n_cluster_sites to give per-site (per-dimer) values.
+    Diagram(Graph const &graph, std::vector<VertexType<N_sites, T> *> const &vertex_types,
+            std::vector<std::pair<int, int>> const &cluster_positions, int n_cluster_sites);
+
     T evaluate(std::vector<double> const &taus, HubbardSolver<N_sites, T> const &solver, bool infinite_U);
 
     const std::vector<SpatialConfiguration> &get_spatial_configurations() const { return this->spatial_configurations; }
@@ -133,6 +138,13 @@ namespace sc_expansion {
     // Helpers for dimer spatial embedding on the triangular superlattice
     void solve_dimer_embedding(int placed_count, std::vector<bool> &placed, std::vector<std::pair<int, int>> &coords,
                                std::map<std::vector<uint8_t>, int> &config_counts) const;
+
+    // Cluster-restricted embedding: only place vertices at positions in cluster_positions
+    void solve_cluster_embedding(int placed_count, std::vector<bool> &placed, std::vector<std::pair<int, int>> &coords,
+                                 std::map<std::vector<uint8_t>, int> &config_counts,
+                                 std::vector<std::pair<int, int>> const &cluster_positions) const;
+
+    void compute_spatial_configurations_cluster(std::vector<std::pair<int, int>> const &cluster_positions, int n_cluster_sites);
 
     std::vector<uint8_t> canonicalize_directions(std::vector<uint8_t> const &dirs,
                                                  std::vector<std::vector<int>> const &automorphisms) const;

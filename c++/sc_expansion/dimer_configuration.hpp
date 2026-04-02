@@ -8,6 +8,10 @@ template <typename T> class DimerConfiguration : public ConfigurationBase<T> {
   public:
   DimerConfiguration(sc_expansion::Parameters<T> const &params, int order);
 
+  // Cluster-restricted embedding
+  DimerConfiguration(sc_expansion::Parameters<T> const &params, int order,
+                     std::vector<std::pair<int, int>> const &cluster_positions, int n_cluster_sites);
+
   double evaluate_proposed() override;
   void commit_proposal() override;
 
