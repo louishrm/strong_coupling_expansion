@@ -137,7 +137,9 @@ TEST(DiagramGlobalConfigs, D2aDimer) {
   auto const &configs = diagram.get_valid_configurations();
 
   EXPECT_EQ(configs.size(), 1u);
-  EXPECT_DOUBLE_EQ(configs[0].weight, 12.0);
+  // weight = spatial_weight * orbit_size / sym_factor = 6 * 2 / 2 = 6
+  // orbit_size=2 from SpinFlip only (Reflect is in spatial canonicalization)
+  EXPECT_DOUBLE_EQ(configs[0].weight, 6.0);
 }
 
 TEST(DiagramGlobalConfigs, D4bAtom) {

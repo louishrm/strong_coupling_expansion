@@ -37,5 +37,14 @@ template <typename T> double DimerConfiguration<T>::get_integrand() const { retu
 
 template <typename T> double DimerConfiguration<T>::get_reference_integrand() const { return 0.0; }
 
+template <typename T> double DimerConfiguration<T>::evaluate_at(std::vector<double> const &taus) const {
+  T val = this->calculator.compute_sum_diagrams_dimer(taus, false, true);
+  if constexpr (std::is_same_v<T, Dual>) {
+    return val.derivative;
+  } else {
+    return val;
+  }
+}
+
 template class DimerConfiguration<double>;
 template class DimerConfiguration<Dual>;

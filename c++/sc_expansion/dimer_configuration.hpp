@@ -14,6 +14,8 @@ template <typename T> class DimerConfiguration : public ConfigurationBase<T> {
   double get_integrand() const override;
   double get_reference_integrand() const override;
 
+  double evaluate_at(std::vector<double> const &taus) const;
+
   private:
   // Committed cache
   double omega;

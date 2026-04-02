@@ -50,16 +50,15 @@ namespace sc_expansion {
       return res;
     }
 
-    // Computes all unique configurations in the orbit of the given configuration
+    // Computes all unique configurations in the orbit of the given configuration.
+    // Only SpinFlip is used here — for N_sites=2, the Reflect (dimer site-swap)
+    // symmetry is equivalent to lattice inversion, which is already applied in
+    // canonicalize_directions when merging spatial configurations. Including
+    // Reflect here would double-count those embeddings.
     static std::vector<Config> get_orbit(Config const &c) {
       std::vector<Config> orbit;
       orbit.push_back(c);
       orbit.push_back(apply_spin_flip(c));
-      if constexpr (N_sites == 2) {
-        Config refl = apply_reflection(c);
-        orbit.push_back(refl);
-        orbit.push_back(apply_spin_flip(refl));
-      }
       std::sort(orbit.begin(), orbit.end());
       orbit.erase(std::unique(orbit.begin(), orbit.end()), orbit.end());
       return orbit;

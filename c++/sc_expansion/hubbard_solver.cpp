@@ -55,13 +55,19 @@ namespace sc_expansion {
       this->all_eigenstates[5] = Eigenstate<T>{{{3, T(1.0)}}, -2.0 * mu};
 
       // N=2, Sz=0, parity = even
+      // Even-parity basis: |e+> = (|0101>+|1010>)/√2, |e-> = (|1001>+|0110>)/√2
+      // 2×2 block: H_even = [[U-2mu, -2t], [-2t, -2mu]]
+      // Eigenvector for eigenvalue E: (U-2mu-E)*a = 2t*b → b/a = (U-2mu-E)/(2t)
+      // Fock-basis coefficients: norm = a/√2, component = b/√2
       T Ep = Eplus(t, U, mu);
       T Em = Eminus(t, U, mu);
       using std::sqrt;
-      T norm_plus       = Ep * SQRT2_INV / (sqrt(Ep * Ep + 16.0 * t * t));
-      T norm_minus      = Em * SQRT2_INV / (sqrt(Em * Em + 16.0 * t * t));
-      T component_plus  = -2.0 * t / Ep * norm_plus;
-      T component_minus = -2.0 * t / Em * norm_minus;
+      T ratio_plus      = (U - T(2.0) * mu - Ep) / (T(2.0) * t);
+      T ratio_minus     = (U - T(2.0) * mu - Em) / (T(2.0) * t);
+      T norm_plus       = T(SQRT2_INV) / sqrt(T(1.0) + ratio_plus * ratio_plus);
+      T norm_minus      = T(SQRT2_INV) / sqrt(T(1.0) + ratio_minus * ratio_minus);
+      T component_plus  = ratio_plus * norm_plus;
+      T component_minus = ratio_minus * norm_minus;
 
       this->all_eigenstates[6] = Eigenstate<T>{{{5, T(norm_plus)}, {10, T(norm_plus)}, {9, T(component_plus)}, {6, T(component_plus)}}, Ep};
       this->all_eigenstates[7] = Eigenstate<T>{{{5, T(norm_minus)}, {10, T(norm_minus)}, {9, T(component_minus)}, {6, T(component_minus)}}, Em};
@@ -74,12 +80,13 @@ namespace sc_expansion {
       this->all_eigenstates[10] = Eigenstate<T>{{{12, T(1.0)}}, -2.0 * mu};
 
       // N=3, Sz = -1/2, |down up, down> ± |down, down up>
-      this->all_eigenstates[11] = Eigenstate<T>{{{7, T(SQRT2_INV)}, {11, T(SQRT2_INV)}}, U + t - 3.0 * mu};
-      this->all_eigenstates[12] = Eigenstate<T>{{{7, T(SQRT2_INV)}, {11, -T(SQRT2_INV)}}, U - t - 3.0 * mu};
+      // H = [[U-3mu, -t], [-t, U-3mu]] → symmetric (1,1)/√2 has eigenvalue U-t-3mu
+      this->all_eigenstates[11] = Eigenstate<T>{{{7, T(SQRT2_INV)}, {11, T(SQRT2_INV)}}, U - t - 3.0 * mu};
+      this->all_eigenstates[12] = Eigenstate<T>{{{7, T(SQRT2_INV)}, {11, -T(SQRT2_INV)}}, U + t - 3.0 * mu};
 
       // N=3, Sz = +1/2, |down up, up> ± |up, down up>
-      this->all_eigenstates[13] = Eigenstate<T>{{{13, T(SQRT2_INV)}, {14, T(SQRT2_INV)}}, U + t - 3.0 * mu};
-      this->all_eigenstates[14] = Eigenstate<T>{{{13, T(SQRT2_INV)}, {14, -T(SQRT2_INV)}}, U - t - 3.0 * mu};
+      this->all_eigenstates[13] = Eigenstate<T>{{{13, T(SQRT2_INV)}, {14, T(SQRT2_INV)}}, U - t - 3.0 * mu};
+      this->all_eigenstates[14] = Eigenstate<T>{{{13, T(SQRT2_INV)}, {14, -T(SQRT2_INV)}}, U + t - 3.0 * mu};
 
       // N=4, Sz=0 |down up, down up>
       this->all_eigenstates[15] = Eigenstate<T>{{{15, T(1.0)}}, 2.0 * U - 4.0 * mu};

@@ -28,7 +28,8 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
   int n_bins     = 50;
   int block_size = (n_cycles / n_bins) + 1;
 
-  measure_dimer<T> meas(config.get(), n_bins, block_size, mu);
+  int measure_seed = random_seed + 99871234;
+  measure_dimer<T> meas(config.get(), n_bins, block_size, mu, measure_seed);
   mc.add_move(move<T>(config.get(), mc.get_rng()), "time_swap");
   mc.add_measure(meas, "dimer_measure");
 
