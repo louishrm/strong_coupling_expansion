@@ -2,6 +2,7 @@
 #include "dual.hpp"
 #include <numeric>
 #include <algorithm>
+#include <stdexcept>
 
 namespace sc_expansion {
 
