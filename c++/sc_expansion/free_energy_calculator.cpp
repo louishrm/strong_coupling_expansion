@@ -59,6 +59,7 @@ namespace sc_expansion {
   T FreeEnergyCalculator<N_sites, T>::compute_sum_diagrams(std::vector<double> const &taus, bool infinite_U, bool use_cache) const {
     T sum = T(0.0);
     for (auto &diagram : this->diagrams) { sum = sum + const_cast<Diagram<N_sites, T>&>(diagram).evaluate(taus, this->solver, infinite_U); }
+    for (auto &vt : this->vertex_types) { vt.clear_global_cache(); }
     return sum;
   }
 
@@ -66,6 +67,7 @@ namespace sc_expansion {
   T FreeEnergyCalculator<N_sites, T>::compute_sum_diagrams_dimer(std::vector<double> const &taus, bool infinite_U, bool use_cache) const {
     T sum = T(0.0);
     for (auto &diagram : this->diagrams) { sum = sum + const_cast<Diagram<N_sites, T>&>(diagram).evaluate(taus, this->solver, infinite_U); }
+    for (auto &vt : this->vertex_types) { vt.clear_global_cache(); }
     return sum;
   }
 

@@ -49,6 +49,7 @@ namespace sc_expansion {
 
     std::pair<long, long> get_cache_stats() const { return {this->cache_hits, this->cache_misses}; }
     size_t get_cache_size() const { return this->global_cache.size(); }
+    void clear_global_cache() const { this->global_cache.clear(); }
 
     private:
     int n_legs;
