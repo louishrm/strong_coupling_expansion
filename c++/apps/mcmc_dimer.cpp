@@ -22,6 +22,9 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
   // Construct dimer configuration — no reference integral needed
   auto config = std::make_unique<DimerConfiguration<T>>(params, order);
 
+  // Ensure results directory exists
+  if (world.rank() == 0) { std::filesystem::create_directory("./results"); }
+
   // Construct MC loop
   triqs::mc_tools::mc_generic<double> mc(random_name, random_seed, verbosity);
 

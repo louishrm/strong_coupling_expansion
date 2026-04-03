@@ -48,20 +48,38 @@ template <typename T> struct measure_dimer {
     auto norm_result = triqs::stat::local::jackknife_mpi(c, identity_func, acc_norm);
 
     if (c.rank() == 0) {
+      double mean_sign      = std::get<0>(sign_result);
+      double sign_error     = std::get<1>(sign_result);
+      double mean_abs       = std::get<0>(norm_result);
+      double abs_error      = std::get<1>(norm_result);
+      int order             = config->get_order();
+      double beta_n         = std::pow(config->beta, order);
+
+      // Combined coefficient: beta^n * <|Omega|>_uniform * <sign>
+      double coeff          = beta_n * mean_abs * mean_sign;
+      // Error propagation (independent estimators):
+      // delta(coeff) = beta^n * sqrt( (<|Omega|> * delta_sign)^2 + (<sign> * delta_|Omega|)^2 )
+      double coeff_error    = beta_n * std::sqrt(mean_abs * mean_abs * sign_error * sign_error
+                                                 + mean_sign * mean_sign * abs_error * abs_error);
+
       std::cout << "--- Measurement Results (Dimer, uniform reference) ---" << std::endl;
-      std::cout << "Mean sign:           " << std::get<0>(sign_result) << std::endl;
-      std::cout << "Sign error:          " << std::get<1>(sign_result) << std::endl;
-      std::cout << "Mean |Omega| (unif): " << std::get<0>(norm_result) << std::endl;
-      std::cout << "|Omega| error:       " << std::get<1>(norm_result) << std::endl;
+      std::cout << "Mean sign:           " << mean_sign << std::endl;
+      std::cout << "Sign error:          " << sign_error << std::endl;
+      std::cout << "Mean |Omega| (unif): " << mean_abs << std::endl;
+      std::cout << "|Omega| error:       " << abs_error << std::endl;
+      std::cout << "Jackknife Mean:      " << coeff << std::endl;
+      std::cout << "Jackknife Error:     " << coeff_error << std::endl;
 
       if (std::filesystem::is_directory("./results")) {
-        std::string filename = "./results/dimer_data_order_" + std::to_string(config->get_order()) + "_U_" + std::to_string(config->get_U()) + "_beta_"
+        std::string filename = "./results/dimer_data_order_" + std::to_string(order) + "_U_" + std::to_string(config->get_U()) + "_beta_"
            + std::to_string(config->beta) + "_mu_" + std::to_string(mu) + ".h5";
         h5::file file(filename, 'w');
-        h5_write(file, "mean_sign", std::get<0>(sign_result));
-        h5_write(file, "sign_error", std::get<1>(sign_result));
-        h5_write(file, "mean_abs_integrand", std::get<0>(norm_result));
-        h5_write(file, "abs_integrand_error", std::get<1>(norm_result));
+        h5_write(file, "mean", coeff);
+        h5_write(file, "error", coeff_error);
+        h5_write(file, "mean_sign", mean_sign);
+        h5_write(file, "sign_error", sign_error);
+        h5_write(file, "mean_abs_integrand", mean_abs);
+        h5_write(file, "abs_integrand_error", abs_error);
         h5_write(file, "mu", mu);
       }
     }
