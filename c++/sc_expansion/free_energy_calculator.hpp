@@ -20,11 +20,14 @@ namespace sc_expansion {
 
     std::pair<double, double> compute_infinite_U_coefficient(bool dimer = false) const;
 
+    std::deque<VertexType<N_sites, T>> const &get_vertex_types() const { return this->vertex_types; }
+
     private:
     Parameters<T> const &params;
     int order;
     std::deque<Graph> graphs;
     std::deque<Diagram<N_sites, T>> diagrams;
+    std::deque<VertexType<N_sites, T>> vertex_types; // One per cumulant order (index = cumulant_order - 1)
     HubbardSolver<N_sites, T> solver;
   };
 

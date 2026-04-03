@@ -51,9 +51,7 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
 int main(int argc, char *argv[]) {
 
   if (argc < 7) {
-    if (mpi::communicator().rank() == 0) {
-      std::cerr << "Usage: " << argv[0] << " order n_cycles U beta mu t_hop [use_dual]" << std::endl;
-    }
+    if (mpi::communicator().rank() == 0) { std::cerr << "Usage: " << argv[0] << " order n_cycles U beta mu t_hop [use_dual]" << std::endl; }
     return 1;
   }
 

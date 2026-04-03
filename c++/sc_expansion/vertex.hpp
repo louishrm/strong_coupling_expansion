@@ -47,10 +47,15 @@ namespace sc_expansion {
     T evaluate_canonical(Args<N_sites, T> const &unprimed, Args<N_sites, T> const &primed, HubbardSolver<N_sites, T> const &solver,
                          bool infinite_U) const;
 
+    std::pair<long, long> get_cache_stats() const { return {this->cache_hits, this->cache_misses}; }
+    size_t get_cache_size() const { return this->global_cache.size(); }
+
     private:
     int n_legs;
     // The Global Cache (Shared Spreadsheet)
     mutable std::unordered_map<CanonicalVertexKey<N_sites, T>, T, CanonicalVertexHasher<N_sites, T>> global_cache;
+    mutable long cache_hits   = 0;
+    mutable long cache_misses = 0;
   };
 
   // VertexInstance is the specific "LEGO brick" in a Diagram

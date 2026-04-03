@@ -115,6 +115,17 @@ TEST(McmcAtom, Order4DimerCoefficient) {
 
     EXPECT_LT(rel_err, 0.10) << "MC estimate " << mc_mean << " deviates from exact " << exact_coeff << " by " << rel_err * 100 << "%";
 
+    // Print vertex cache stats
+    std::cout << "\n=== Vertex Cache Stats ===" << std::endl;
+    auto const &vt = config->get_calculator().get_vertex_types();
+    for (size_t i = 0; i < vt.size(); i++) {
+      auto [hits, misses] = vt[i].get_cache_stats();
+      long total          = hits + misses;
+      double hit_rate     = total > 0 ? 100.0 * hits / total : 0.0;
+      std::cout << "  Cumulant order " << (i + 1) << ": hits=" << hits << " misses=" << misses << " entries=" << vt[i].get_cache_size()
+                << " hit_rate=" << hit_rate << "%" << std::endl;
+    }
+
     // Cleanup
     std::filesystem::remove_all("./results");
   }

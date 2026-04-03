@@ -19,10 +19,12 @@ namespace sc_expansion {
     auto it = this->global_cache.find(key);
     if (it != this->global_cache.end()) {
       // Hit! return value. (The Instance handles the Diagram-specific sign)
+      this->cache_hits++;
       return it->second;
     }
 
     // 3. Cache Miss: Perform the expensive recursion
+    this->cache_misses++;
     T result = compute_cumulant_decomposition(unprimed, primed, solver, infinite_U);
 
     // 4. Store for everyone else to use

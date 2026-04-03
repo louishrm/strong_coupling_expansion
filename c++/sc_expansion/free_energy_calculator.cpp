@@ -16,7 +16,12 @@ namespace sc_expansion {
     gen.generate();
     const auto &unique_graphs = gen.get_unique_graphs();
 
-    std::vector<VertexType<N_sites, T> *> empty_vt;
+    // Create VertexType objects for cumulant orders 1..order/2 (max possible at any vertex)
+    int max_cumulant_order = this->order / 2;
+    for (int k = 1; k <= max_cumulant_order; k++) { this->vertex_types.emplace_back(2 * k); }
+
+    std::vector<VertexType<N_sites, T> *> vt_ptrs(max_cumulant_order);
+    for (int k = 0; k < max_cumulant_order; k++) { vt_ptrs[k] = &this->vertex_types[k]; }
 
     for (auto const &g : unique_graphs) {
       if (override_fm_ >= 0) {
@@ -25,7 +30,7 @@ namespace sc_expansion {
       } else {
         this->graphs.emplace_back(g);
       }
-      this->diagrams.emplace_back(this->graphs.back(), empty_vt);
+      this->diagrams.emplace_back(this->graphs.back(), vt_ptrs);
     }
   }
 
@@ -37,11 +42,16 @@ namespace sc_expansion {
     gen.generate();
     const auto &unique_graphs = gen.get_unique_graphs();
 
-    std::vector<VertexType<N_sites, T> *> empty_vt;
+    // Create VertexType objects for cumulant orders 1..order/2
+    int max_cumulant_order = this->order / 2;
+    for (int k = 1; k <= max_cumulant_order; k++) { this->vertex_types.emplace_back(2 * k); }
+
+    std::vector<VertexType<N_sites, T> *> vt_ptrs(max_cumulant_order);
+    for (int k = 0; k < max_cumulant_order; k++) { vt_ptrs[k] = &this->vertex_types[k]; }
 
     for (auto const &g : unique_graphs) {
       this->graphs.emplace_back(g);
-      this->diagrams.emplace_back(this->graphs.back(), empty_vt, cluster_positions, n_cluster_sites);
+      this->diagrams.emplace_back(this->graphs.back(), vt_ptrs, cluster_positions, n_cluster_sites);
     }
   }
 
