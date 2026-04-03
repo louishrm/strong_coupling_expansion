@@ -40,8 +40,12 @@ else:
 os.makedirs(os.path.dirname(filename), exist_ok=True)
 
 # 1. Find all the tiny files
-files = glob.glob("results/full_lattice_data_order_{}_U_{:.6f}_beta_{:.6f}_mu_*.h5".format(order, U, beta))
-files.sort() 
+if args.n_sites == 1:
+    subfile_prefix = "full_lattice_data"
+else:
+    subfile_prefix = "dimer_data"
+files = glob.glob("results/{}_order_{}_U_{:.6f}_beta_{:.6f}_mu_*.h5".format(subfile_prefix, order, U, beta))
+files.sort()
 
 if not files:
     print("No subfiles found to merge. Exiting.")
@@ -49,7 +53,7 @@ if not files:
 
 # 2. Process and Merge
 with h5py.File(filename, "a") as master:
-    
+
     new_mus = []
     new_means = []
     new_errors = []
@@ -61,7 +65,8 @@ with h5py.File(filename, "a") as master:
             new_mus.append(f["mu"][()])
             new_means.append(f["mean"][()])
             new_errors.append(f["error"][()])
-            new_infinite_U_coeffs.append(f["reference_integral"][()])
+            if "reference_integral" in f:
+                new_infinite_U_coeffs.append(f["reference_integral"][()])
 
     def update_dataset(name, data_list):
         new_data = np.array(data_list)
@@ -101,7 +106,8 @@ with h5py.File(filename, "a") as master:
     update_dataset("mu_list", new_mus)
     update_dataset("mean_list", new_means)
     update_dataset("error_list", new_errors)
-    update_dataset("reference_integral", new_infinite_U_coeffs)
+    if new_infinite_U_coeffs:
+        update_dataset("reference_integral", new_infinite_U_coeffs)
 
     # 3. Cleanup
     print("\nCleaning up temporary files...")
