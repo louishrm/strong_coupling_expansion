@@ -14,9 +14,9 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
 
   sc_expansion::Parameters<T> params;
   if constexpr (std::is_same_v<T, Dual>) {
-    params = {Dual(U, 0.0), Dual(beta, 0.0), Dual(mu, 1.0), Dual(t_hop, 0.0), true};
+    params = {Dual(U, 0.0), Dual(beta, 0.0), Dual(mu, 1.0), Dual(t_hop, 0.0), false};
   } else {
-    params = {U, beta, mu, t_hop, true};
+    params = {U, beta, mu, t_hop, false};
   }
 
   // Construct dimer configuration — no reference integral needed
