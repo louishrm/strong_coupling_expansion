@@ -9,6 +9,8 @@ file(GLOB_RECURSE all_tests RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} *.cpp)
 list(REMOVE_ITEM all_tests
   test_mcmc_atom.cpp
   test_mcmc_dimer.cpp
+  test_dimer_diagnostics.cpp
+  test_vandermonde_dimer.cpp
   test_hubbard_atom.cpp
   test_atomic_cumulant.cpp
 )
@@ -48,3 +50,11 @@ add_test(NAME test_mcmc_atom COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLA
 add_executable(test_mcmc_dimer test_mcmc_dimer.cpp)
 target_link_libraries(test_mcmc_dimer ${PROJECT_NAME}::${PROJECT_NAME}_c ${PROJECT_NAME}_warnings gtest)
 add_test(NAME test_mcmc_dimer COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 4 ${CMAKE_CURRENT_BINARY_DIR}/test_mcmc_dimer)
+
+add_executable(test_dimer_diagnostics test_dimer_diagnostics.cpp)
+target_link_libraries(test_dimer_diagnostics ${PROJECT_NAME}::${PROJECT_NAME}_c ${PROJECT_NAME}_warnings gtest)
+add_test(NAME test_dimer_diagnostics COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 4 ${CMAKE_CURRENT_BINARY_DIR}/test_dimer_diagnostics)
+
+add_executable(test_vandermonde_dimer test_vandermonde_dimer.cpp)
+target_link_libraries(test_vandermonde_dimer ${PROJECT_NAME}::${PROJECT_NAME}_c ${PROJECT_NAME}_warnings gtest)
+add_test(NAME test_vandermonde_dimer COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 4 ${CMAKE_CURRENT_BINARY_DIR}/test_vandermonde_dimer)

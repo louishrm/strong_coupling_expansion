@@ -62,12 +62,28 @@ namespace sc_expansion {
       T Ep = Eplus(t, U, mu);
       T Em = Eminus(t, U, mu);
       using std::sqrt;
-      T ratio_plus      = (U - T(2.0) * mu - Ep) / (T(2.0) * t);
-      T ratio_minus     = (U - T(2.0) * mu - Em) / (T(2.0) * t);
-      T norm_plus       = T(SQRT2_INV) / sqrt(T(1.0) + ratio_plus * ratio_plus);
-      T norm_minus      = T(SQRT2_INV) / sqrt(T(1.0) + ratio_minus * ratio_minus);
-      T component_plus  = ratio_plus * norm_plus;
-      T component_minus = ratio_minus * norm_minus;
+
+      // At t=0 the even-parity block is diagonal: eigenstates are pure |e+> and |e->.
+      // The ratio = (U-2mu-E)/(2t) diverges, so we handle this limit explicitly.
+      T norm_plus, norm_minus, component_plus, component_minus;
+      auto t_val = [](auto const &x) -> double {
+        if constexpr (std::is_same_v<std::decay_t<decltype(x)>, Dual>) { return x.value; }
+        else { return x; }
+      };
+      if (std::abs(t_val(t)) < 1e-15) {
+        // t=0 limit: E+ = U-2mu (eigenvector |e+>), E- = -2mu (eigenvector |e->)
+        norm_plus       = T(SQRT2_INV);
+        component_plus  = T(0.0);
+        norm_minus      = T(0.0);
+        component_minus = T(SQRT2_INV);
+      } else {
+        T ratio_plus  = (U - T(2.0) * mu - Ep) / (T(2.0) * t);
+        T ratio_minus = (U - T(2.0) * mu - Em) / (T(2.0) * t);
+        norm_plus       = T(SQRT2_INV) / sqrt(T(1.0) + ratio_plus * ratio_plus);
+        norm_minus      = T(SQRT2_INV) / sqrt(T(1.0) + ratio_minus * ratio_minus);
+        component_plus  = ratio_plus * norm_plus;
+        component_minus = ratio_minus * norm_minus;
+      }
 
       this->all_eigenstates[6] = Eigenstate<T>{{{5, T(norm_plus)}, {10, T(norm_plus)}, {9, T(component_plus)}, {6, T(component_plus)}}, Ep};
       this->all_eigenstates[7] = Eigenstate<T>{{{5, T(norm_minus)}, {10, T(norm_minus)}, {9, T(component_minus)}, {6, T(component_minus)}}, Em};

@@ -37,7 +37,7 @@ namespace sc_expansion {
        V(V_),
        canonical_matrix(adjacency_matrix_),
        connected(true),
-       bipartite(true),
+       bipartite(V_ % 2 == 0),
        bipartite_only(bipartite_only_),
        automorphism_count(automorphism_count_),
        symmetry_factor(symmetry_factor_),

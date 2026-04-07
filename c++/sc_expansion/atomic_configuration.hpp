@@ -6,7 +6,8 @@
 template <typename T> class AtomicConfiguration : public ConfigurationBase<T> {
 
   public:
-  AtomicConfiguration(sc_expansion::Parameters<T> const &params, int order, double alpha, int override_fm = -1);
+  AtomicConfiguration(sc_expansion::Parameters<T> const &params, int order, double alpha,
+                      sc_expansion::FreeEnergyCalculator<1, T> &calculator);
 
   double evaluate_proposed() override;
   void commit_proposal() override;
@@ -27,8 +28,8 @@ template <typename T> class AtomicConfiguration : public ConfigurationBase<T> {
   double proposed_integrand;
   double proposed_reference_integrand;
 
-  // Diagram evaluation
-  sc_expansion::FreeEnergyCalculator<1, T> calculator;
+  // Diagram evaluation (non-owning reference to externally-owned calculator)
+  sc_expansion::FreeEnergyCalculator<1, T> &calculator;
 
   double compute_weight(double finite_U, double infinite_U) const;
   std::pair<double, double> compute_integrands() const;

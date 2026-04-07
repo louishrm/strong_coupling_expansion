@@ -36,6 +36,23 @@ namespace sc_expansion {
 
   template <int N_sites, typename T>
   FreeEnergyCalculator<N_sites, T>::FreeEnergyCalculator(Parameters<T> const &params_, int order_,
+                                                         std::vector<Graph> const &prebuilt_graphs)
+     : params(params_), order(order_), solver(params_) {
+
+    int max_cumulant_order = this->order / 2;
+    for (int k = 1; k <= max_cumulant_order; k++) { this->vertex_types.emplace_back(2 * k); }
+
+    std::vector<VertexType<N_sites, T> *> vt_ptrs(max_cumulant_order);
+    for (int k = 0; k < max_cumulant_order; k++) { vt_ptrs[k] = &this->vertex_types[k]; }
+
+    for (auto const &g : prebuilt_graphs) {
+      this->graphs.emplace_back(g);
+      this->diagrams.emplace_back(this->graphs.back(), vt_ptrs);
+    }
+  }
+
+  template <int N_sites, typename T>
+  FreeEnergyCalculator<N_sites, T>::FreeEnergyCalculator(Parameters<T> const &params_, int order_,
                                                          std::vector<std::pair<int, int>> const &cluster_positions, int n_cluster_sites)
      : params(params_), order(order_), solver(params_) {
     VacuumDiagramGenerator gen(this->order, params.bipartite);
@@ -56,19 +73,28 @@ namespace sc_expansion {
   }
 
   template <int N_sites, typename T>
-  T FreeEnergyCalculator<N_sites, T>::compute_sum_diagrams(std::vector<double> const &taus, bool infinite_U, bool use_cache) const {
+  T FreeEnergyCalculator<N_sites, T>::compute_sum_diagrams(std::vector<double> const &taus, bool infinite_U, bool clear_cache) const {
     T sum = T(0.0);
     for (auto &diagram : this->diagrams) { sum = sum + const_cast<Diagram<N_sites, T>&>(diagram).evaluate(taus, this->solver, infinite_U); }
-    for (auto &vt : this->vertex_types) { vt.clear_global_cache(); }
+    if (clear_cache) {
+      for (auto &vt : this->vertex_types) { vt.clear_global_cache(); }
+    }
     return sum;
   }
 
   template <int N_sites, typename T>
-  T FreeEnergyCalculator<N_sites, T>::compute_sum_diagrams_dimer(std::vector<double> const &taus, bool infinite_U, bool use_cache) const {
+  T FreeEnergyCalculator<N_sites, T>::compute_sum_diagrams_dimer(std::vector<double> const &taus, bool infinite_U, bool clear_cache) const {
     T sum = T(0.0);
     for (auto &diagram : this->diagrams) { sum = sum + const_cast<Diagram<N_sites, T>&>(diagram).evaluate(taus, this->solver, infinite_U); }
-    for (auto &vt : this->vertex_types) { vt.clear_global_cache(); }
+    if (clear_cache) {
+      for (auto &vt : this->vertex_types) { vt.clear_global_cache(); }
+    }
     return sum;
+  }
+
+  template <int N_sites, typename T>
+  void FreeEnergyCalculator<N_sites, T>::clear_all_caches() const {
+    for (auto &vt : this->vertex_types) { vt.clear_global_cache(); }
   }
 
   template <int N_sites, typename T> std::pair<double, double> FreeEnergyCalculator<N_sites, T>::compute_infinite_U_coefficient(bool dimer) const {

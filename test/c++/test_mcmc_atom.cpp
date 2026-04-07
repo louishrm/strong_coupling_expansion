@@ -49,13 +49,14 @@ TEST(McmcAtom, Order4DimerCoefficient) {
   sc_expansion::Parameters<double> params{U, beta, mu, 0.0, true};
 
   // =====================================================================
-  // Compute exact infinite-U reference integral on master rank, broadcast
+  // Construct calculator once with override_fm, compute reference integral
   // =====================================================================
+  sc_expansion::FreeEnergyCalculator<1, double> calculator(params, order, override_fm);
+
   double reference_integral        = 0.0;
   double signed_reference_integral = 0.0;
 
   if (world.rank() == 0) {
-    sc_expansion::FreeEnergyCalculator<1, double> calculator(params, order, override_fm);
     auto [ref_abs, ref_signed] = calculator.compute_infinite_U_coefficient(false);
     reference_integral         = ref_abs;
     signed_reference_integral  = ref_signed;
@@ -65,9 +66,9 @@ TEST(McmcAtom, Order4DimerCoefficient) {
   mpi::broadcast(signed_reference_integral, world);
 
   // =====================================================================
-  // Construct AtomicConfiguration with override_fm=1
+  // Construct AtomicConfiguration reusing the same calculator
   // =====================================================================
-  auto config = std::make_unique<AtomicConfiguration<double>>(params, order, alpha, override_fm);
+  auto config = std::make_unique<AtomicConfiguration<double>>(params, order, alpha, calculator);
 
   // =====================================================================
   // Set up TRIQS MC loop (same pattern as apps/mcmc_atom.cpp)
