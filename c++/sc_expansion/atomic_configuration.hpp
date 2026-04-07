@@ -15,6 +15,8 @@ template <typename T> class AtomicConfiguration : public ConfigurationBase<T> {
   double get_integrand() const override;
   double get_reference_integrand() const override;
 
+  void mark_tau_dirty(int tau_index) override;
+
   sc_expansion::FreeEnergyCalculator<1, T> const &get_calculator() const { return this->calculator; }
 
   private:

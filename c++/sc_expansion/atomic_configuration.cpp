@@ -56,5 +56,7 @@ template <typename T> double AtomicConfiguration<T>::get_integrand() const { ret
 
 template <typename T> double AtomicConfiguration<T>::get_reference_integrand() const { return this->reference_integrand; }
 
+template <typename T> void AtomicConfiguration<T>::mark_tau_dirty(int tau_index) { this->calculator.mark_tau_dirty(tau_index); }
+
 template class AtomicConfiguration<double>;
 template class AtomicConfiguration<Dual>;

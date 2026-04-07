@@ -25,8 +25,9 @@ template <typename T> struct move {
     // 2. Save old value for potential revert
     old_tau = config->state[changed_index];
 
-    // 3. Apply change directly
+    // 3. Apply change and mark affected diagram vertices dirty
     config->state[changed_index] = new_tau;
+    config->mark_tau_dirty(changed_index);
 
     // 4. Evaluate proposed weight (configuration stashes integrands internally)
     proposed_weight = config->evaluate_proposed();
@@ -44,8 +45,10 @@ template <typename T> struct move {
   }
 
   void reject() {
-    // Revert the state; config's committed cache is untouched
+    // Revert the state and re-dirty the affected vertices so their stale
+    // local caches (computed with the proposed tau) are not reused.
     config->state[changed_index] = old_tau;
+    config->mark_tau_dirty(changed_index);
   }
 
   private:

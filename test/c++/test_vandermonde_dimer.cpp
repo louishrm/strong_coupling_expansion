@@ -94,7 +94,8 @@ static DimerMCResult run_dimer_mc(mpi::communicator &world, double U, double bet
   int n_warmup     = 5000;
   int length_cycle = 1;
 
-  auto config = std::make_unique<DimerConfiguration<double>>(params, order);
+  FreeEnergyCalculator<2, double> dimer_calculator(params, order);
+  auto config = std::make_unique<DimerConfiguration<double>>(params, order, dimer_calculator);
 
   int random_seed = 52186000 + seed_offset + world.rank() * 786512;
   int verbosity   = 0; // quiet for batch runs

@@ -68,15 +68,23 @@ namespace sc_expansion {
     T get_value(const std::vector<double> &global_taus, const HubbardSolver<N_sites, T> &solver, bool infinite_U) const;
 
     // Called by the Diagram when a tau index it depends on changes
-    void mark_dirty() { this->is_dirty = true; }
+    void mark_dirty() {
+      this->is_dirty_finite   = true;
+      this->is_dirty_infinite = true;
+    }
+
+    const std::vector<int> &get_tau_indices() const { return this->tau_indices; }
 
     private:
     VertexType<N_sites, T> *type;
     std::vector<int> tau_indices;
     std::vector<uint8_t> op_ids;
 
-    mutable T local_cache;
-    mutable bool is_dirty = true;
+    // Dual cache: finite-U and infinite-U are evaluated in the same MC step
+    mutable T local_cache_finite;
+    mutable T local_cache_infinite;
+    mutable bool is_dirty_finite   = true;
+    mutable bool is_dirty_infinite = true;
   };
 
 } // namespace sc_expansion

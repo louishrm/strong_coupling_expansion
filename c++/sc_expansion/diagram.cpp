@@ -114,6 +114,7 @@ namespace sc_expansion {
     this->setup_vertices(vertex_types);
     this->compute_valid_configurations();
     this->compute_diagram_sign();
+    this->build_vertex_instances();
   }
 
   // =====================================================================
@@ -128,6 +129,7 @@ namespace sc_expansion {
     this->setup_vertices(vertex_types);
     this->compute_valid_configurations();
     this->compute_diagram_sign();
+    this->build_vertex_instances();
   }
 
   // =====================================================================
@@ -747,48 +749,118 @@ namespace sc_expansion {
   //
   // Returns: (-1/beta) * sum_configs weight * product_vertices C_v(taus, ops)
   // =====================================================================
+  // =====================================================================
+  // build_vertex_instances: create VertexInstances for each (config, vertex)
+  // pair and precompute the tau→vertex inverse map for dirty marking.
+  // =====================================================================
+  template <int N_sites, typename T> void Diagram<N_sites, T>::build_vertex_instances() {
+
+    int V       = this->graph.get_V();
+    int n_lines = (int)this->hopping_lines.lines.size();
+
+    // Skip if no VertexTypes were provided (e.g. standalone diagram tests)
+    bool has_any_type = false;
+    for (int v = 0; v < V; v++) {
+      if (this->vertex_type_ptrs[v] != nullptr) { has_any_type = true; break; }
+    }
+    if (!has_any_type) return;
+
+    // Build tau_to_vertices: for each hopping line (= tau index), which vertices does it touch?
+    this->tau_to_vertices.resize(n_lines);
+    for (int v = 0; v < V; v++) {
+      for (auto const &leg : this->legs_per_vertex[v]) { this->tau_to_vertices[leg.line_index].push_back(v); }
+    }
+    // Deduplicate (a vertex with multiple legs on the same line would appear twice)
+    for (auto &vlist : this->tau_to_vertices) {
+      std::sort(vlist.begin(), vlist.end());
+      vlist.erase(std::unique(vlist.begin(), vlist.end()), vlist.end());
+    }
+
+    // Build VertexInstances: one per (config, vertex)
+    this->vertex_instances.resize(this->valid_configurations.size());
+    for (int gc_idx = 0; gc_idx < (int)this->valid_configurations.size(); gc_idx++) {
+      auto const &gc = this->valid_configurations[gc_idx];
+      int cfg_offset = 0;
+
+      for (int v = 0; v < V; v++) {
+        int n_legs = (int)this->legs_per_vertex[v].size();
+
+        // Tau indices for this vertex: the hopping line indices
+        std::vector<int> tau_indices(n_legs);
+        for (int i = 0; i < n_legs; i++) { tau_indices[i] = this->legs_per_vertex[v][i].line_index; }
+
+        // Op IDs for this specific global configuration
+        std::vector<uint8_t> op_ids(gc.config.begin() + cfg_offset, gc.config.begin() + cfg_offset + n_legs);
+        cfg_offset += n_legs;
+
+        this->vertex_instances[gc_idx].emplace_back(this->vertex_type_ptrs[v], std::move(tau_indices), std::move(op_ids));
+      }
+    }
+  }
+
+  // =====================================================================
+  // mark_tau_dirty: mark all VertexInstances that depend on the given tau
+  // =====================================================================
+  template <int N_sites, typename T> void Diagram<N_sites, T>::mark_tau_dirty(int tau_index) {
+    for (int v : this->tau_to_vertices[tau_index]) {
+      for (auto &config_instances : this->vertex_instances) { config_instances[v].mark_dirty(); }
+    }
+  }
+
+  // =====================================================================
+  // mark_all_dirty: mark every VertexInstance as dirty
+  // =====================================================================
+  template <int N_sites, typename T> void Diagram<N_sites, T>::mark_all_dirty() {
+    for (auto &config_instances : this->vertex_instances) {
+      for (auto &vi : config_instances) { vi.mark_dirty(); }
+    }
+  }
+
+  // =====================================================================
+  // evaluate: compute the diagram value using VertexInstance local caches.
+  //
+  // taus: one entry per hopping line (size = order of the diagram).
+  //       taus[k] = imaginary time of the k-th hopping event.
+  //
+  // Clean vertices return their cached value; dirty vertices query the
+  // global VertexType cache (shared across diagrams) and update locally.
+  //
+  // Returns: (-1/beta) * sum_configs weight * product_vertices C_v(taus, ops)
+  // =====================================================================
   template <int N_sites, typename T>
   T Diagram<N_sites, T>::evaluate(std::vector<double> const &taus, HubbardSolver<N_sites, T> const &solver, bool infinite_U) {
 
     int V = this->graph.get_V();
     T sum = T(0.0);
 
-    for (auto const &gc : this->valid_configurations) {
-      T product      = T(1.0);
-      int cfg_offset = 0;
-
-      for (int v = 0; v < V; v++) {
-        int n_legs = (int)this->legs_per_vertex[v].size();
-
-        // Extract local taus and op_ids for this vertex from the global config
-        std::vector<double> local_taus(n_legs);
-        std::vector<uint8_t> local_ops(n_legs);
-
-        for (int i = 0; i < n_legs; i++) {
-          local_taus[i] = taus[this->legs_per_vertex[v][i].line_index];
-          local_ops[i]  = gc.config[cfg_offset + i];
-        }
-        cfg_offset += n_legs;
-
-        // Split into annihilation (unprimed) and creation (primed), sort by time
-        auto [unprimed, primed] = Args<N_sites, T>::split_from_raw(local_taus, local_ops);
-
-        // Evaluate the cumulant — use VertexType cache if available
-        T vertex_val;
-        if (this->vertex_type_ptrs[v] != nullptr) {
-          vertex_val = this->vertex_type_ptrs[v]->evaluate_canonical(unprimed, primed, solver, infinite_U);
-        } else {
-          vertex_val = compute_cumulant_decomposition(unprimed, primed, solver, infinite_U);
-        }
-
-        // Restore the diagram's leg convention: the canonical value was computed
-        // with time-sorted operators; the permutation signs undo that sorting.
-        vertex_val = vertex_val * T(unprimed.permutation_sign) * T(primed.permutation_sign);
-
-        product = product * vertex_val;
+    // Fast path: use VertexInstance local caches (only available when VertexTypes were provided)
+    if (!this->vertex_instances.empty()) {
+      for (int gc_idx = 0; gc_idx < (int)this->valid_configurations.size(); gc_idx++) {
+        T product = T(1.0);
+        for (int v = 0; v < V; v++) { product = product * this->vertex_instances[gc_idx][v].get_value(taus, solver, infinite_U); }
+        sum = sum + T(this->valid_configurations[gc_idx].weight) * product;
       }
-
-      sum = sum + T(gc.weight) * product;
+    } else {
+      // Fallback: direct computation without caching (no VertexTypes provided)
+      for (auto const &gc : this->valid_configurations) {
+        T product      = T(1.0);
+        int cfg_offset = 0;
+        for (int v = 0; v < V; v++) {
+          int n_legs = (int)this->legs_per_vertex[v].size();
+          std::vector<double> local_taus(n_legs);
+          std::vector<uint8_t> local_ops(n_legs);
+          for (int i = 0; i < n_legs; i++) {
+            local_taus[i] = taus[this->legs_per_vertex[v][i].line_index];
+            local_ops[i]  = gc.config[cfg_offset + i];
+          }
+          cfg_offset += n_legs;
+          auto [unprimed, primed] = Args<N_sites, T>::split_from_raw(local_taus, local_ops);
+          T vertex_val            = compute_cumulant_decomposition(unprimed, primed, solver, infinite_U);
+          vertex_val              = vertex_val * T(unprimed.permutation_sign) * T(primed.permutation_sign);
+          product                 = product * vertex_val;
+        }
+        sum = sum + T(gc.weight) * product;
+      }
     }
 
     // Free-energy prefactor: -1/beta * diagram_sign

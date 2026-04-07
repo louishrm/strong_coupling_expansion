@@ -30,6 +30,10 @@ template <typename T> class ConfigurationBase {
   virtual double get_integrand() const           = 0;
   virtual double get_reference_integrand() const = 0; // returns 0 if unused
 
+  // Called by move to propagate dirty marking to diagrams.
+  // Default no-op; subclasses with a FreeEnergyCalculator override this.
+  virtual void mark_tau_dirty(int /*tau_index*/) {}
+
   int get_order() const { return this->order; }
   double get_U() const { return sc_expansion::get_val(this->params.U); }
 

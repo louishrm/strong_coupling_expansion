@@ -7,6 +7,19 @@
 
 #include "dual.hpp"
 
+namespace {
+  // Returns indices into `graphs` sorted by descending vertex count.
+  // Diagrams with more vertices are evaluated first to seed the global
+  // VertexType cache with diverse cumulants before hitting the expensive
+  // concentrated diagrams (e.g. 2 vertices each with order-5 cumulants).
+  std::vector<int> sorted_graph_indices(std::vector<sc_expansion::Graph> const &graphs) {
+    std::vector<int> idx(graphs.size());
+    std::iota(idx.begin(), idx.end(), 0);
+    std::sort(idx.begin(), idx.end(), [&](int a, int b) { return graphs[a].get_V() > graphs[b].get_V(); });
+    return idx;
+  }
+} // namespace
+
 namespace sc_expansion {
 
   template <int N_sites, typename T>
@@ -23,7 +36,10 @@ namespace sc_expansion {
     std::vector<VertexType<N_sites, T> *> vt_ptrs(max_cumulant_order);
     for (int k = 0; k < max_cumulant_order; k++) { vt_ptrs[k] = &this->vertex_types[k]; }
 
-    for (auto const &g : unique_graphs) {
+    // Sort by descending vertex count for optimal global cache seeding
+    auto order_idx = sorted_graph_indices(unique_graphs);
+    for (int i : order_idx) {
+      auto const &g = unique_graphs[i];
       if (override_fm_ >= 0) {
         this->graphs.emplace_back(g.get_canonical_form(), g.get_V(), g.get_automorphism_count(), (int)g.get_symmetry_factor(), override_fm_,
                     g.get_bipartite_only());
@@ -45,8 +61,9 @@ namespace sc_expansion {
     std::vector<VertexType<N_sites, T> *> vt_ptrs(max_cumulant_order);
     for (int k = 0; k < max_cumulant_order; k++) { vt_ptrs[k] = &this->vertex_types[k]; }
 
-    for (auto const &g : prebuilt_graphs) {
-      this->graphs.emplace_back(g);
+    auto order_idx = sorted_graph_indices(prebuilt_graphs);
+    for (int i : order_idx) {
+      this->graphs.emplace_back(prebuilt_graphs[i]);
       this->diagrams.emplace_back(this->graphs.back(), vt_ptrs);
     }
   }
@@ -66,8 +83,9 @@ namespace sc_expansion {
     std::vector<VertexType<N_sites, T> *> vt_ptrs(max_cumulant_order);
     for (int k = 0; k < max_cumulant_order; k++) { vt_ptrs[k] = &this->vertex_types[k]; }
 
-    for (auto const &g : unique_graphs) {
-      this->graphs.emplace_back(g);
+    auto order_idx = sorted_graph_indices(unique_graphs);
+    for (int i : order_idx) {
+      this->graphs.emplace_back(unique_graphs[i]);
       this->diagrams.emplace_back(this->graphs.back(), vt_ptrs, cluster_positions, n_cluster_sites);
     }
   }
@@ -97,6 +115,16 @@ namespace sc_expansion {
     for (auto &vt : this->vertex_types) { vt.clear_global_cache(); }
   }
 
+  template <int N_sites, typename T>
+  void FreeEnergyCalculator<N_sites, T>::mark_tau_dirty(int tau_index) {
+    for (auto &diagram : this->diagrams) { diagram.mark_tau_dirty(tau_index); }
+  }
+
+  template <int N_sites, typename T>
+  void FreeEnergyCalculator<N_sites, T>::mark_all_dirty() {
+    for (auto &diagram : this->diagrams) { diagram.mark_all_dirty(); }
+  }
+
   template <int N_sites, typename T> std::pair<double, double> FreeEnergyCalculator<N_sites, T>::compute_infinite_U_coefficient(bool dimer) const {
     int n = this->order;
     std::vector<double> taus(n);
@@ -105,6 +133,8 @@ namespace sc_expansion {
     double sum_abs    = 0.0;
     double sum_signed = 0.0;
     do {
+      // All taus change between permutations — mark every VertexInstance dirty
+      for (auto &d : this->diagrams) { const_cast<Diagram<N_sites, T>&>(d).mark_all_dirty(); }
       T val_T = dimer ? this->compute_sum_diagrams_dimer(taus, true, false) : this->compute_sum_diagrams(taus, true, false);
       double val;
       if constexpr (std::is_same_v<T, Dual>) {

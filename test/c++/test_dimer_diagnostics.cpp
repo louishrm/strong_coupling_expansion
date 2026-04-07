@@ -145,12 +145,13 @@ void run_mixing_diagnostic(int order, int n_cycles) {
   bool bipartite = (order == 2);
   Parameters<double> params{U, beta, mu, t_intra, bipartite};
 
-  std::unique_ptr<DimerConfiguration<double>> config;
+  std::unique_ptr<FreeEnergyCalculator<2, double>> calculator;
   if (order == 2) {
-    config = std::make_unique<DimerConfiguration<double>>(params, order);
+    calculator = std::make_unique<FreeEnergyCalculator<2, double>>(params, order);
   } else {
-    config = std::make_unique<DimerConfiguration<double>>(params, order, triangle_cluster, n_cluster_sites);
+    calculator = std::make_unique<FreeEnergyCalculator<2, double>>(params, order, triangle_cluster, n_cluster_sites);
   }
+  auto config = std::make_unique<DimerConfiguration<double>>(params, order, *calculator);
 
   int n_warmup     = 2000;
   int length_cycle = 1;

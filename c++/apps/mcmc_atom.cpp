@@ -89,6 +89,8 @@ std::pair<double, double> compute_reference_integral_mpi(sc_expansion::FreeEnerg
     const auto &perm = sjt.get_permutation();
     for (int j = 0; j < order; j++) { taus[j] = (double)(perm[j] - 1); }
 
+    // All taus change between permutations — mark every VertexInstance dirty
+    calculator.mark_all_dirty();
     T val_T = calculator.compute_sum_diagrams(taus, true, /*clear_cache=*/false);
     double val;
     if constexpr (std::is_same_v<T, Dual>) {

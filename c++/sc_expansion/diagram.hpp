@@ -108,6 +108,12 @@ namespace sc_expansion {
 
     T evaluate(std::vector<double> const &taus, HubbardSolver<N_sites, T> const &solver, bool infinite_U);
 
+    // Mark all VertexInstances that depend on tau_index as dirty
+    void mark_tau_dirty(int tau_index);
+
+    // Mark all VertexInstances as dirty (e.g. after full tau replacement)
+    void mark_all_dirty();
+
     const std::vector<SpatialConfiguration> &get_spatial_configurations() const { return this->spatial_configurations; }
 
     double get_free_multiplicity() const {
@@ -129,11 +135,19 @@ namespace sc_expansion {
     Lines hopping_lines;
     int diagram_sign = 1;
 
+    // VertexInstances: [config_idx][vertex_idx] — local cache per (config, vertex) pair
+    std::vector<std::vector<VertexInstance<N_sites, T>>> vertex_instances;
+
+    // Precomputed inverse map: tau_index → list of vertex indices that depend on it.
+    // All configs share the same vertex-to-tau mapping, so we only store vertex indices.
+    std::vector<std::vector<int>> tau_to_vertices;
+
     void compute_hopping_lines();
     void setup_vertices(std::vector<VertexType<N_sites, T> *> const &vertex_types);
     void compute_spatial_configurations();
     void compute_valid_configurations();
     void compute_diagram_sign();
+    void build_vertex_instances();
 
     // Helpers for dimer spatial embedding on the triangular superlattice
     void solve_dimer_embedding(int placed_count, std::vector<bool> &placed, std::vector<std::pair<int, int>> &coords,

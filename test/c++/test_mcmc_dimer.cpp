@@ -101,7 +101,8 @@ TEST(DimerExpansion, Order2MCMC) {
   int n_warmup     = 2000;
   int length_cycle = 1;
 
-  auto config = std::make_unique<DimerConfiguration<double>>(params, order);
+  FreeEnergyCalculator<2, double> calculator(params, order);
+  auto config = std::make_unique<DimerConfiguration<double>>(params, order, calculator);
 
   int random_seed = 32186222 + world.rank() * 786512;
   int verbosity   = (world.rank() == 0 ? 2 : 0);
@@ -189,7 +190,8 @@ TEST(DimerExpansion, Order4MCMC_3DimerCluster) {
   int n_warmup     = 5000;
   int length_cycle = 1;
 
-  auto config = std::make_unique<DimerConfiguration<double>>(params, order, cluster_positions, n_cluster_sites);
+  FreeEnergyCalculator<2, double> calculator(params, order, cluster_positions, n_cluster_sites);
+  auto config = std::make_unique<DimerConfiguration<double>>(params, order, calculator);
 
   int random_seed = 42186333 + world.rank() * 786512;
   int verbosity   = (world.rank() == 0 ? 2 : 0);

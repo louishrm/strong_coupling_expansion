@@ -38,8 +38,11 @@ namespace sc_expansion {
 
   template <int N_sites, typename T>
   T VertexInstance<N_sites, T>::get_value(const std::vector<double> &global_taus, const HubbardSolver<N_sites, T> &solver, bool infinite_U) const {
-    // 1. Check the "Sticky Note" (Local Cache)
-    if (!this->is_dirty) return this->local_cache;
+    // 1. Check the "Sticky Note" (Local Cache) — separate caches for finite/infinite-U
+    bool &dirty = infinite_U ? this->is_dirty_infinite : this->is_dirty_finite;
+    T &cache    = infinite_U ? this->local_cache_infinite : this->local_cache_finite;
+
+    if (!dirty) return cache;
 
     // 2. Build local view from global taus
     std::vector<double> local_taus;
@@ -53,10 +56,10 @@ namespace sc_expansion {
 
     // 5. Restore the Diagram's leg convention using the saved signs
     // C(raw) = C(canonical) * sign(unprimed_sort) * sign(primed_sort)
-    this->local_cache = canonical_val * T(unprimed.permutation_sign) * T(primed.permutation_sign);
-    this->is_dirty    = false;
+    cache = canonical_val * T(unprimed.permutation_sign) * T(primed.permutation_sign);
+    dirty = false;
 
-    return this->local_cache;
+    return cache;
   }
 
   // Explicit instantiations

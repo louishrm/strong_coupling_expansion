@@ -24,6 +24,8 @@ namespace sc_expansion {
     std::pair<double, double> compute_infinite_U_coefficient(bool dimer = false) const;
 
     void clear_all_caches() const;
+    void mark_tau_dirty(int tau_index);
+    void mark_all_dirty();
 
     std::deque<Graph> const &get_graphs() const { return this->graphs; }
     std::deque<VertexType<N_sites, T>> const &get_vertex_types() const { return this->vertex_types; }

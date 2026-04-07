@@ -1,4 +1,5 @@
 #include "sc_expansion/dimer_configuration.hpp"
+#include "sc_expansion/generate_diagrams.hpp"
 #include "sc_expansion/move.hpp"
 #include "sc_expansion/measure_dimer.hpp"
 #include "sc_expansion/dual.hpp"
@@ -7,6 +8,43 @@
 #include <iostream>
 #include <chrono>
 #include <memory>
+
+// Broadcast a vector of Graph objects from rank 0 to all other ranks.
+static void broadcast_graphs(std::vector<sc_expansion::Graph> &graphs, mpi::communicator &world) {
+
+  int n_graphs = (int)graphs.size();
+  MPI_Bcast(&n_graphs, 1, MPI_INT, 0, world.get());
+
+  if (world.rank() != 0) { graphs.clear(); }
+
+  for (int g = 0; g < n_graphs; g++) {
+    int V, aut, sym, fm;
+    int bip_only;
+    std::vector<uint8_t> adj;
+
+    if (world.rank() == 0) {
+      auto const &graph = graphs[g];
+      V        = graph.get_V();
+      aut      = graph.get_automorphism_count();
+      sym      = (int)graph.get_symmetry_factor();
+      fm       = (int)graph.get_free_multiplicity();
+      bip_only = graph.get_bipartite_only() ? 1 : 0;
+      adj      = graph.get_canonical_form();
+    }
+
+    MPI_Bcast(&V, 1, MPI_INT, 0, world.get());
+    MPI_Bcast(&aut, 1, MPI_INT, 0, world.get());
+    MPI_Bcast(&sym, 1, MPI_INT, 0, world.get());
+    MPI_Bcast(&fm, 1, MPI_INT, 0, world.get());
+    MPI_Bcast(&bip_only, 1, MPI_INT, 0, world.get());
+
+    int adj_size = V * V;
+    if (world.rank() != 0) { adj.resize(adj_size); }
+    MPI_Bcast(adj.data(), adj_size, MPI_UNSIGNED_CHAR, 0, world.get());
+
+    if (world.rank() != 0) { graphs.emplace_back(adj, V, aut, sym, fm, bip_only != 0); }
+  }
+}
 
 template <typename T>
 void run(mpi::communicator &world, int order, int n_cycles, double U, double beta, double mu, double t_hop, int n_warmup_cycles, int length_cycle,
@@ -19,8 +57,25 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
     params = {U, beta, mu, t_hop, false};
   }
 
-  // Construct dimer configuration — no reference integral needed
-  auto config = std::make_unique<DimerConfiguration<T>>(params, order);
+  // --- Phase 1: Rank 0 generates all vacuum diagrams, then broadcasts to all ranks ---
+  std::vector<sc_expansion::Graph> graphs;
+  if (world.rank() == 0) {
+    std::cout << "Generating vacuum diagrams on rank 0..." << std::endl;
+    auto t0 = std::chrono::high_resolution_clock::now();
+    sc_expansion::VacuumDiagramGenerator gen(order, params.bipartite);
+    gen.generate();
+    graphs = gen.get_unique_graphs();
+    auto t1 = std::chrono::high_resolution_clock::now();
+    std::cout << "Generated " << graphs.size() << " unique diagrams in "
+              << std::chrono::duration<double>(t1 - t0).count() << " s." << std::endl;
+  }
+  broadcast_graphs(graphs, world);
+
+  // --- Phase 2: All ranks construct the calculator from pre-built graphs ---
+  sc_expansion::FreeEnergyCalculator<2, T> calculator(params, order, graphs);
+
+  // --- Phase 3: MC sampling ---
+  auto config = std::make_unique<DimerConfiguration<T>>(params, order, calculator);
 
   // Ensure results directory exists
   if (world.rank() == 0) { std::filesystem::create_directory("./results"); }
