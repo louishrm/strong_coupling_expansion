@@ -1,14 +1,17 @@
 /*
- * Vandermonde consistency test: dimer order-4 coefficient vs atomic expansion.
+ * Vandermonde consistency test: dimer order-6 coefficient vs atomic expansion.
  *
- * Computes a_4^dimer(t0) via MCMC for t0 = {0, 0.5, 0.75, 1.0}, then uses
- * Vandermonde interpolation to extract polynomial coefficients c_k such that
- *   a_4^dimer(t0) ≈ c_0 + c_1 * t0 + c_2 * t0^2 + c_3 * t0^3
+ * Computes a_6^dimer(t0) via MCMC for t0 = {0, 0.2, 0.4, 0.6, 0.8, 1.0},
+ * then uses Vandermonde interpolation to extract polynomial coefficients c_k
+ * such that
+ *   a_6^dimer(t0) ≈ c_0 + c_1 * t0 + ... + c_5 * t0^5
  *
- * Also runs the atomic (N_sites=1) MCMC at order 4 for comparison.
- * The constant term c_0 = a_4^dimer(0) corresponds to the decoupled-dimer
+ * Also runs the atomic (N_sites=1) MCMC at order 6 for comparison.
+ * The constant term c_0 = a_6^dimer(0) corresponds to the decoupled-dimer
  * limit and should relate to the atomic expansion on the triangular
  * superlattice formed by the staggered dimer tiling.
+ *
+ * Designed for cluster execution (high cycle counts).
  *
  * Usage:  mpirun -np 4 ./test_vandermonde_dimer
  */
@@ -229,20 +232,20 @@ static AtomicMCResult run_atomic_mc(mpi::communicator &world, double U, double b
 // Main test
 // =====================================================================
 
-TEST(VandermondeDimer, Order4PolynomialDecomposition) {
+TEST(VandermondeDimer, Order6PolynomialDecomposition) {
   mpi::communicator world;
 
   // Physics parameters
   double U    = 8.0;
   double beta = 2.0;
   double mu   = 3.0;
-  int order   = 4;
+  int order   = 6;
 
-  // t0 values for Vandermonde interpolation
-  std::vector<double> t0_values = {0.0, 0.5, 0.75, 1.0};
+  // t0 values for Vandermonde interpolation (6 points for degree-5 polynomial)
+  std::vector<double> t0_values = {0.0, 0.2, 0.4, 0.6, 0.8, 1.0};
   int n_points = static_cast<int>(t0_values.size());
 
-  int n_cycles_dimer = 200000;
+  int n_cycles_dimer = 100000;
   int n_cycles_atom  = 100000;
 
   // ---------------------------------------------------------------
@@ -295,7 +298,7 @@ TEST(VandermondeDimer, Order4PolynomialDecomposition) {
     std::cout << std::fixed << std::setprecision(10);
 
     std::cout << "\n========================================" << std::endl;
-    std::cout << "  Dimer order-4 coefficients a_4(t0)" << std::endl;
+    std::cout << "  Dimer order-6 coefficients a_6(t0)" << std::endl;
     std::cout << "========================================" << std::endl;
     std::cout << "  U = " << U << ", beta = " << beta << ", mu = " << mu << std::endl;
     std::cout << "  MC cycles (dimer): " << n_cycles_dimer << std::endl;
@@ -311,7 +314,7 @@ TEST(VandermondeDimer, Order4PolynomialDecomposition) {
 
     std::cout << "\n========================================" << std::endl;
     std::cout << "  Vandermonde polynomial coefficients" << std::endl;
-    std::cout << "  a_4(t0) = c_0 + c_1*t0 + c_2*t0^2 + c_3*t0^3" << std::endl;
+    std::cout << "  a_6(t0) = c_0 + c_1*t0 + ... + c_5*t0^5" << std::endl;
     std::cout << "========================================" << std::endl;
 
     for (int k = 0; k < n_points; k++) {
@@ -336,9 +339,9 @@ TEST(VandermondeDimer, Order4PolynomialDecomposition) {
     std::cout << "\n========================================" << std::endl;
     std::cout << "  Atomic expansion comparison" << std::endl;
     std::cout << "========================================" << std::endl;
-    std::cout << "  a_4^atom (square lattice, per site) = " << atom_result.coeff
+    std::cout << "  a_6^atom (square lattice, per site) = " << atom_result.coeff
               << "  +/- " << atom_result.error << std::endl;
-    std::cout << "  c_0 = a_4^dimer(t0=0) (triang. superlattice, per dimer) = " << c[0] << std::endl;
+    std::cout << "  c_0 = a_6^dimer(t0=0) (triang. superlattice, per dimer) = " << c[0] << std::endl;
     std::cout << "  c_0 / 2 (per site)  = " << c[0] / 2.0 << std::endl;
     std::cout << "========================================\n" << std::endl;
 
