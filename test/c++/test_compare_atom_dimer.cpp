@@ -203,10 +203,12 @@ TEST(VandermondeConsistency, DimerAtomicTaylorMatching) {
   int max_order = 6;
   int n_cycles  = 100000;
 
-  // 7 interpolation points for degree-6 polynomial
+  // 7 interpolation points for degree-6 polynomial (Chebyshev nodes on [0, 1])
   int K = max_order + 1;
   std::vector<double> t0_values(K);
-  for (int i = 0; i < K; i++) { t0_values[i] = (double)i / (K - 1); }
+  for (int i = 0; i < K; i++) {
+    t0_values[i] = 0.5 * (1.0 + std::cos(M_PI * (2 * i + 1) / (2.0 * K)));
+  }
 
   // =================================================================
   // Step 1: Dimer free energy G(t0) Taylor coefficients (analytic)
