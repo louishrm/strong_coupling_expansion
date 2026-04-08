@@ -18,8 +18,8 @@ namespace sc_expansion {
     FreeEnergyCalculator(Parameters<T> const &params, int order,
                          std::vector<std::pair<int, int>> const &cluster_positions, int n_cluster_sites);
 
-    T compute_sum_diagrams(std::vector<double> const &taus, bool infinite_U, bool clear_cache = true) const;
-    T compute_sum_diagrams_dimer(std::vector<double> const &taus, bool infinite_U, bool clear_cache = true) const;
+    T compute_sum_diagrams(std::vector<double> const &taus, bool infinite_U) const;
+    T compute_sum_diagrams_dimer(std::vector<double> const &taus, bool infinite_U) const;
 
     std::pair<double, double> compute_infinite_U_coefficient(bool dimer = false) const;
 

@@ -16,7 +16,8 @@ DimerConfiguration<T>::DimerConfiguration(sc_expansion::Parameters<T> const &par
 }
 
 template <typename T> double DimerConfiguration<T>::compute_omega() const {
-  T val = this->calculator.compute_sum_diagrams_dimer(this->state, false, true);
+  T val = this->calculator.compute_sum_diagrams_dimer(this->state, false);
+  this->calculator.clear_all_caches();
   if constexpr (std::is_same_v<T, Dual>) {
     return val.derivative;
   } else {
@@ -46,7 +47,8 @@ template <typename T> double DimerConfiguration<T>::evaluate_at(std::vector<doub
   // (restore MC chain integrity — prevent stale uniform-sample caches from leaking
   // into the next Metropolis step).
   this->calculator.mark_all_dirty();
-  T val = this->calculator.compute_sum_diagrams_dimer(taus, false, true);
+  T val = this->calculator.compute_sum_diagrams_dimer(taus, false);
+  this->calculator.clear_all_caches();
   this->calculator.mark_all_dirty();
   if constexpr (std::is_same_v<T, Dual>) {
     return val.derivative;

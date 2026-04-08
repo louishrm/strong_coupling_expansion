@@ -91,7 +91,7 @@ std::pair<double, double> compute_reference_integral_mpi(sc_expansion::FreeEnerg
 
     // All taus change between permutations — mark every VertexInstance dirty
     calculator.mark_all_dirty();
-    T val_T = calculator.compute_sum_diagrams(taus, true, /*clear_cache=*/false);
+    T val_T = calculator.compute_sum_diagrams(taus, true);
     double val;
     if constexpr (std::is_same_v<T, Dual>) {
       val = val_T.derivative;
@@ -177,7 +177,7 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
   int n_bins     = 50;
   int block_size = (n_cycles / n_bins) + 1;
 
-  measure<T> meas(config.get(), reference_integral, signed_reference_integral, n_bins, block_size, mu);
+  measure<T> meas(config.get(), reference_integral, signed_reference_integral, n_bins, block_size, mu, verbosity);
   mc.add_move(move<T>(config.get(), mc.get_rng()), "time_swap");
   mc.add_measure(meas, "defensive_measure");
 

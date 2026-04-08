@@ -6,6 +6,7 @@
 #include <iostream>
 #include <h5/h5.hpp>
 #include <filesystem>
+#include <chrono>
 
 template <typename T> struct measure {
 
@@ -20,13 +21,22 @@ template <typename T> struct measure {
   double signed_reference_integral;
   double mu;
 
-  measure(ConfigurationBase<T> *config_, double reference_integral_, double signed_reference_integral_, int n_bins, int block_size, double mu_)
+  // Progress tracking
+  long step_count  = 0;
+  int report_every = 5000;
+  int verbosity    = 0;
+  std::chrono::high_resolution_clock::time_point last_report;
+
+  measure(ConfigurationBase<T> *config_, double reference_integral_, double signed_reference_integral_, int n_bins, int block_size, double mu_,
+          int verbosity_ = 0)
      : config(config_),
        acc_integrand(0.0, 0, n_bins, block_size + 100),
        acc_reference(0.0, 0, n_bins, block_size + 100),
        reference_integral(reference_integral_),
        signed_reference_integral(signed_reference_integral_),
-       mu(mu_) {}
+       mu(mu_),
+       verbosity(verbosity_),
+       last_report(std::chrono::high_resolution_clock::now()) {}
 
   void accumulate(double) {
     double W = config->metropolis_weight;
@@ -35,6 +45,15 @@ template <typename T> struct measure {
     if (W > 0.0) {
       acc_integrand << ((config->get_integrand() - config->get_reference_integrand()) / W);
       acc_reference << (std::abs(config->get_reference_integrand()) / W);
+    }
+
+    this->step_count++;
+    if (this->verbosity > 0 && this->step_count % this->report_every == 0) {
+      auto now     = std::chrono::high_resolution_clock::now();
+      double dt    = std::chrono::duration<double>(now - this->last_report).count();
+      double steps_per_sec = this->report_every / dt;
+      std::cout << "[measure] step " << this->step_count << " | " << steps_per_sec << " steps/s" << std::endl;
+      this->last_report = now;
     }
   }
 

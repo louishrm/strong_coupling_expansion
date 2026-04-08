@@ -6,6 +6,7 @@
 #include <h5/h5.hpp>
 #include <filesystem>
 #include <random>
+#include <chrono>
 
 template <typename T> struct measure_dimer {
 
@@ -23,9 +24,16 @@ template <typename T> struct measure_dimer {
   std::mt19937 rng;
   std::uniform_real_distribution<double> tau_dist;
 
-  measure_dimer(DimerConfiguration<T> *config_, int n_bins, int block_size, double mu_, int random_seed)
+  // Progress tracking
+  long step_count  = 0;
+  int report_every = 5000;
+  int verbosity    = 0;
+  std::chrono::high_resolution_clock::time_point last_report;
+
+  measure_dimer(DimerConfiguration<T> *config_, int n_bins, int block_size, double mu_, int random_seed, int verbosity_ = 0)
      : config(config_), acc_sign(0.0, 0, n_bins, block_size + 100), acc_norm(0.0, 0, n_bins, block_size + 100), mu(mu_),
-       rng(random_seed), tau_dist(0.0, config_->beta) {}
+       rng(random_seed), tau_dist(0.0, config_->beta), verbosity(verbosity_),
+       last_report(std::chrono::high_resolution_clock::now()) {}
 
   void accumulate(double) {
     double W = config->metropolis_weight;
@@ -38,6 +46,15 @@ template <typename T> struct measure_dimer {
     std::vector<double> uniform_taus(order);
     for (int i = 0; i < order; i++) { uniform_taus[i] = tau_dist(rng); }
     acc_norm << std::abs(config->evaluate_at(uniform_taus));
+
+    this->step_count++;
+    if (this->verbosity > 0 && this->step_count % this->report_every == 0) {
+      auto now     = std::chrono::high_resolution_clock::now();
+      double dt    = std::chrono::duration<double>(now - this->last_report).count();
+      double steps_per_sec = this->report_every / dt;
+      std::cout << "[measure_dimer] step " << this->step_count << " | " << steps_per_sec << " steps/s" << std::endl;
+      this->last_report = now;
+    }
   }
 
   void collect_results(mpi::communicator c) {

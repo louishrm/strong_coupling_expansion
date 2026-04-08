@@ -91,22 +91,16 @@ namespace sc_expansion {
   }
 
   template <int N_sites, typename T>
-  T FreeEnergyCalculator<N_sites, T>::compute_sum_diagrams(std::vector<double> const &taus, bool infinite_U, bool clear_cache) const {
+  T FreeEnergyCalculator<N_sites, T>::compute_sum_diagrams(std::vector<double> const &taus, bool infinite_U) const {
     T sum = T(0.0);
     for (auto &diagram : this->diagrams) { sum = sum + const_cast<Diagram<N_sites, T>&>(diagram).evaluate(taus, this->solver, infinite_U); }
-    if (clear_cache) {
-      for (auto &vt : this->vertex_types) { vt.clear_global_cache(); }
-    }
     return sum;
   }
 
   template <int N_sites, typename T>
-  T FreeEnergyCalculator<N_sites, T>::compute_sum_diagrams_dimer(std::vector<double> const &taus, bool infinite_U, bool clear_cache) const {
+  T FreeEnergyCalculator<N_sites, T>::compute_sum_diagrams_dimer(std::vector<double> const &taus, bool infinite_U) const {
     T sum = T(0.0);
     for (auto &diagram : this->diagrams) { sum = sum + const_cast<Diagram<N_sites, T>&>(diagram).evaluate(taus, this->solver, infinite_U); }
-    if (clear_cache) {
-      for (auto &vt : this->vertex_types) { vt.clear_global_cache(); }
-    }
     return sum;
   }
 
@@ -135,7 +129,7 @@ namespace sc_expansion {
     do {
       // All taus change between permutations — mark every VertexInstance dirty
       for (auto &d : this->diagrams) { const_cast<Diagram<N_sites, T>&>(d).mark_all_dirty(); }
-      T val_T = dimer ? this->compute_sum_diagrams_dimer(taus, true, false) : this->compute_sum_diagrams(taus, true, false);
+      T val_T = dimer ? this->compute_sum_diagrams_dimer(taus, true) : this->compute_sum_diagrams(taus, true);
       double val;
       if constexpr (std::is_same_v<T, Dual>) {
         val = val_T.derivative;

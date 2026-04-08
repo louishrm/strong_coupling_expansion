@@ -68,7 +68,7 @@ void run_integrand_structure(int order, int n_samples) {
     std::vector<double> taus(order);
     for (int i = 0; i < order; i++) taus[i] = tau_dist(rng);
 
-    double omega = calc->compute_sum_diagrams_dimer(taus, false, false);
+    double omega = calc->compute_sum_diagrams_dimer(taus, false);
     double abs_omega = std::abs(omega);
     abs_values.push_back(abs_omega);
     sum_val += abs_omega;
