@@ -25,10 +25,8 @@
 #include <triqs/mc_tools/mc_generic.hpp>
 #include <triqs/utility/callbacks.hpp>
 #include <mpi/mpi.hpp>
-#include <h5/h5.hpp>
 #include <cmath>
 #include <memory>
-#include <filesystem>
 
 using namespace sc_expansion;
 
@@ -112,8 +110,6 @@ TEST(DimerExpansion, Order2MCMC) {
   int n_bins     = 50;
   int block_size = (n_cycles / n_bins) + 1;
 
-  if (world.rank() == 0) { std::filesystem::create_directory("./results"); }
-
   int measure_seed = 99871234 + world.rank() * 314159;
   measure_dimer<double> meas(config.get(), n_bins, block_size, mu, measure_seed);
   mc.add_move(move<double>(config.get(), mc.get_rng()), "time_swap");
@@ -122,42 +118,24 @@ TEST(DimerExpansion, Order2MCMC) {
   mc.warmup_and_accumulate(n_warmup, n_cycles, length_cycle, triqs::utility::clock_callback(-1));
   mc.collect_results(world);
 
-  // --- Read results and compute coefficient ---
+  // --- Read results from shared result struct ---
   if (world.rank() == 0) {
-    std::string filename = "./results/dimer_data_order_" + std::to_string(order) + "_U_" + std::to_string(config->get_U()) + "_beta_"
-       + std::to_string(config->beta) + "_mu_" + std::to_string(mu) + ".h5";
-
-    double mean_sign          = 0.0;
-    double sign_error         = 0.0;
-    double mean_abs_integrand = 0.0;
-    double abs_integrand_error = 0.0;
-
-    {
-      h5::file file(filename, 'r');
-      h5_read(file, "mean_sign", mean_sign);
-      h5_read(file, "sign_error", sign_error);
-      h5_read(file, "mean_abs_integrand", mean_abs_integrand);
-      h5_read(file, "abs_integrand_error", abs_integrand_error);
-    }
-
     // coefficient = beta^n * <|Omega|>_uniform * <sign> / fm
-    double abs_integral = std::pow(beta, order) * mean_abs_integrand;
-    double mc_coeff     = abs_integral * mean_sign / fm;
+    double abs_integral = std::pow(beta, order) * meas.result->mean_abs;
+    double mc_coeff     = abs_integral * meas.result->mean_sign / fm;
     double exact        = -0.066467819521;
     double rel_err      = std::abs(mc_coeff - exact) / std::abs(exact);
 
     std::cout << "Exact (Python ED):       " << exact << std::endl;
     std::cout << "MC coefficient:          " << mc_coeff << std::endl;
     std::cout << "|Omega| integral (MC):   " << abs_integral << std::endl;
-    std::cout << "Mean |Omega| (uniform):  " << mean_abs_integrand << std::endl;
-    std::cout << "Mean sign:               " << mean_sign << std::endl;
-    std::cout << "Sign error:              " << sign_error << std::endl;
+    std::cout << "Mean |Omega| (uniform):  " << meas.result->mean_abs << std::endl;
+    std::cout << "Mean sign:               " << meas.result->mean_sign << std::endl;
+    std::cout << "Sign error:              " << meas.result->sign_error << std::endl;
     std::cout << "Free multiplicity:       " << fm << std::endl;
     std::cout << "Relative error:          " << rel_err << std::endl;
 
     EXPECT_LT(rel_err, 0.10) << "MC estimate " << mc_coeff << " deviates from exact " << exact << " by " << rel_err * 100 << "%";
-
-    std::filesystem::remove_all("./results");
   }
 }
 
@@ -201,8 +179,6 @@ TEST(DimerExpansion, Order4MCMC_3DimerCluster) {
   int n_bins     = 50;
   int block_size = (n_cycles / n_bins) + 1;
 
-  if (world.rank() == 0) { std::filesystem::create_directory("./results"); }
-
   int measure_seed = 77871234 + world.rank() * 271828;
   measure_dimer<double> meas(config.get(), n_bins, block_size, mu, measure_seed);
   mc.add_move(move<double>(config.get(), mc.get_rng()), "time_swap");
@@ -211,27 +187,11 @@ TEST(DimerExpansion, Order4MCMC_3DimerCluster) {
   mc.warmup_and_accumulate(n_warmup, n_cycles, length_cycle, triqs::utility::clock_callback(-1));
   mc.collect_results(world);
 
-  // --- Read results and compute coefficient ---
+  // --- Read results from shared result struct ---
   if (world.rank() == 0) {
-    std::string filename = "./results/dimer_data_order_" + std::to_string(order) + "_U_" + std::to_string(config->get_U()) + "_beta_"
-       + std::to_string(config->beta) + "_mu_" + std::to_string(mu) + ".h5";
-
-    double mean_sign           = 0.0;
-    double sign_error          = 0.0;
-    double mean_abs_integrand  = 0.0;
-    double abs_integrand_error = 0.0;
-
-    {
-      h5::file file(filename, 'r');
-      h5_read(file, "mean_sign", mean_sign);
-      h5_read(file, "sign_error", sign_error);
-      h5_read(file, "mean_abs_integrand", mean_abs_integrand);
-      h5_read(file, "abs_integrand_error", abs_integrand_error);
-    }
-
     // Cluster per-dimer weights are already in the integrand — no fm division
-    double abs_integral = std::pow(beta, order) * mean_abs_integrand;
-    double mc_coeff     = abs_integral * mean_sign;
+    double abs_integral = std::pow(beta, order) * meas.result->mean_abs;
+    double mc_coeff     = abs_integral * meas.result->mean_sign;
     double exact        = -0.037479608143;
     double rel_err      = std::abs(mc_coeff - exact) / std::abs(exact);
 
@@ -239,14 +199,12 @@ TEST(DimerExpansion, Order4MCMC_3DimerCluster) {
     std::cout << "Exact (Python ED):       " << exact << std::endl;
     std::cout << "MC coefficient:          " << mc_coeff << std::endl;
     std::cout << "|Omega| integral (MC):   " << abs_integral << std::endl;
-    std::cout << "Mean |Omega| (uniform):  " << mean_abs_integrand << std::endl;
-    std::cout << "Mean sign:               " << mean_sign << std::endl;
-    std::cout << "Sign error:              " << sign_error << std::endl;
+    std::cout << "Mean |Omega| (uniform):  " << meas.result->mean_abs << std::endl;
+    std::cout << "Mean sign:               " << meas.result->mean_sign << std::endl;
+    std::cout << "Sign error:              " << meas.result->sign_error << std::endl;
     std::cout << "Relative error:          " << rel_err << std::endl;
 
     EXPECT_LT(rel_err, 0.15) << "MC estimate " << mc_coeff << " deviates from exact " << exact << " by " << rel_err * 100 << "%";
-
-    std::filesystem::remove_all("./results");
   }
 }
 

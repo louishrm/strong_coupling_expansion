@@ -20,10 +20,8 @@
 #include <triqs/mc_tools/mc_generic.hpp>
 #include <triqs/utility/callbacks.hpp>
 #include <mpi/mpi.hpp>
-#include <h5/h5.hpp>
 #include <cmath>
 #include <memory>
-#include <filesystem>
 
 TEST(McmcAtom, Order4DimerCoefficient) {
 
@@ -81,9 +79,6 @@ TEST(McmcAtom, Order4DimerCoefficient) {
   int n_bins     = 50;
   int block_size = (n_cycles / n_bins) + 1;
 
-  // Create results directory so that measure writes h5 output
-  if (world.rank() == 0) { std::filesystem::create_directory("./results"); }
-
   measure<double> meas(config.get(), reference_integral, signed_reference_integral, n_bins, block_size, mu);
   mc.add_move(move<double>(config.get(), mc.get_rng()), "time_swap");
   mc.add_measure(meas, "defensive_measure");
@@ -92,20 +87,11 @@ TEST(McmcAtom, Order4DimerCoefficient) {
   mc.collect_results(world);
 
   // =====================================================================
-  // Read back h5 result on master and verify against exact coefficient
+  // Read results from shared result struct and verify against exact coefficient
   // =====================================================================
   if (world.rank() == 0) {
-    std::string filename = "./results/full_lattice_data_order_" + std::to_string(order) + "_U_" + std::to_string(U) + "_beta_" + std::to_string(beta)
-       + "_mu_" + std::to_string(mu) + "_bipartite.h5";
-
-    double mc_mean  = 0.0;
-    double mc_error = 0.0;
-
-    {
-      h5::file file(filename, 'r');
-      h5_read(file, "mean", mc_mean);
-      h5_read(file, "error", mc_error);
-    }
+    double mc_mean  = meas.result->mean;
+    double mc_error = meas.result->error;
 
     double rel_err = std::abs(mc_mean - exact_coeff) / std::abs(exact_coeff);
 
@@ -127,8 +113,6 @@ TEST(McmcAtom, Order4DimerCoefficient) {
                 << " hit_rate=" << hit_rate << "%" << std::endl;
     }
 
-    // Cleanup
-    std::filesystem::remove_all("./results");
   }
 }
 

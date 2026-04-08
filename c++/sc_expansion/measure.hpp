@@ -4,9 +4,13 @@
 #include <triqs/stat/accumulator.hpp>
 #include "myjackknife.hpp"
 #include <iostream>
-#include <h5/h5.hpp>
-#include <filesystem>
 #include <chrono>
+#include <memory>
+
+struct MeasureResult {
+  double mean  = 0.0;
+  double error = 0.0;
+};
 
 template <typename T> struct measure {
 
@@ -20,6 +24,9 @@ template <typename T> struct measure {
   double reference_integral;
   double signed_reference_integral;
   double mu;
+
+  // Shared result struct — survives copy into mc_generic internals
+  std::shared_ptr<MeasureResult> result;
 
   // Progress tracking
   long step_count  = 0;
@@ -35,6 +42,7 @@ template <typename T> struct measure {
        reference_integral(reference_integral_),
        signed_reference_integral(signed_reference_integral_),
        mu(mu_),
+       result(std::make_shared<MeasureResult>()),
        verbosity(verbosity_),
        last_report(std::chrono::high_resolution_clock::now()) {}
 
@@ -66,23 +74,16 @@ template <typename T> struct measure {
     };
 
     // Perform Jackknife on the ratio of the two accumulators
-    auto result = triqs::stat::local::jackknife_mpi(c, ratio_func, acc_integrand, acc_reference);
+    auto jk = triqs::stat::local::jackknife_mpi(c, ratio_func, acc_integrand, acc_reference);
+
+    this->result->mean  = std::get<0>(jk);
+    this->result->error = std::get<1>(jk);
 
     if (c.rank() == 0) {
       std::cout << "--- Measurement Results (Defensive Importance Sampling) ---" << std::endl;
       std::cout << "Reference Integral: " << reference_integral << std::endl;
-      std::cout << "Jackknife Mean:     " << std::get<0>(result) << std::endl;
-      std::cout << "Jackknife Error:    " << std::get<1>(result) << std::endl;
-
-      if (std::filesystem::is_directory("./results")) {
-        std::string filename = "./results/full_lattice_data_order_" + std::to_string(config->get_order()) + "_U_" + std::to_string(config->get_U())
-           + "_beta_" + std::to_string(config->beta) + "_mu_" + std::to_string(mu) + (config->bipartite ? "_bipartite" : "_non_bipartite") + ".h5";
-        h5::file file(filename, 'w');
-        h5_write(file, "mean", std::get<0>(result));
-        h5_write(file, "error", std::get<1>(result));
-        h5_write(file, "mu", mu);
-        h5_write(file, "reference_integral", reference_integral);
-      }
+      std::cout << "Jackknife Mean:     " << this->result->mean << std::endl;
+      std::cout << "Jackknife Error:    " << this->result->error << std::endl;
     }
   }
 };

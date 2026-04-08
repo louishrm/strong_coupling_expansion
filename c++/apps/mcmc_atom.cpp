@@ -7,6 +7,8 @@
 #include "sc_expansion/dual.hpp"
 #include <triqs/mc_tools/mc_generic.hpp>
 #include <triqs/utility/callbacks.hpp>
+#include <h5/h5.hpp>
+#include <filesystem>
 #include <iostream>
 #include <chrono>
 #include <memory>
@@ -194,6 +196,15 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
     std::cout << "Total time (s): " << total_time << std::endl;
     std::cout << "Time per step (s): " << total_time / total_steps << std::endl;
     std::cout << "Exact infinite-U coefficient (order " << order << "): " << signed_reference_integral << std::endl;
+
+    // Save results to HDF5
+    std::string filename = "./results/full_lattice_data_order_" + std::to_string(config->get_order()) + "_U_" + std::to_string(config->get_U())
+       + "_beta_" + std::to_string(config->beta) + "_mu_" + std::to_string(mu) + (config->bipartite ? "_bipartite" : "_non_bipartite") + ".h5";
+    h5::file file(filename, 'w');
+    h5_write(file, "mean", meas.result->mean);
+    h5_write(file, "error", meas.result->error);
+    h5_write(file, "mu", mu);
+    h5_write(file, "reference_integral", reference_integral);
   }
 }
 

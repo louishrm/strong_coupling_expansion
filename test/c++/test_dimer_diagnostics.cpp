@@ -25,7 +25,6 @@
 #include <cmath>
 #include <memory>
 #include <random>
-#include <filesystem>
 #include <algorithm>
 
 using namespace sc_expansion;
@@ -163,8 +162,6 @@ void run_mixing_diagnostic(int order, int n_cycles) {
   int n_bins     = 20;
   int block_size = (n_cycles / n_bins) + 1;
 
-  if (world.rank() == 0) { std::filesystem::create_directory("./results"); }
-
   int measure_seed = 88871234 + world.rank() * 271828 + order * 999;
   measure_dimer<double> meas(config.get(), n_bins, block_size, mu, measure_seed);
   mc.add_move(move<double>(config.get(), mc.get_rng()), "time_swap");
@@ -174,29 +171,15 @@ void run_mixing_diagnostic(int order, int n_cycles) {
   mc.collect_results(world);
 
   if (world.rank() == 0) {
-    std::string filename = "./results/dimer_data_order_" + std::to_string(order) + "_U_" + std::to_string(config->get_U()) + "_beta_"
-       + std::to_string(config->beta) + "_mu_" + std::to_string(mu) + ".h5";
-
-    double mean_sign = 0, sign_error = 0, mean_abs = 0, abs_error = 0;
-    {
-      h5::file file(filename, 'r');
-      h5_read(file, "mean_sign", mean_sign);
-      h5_read(file, "sign_error", sign_error);
-      h5_read(file, "mean_abs_integrand", mean_abs);
-      h5_read(file, "abs_integrand_error", abs_error);
-    }
-
     std::cout << "\n========================================" << std::endl;
     std::cout << "  MCMC MIXING — Order " << order << " (" << n_cycles << " cycles x4 ranks)" << std::endl;
     std::cout << "========================================" << std::endl;
-    std::cout << "  <sign>         = " << mean_sign << std::endl;
-    std::cout << "  sign error     = " << sign_error << std::endl;
-    std::cout << "  <|Omega|>_unif = " << mean_abs << std::endl;
-    std::cout << "  |Omega| error  = " << abs_error << std::endl;
+    std::cout << "  <sign>         = " << meas.result->mean_sign << std::endl;
+    std::cout << "  sign error     = " << meas.result->sign_error << std::endl;
+    std::cout << "  <|Omega|>_unif = " << meas.result->mean_abs << std::endl;
+    std::cout << "  |Omega| error  = " << meas.result->abs_error << std::endl;
     std::cout << "  (check MC output above for acceptance rate)" << std::endl;
     std::cout << "========================================\n" << std::endl;
-
-    std::filesystem::remove_all("./results");
   }
 }
 

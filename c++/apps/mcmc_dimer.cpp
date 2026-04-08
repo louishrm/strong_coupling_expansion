@@ -5,6 +5,8 @@
 #include "sc_expansion/dual.hpp"
 #include <triqs/mc_tools/mc_generic.hpp>
 #include <triqs/utility/callbacks.hpp>
+#include <h5/h5.hpp>
+#include <filesystem>
 #include <iostream>
 #include <chrono>
 #include <memory>
@@ -103,6 +105,18 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
 
     std::cout << "Total time (s): " << total_time << std::endl;
     std::cout << "Time per step (s): " << total_time / total_steps << std::endl;
+
+    // Save results to HDF5
+    std::string filename = "./results/dimer_data_order_" + std::to_string(order) + "_U_" + std::to_string(config->get_U()) + "_beta_"
+       + std::to_string(config->beta) + "_mu_" + std::to_string(mu) + ".h5";
+    h5::file file(filename, 'w');
+    h5_write(file, "mean", meas.result->coeff);
+    h5_write(file, "error", meas.result->error);
+    h5_write(file, "mean_sign", meas.result->mean_sign);
+    h5_write(file, "sign_error", meas.result->sign_error);
+    h5_write(file, "mean_abs_integrand", meas.result->mean_abs);
+    h5_write(file, "abs_integrand_error", meas.result->abs_error);
+    h5_write(file, "mu", mu);
   }
 }
 
