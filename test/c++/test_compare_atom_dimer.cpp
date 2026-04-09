@@ -1,5 +1,5 @@
 /*
- * Vandermonde consistency test: dimer vs atomic expansion.
+ * Consistency test: dimer vs atomic expansion.
  *
  * The physical free energy per site F(t) can be computed two ways:
  *
@@ -11,14 +11,18 @@
  * per site and a_n^dimer(t_0) depends on the intra-dimer hopping t_0.
  * At the physical point t_0 = t both must agree.
  *
- * Expanding G(t) = sum_m G_m * t^m and a_n(t_0) = sum_k p_{n,k} * t_0^k,
- * then setting t_0 = t and matching powers of t^m:
+ * Rather than extracting individual Taylor coefficients via Vandermonde
+ * interpolation (which is extremely ill-conditioned for the monomial
+ * basis on [0,1]), this test compares the truncated free energy directly
+ * at a specific small t value.  The identity
  *
  *   a_m^atom = G_m + (1/2) * sum_{n=1}^{m} p_{n, m-n}
  *
- * This test extracts G_m and p_{n,k} via Vandermonde interpolation at
- * 7 values of t_0, then checks the identity at even orders m = 2, 4, 6.
- * (Odd orders vanish on the bipartite square lattice.)
+ * holding at every order implies the function-value identity
+ *
+ *   sum_{m=0}^{M} a_m^atom * t^m = G(t) + (1/2) * sum_{n} a_n^dimer(t) * t^n + O(t^{M+2})
+ *
+ * For t = 0.3 and M = 6, the truncation error is O(t^8) ~ 7e-5.
  *
  * Usage:  mpirun -np <N> ./test_compare_atom_dimer
  */
@@ -41,63 +45,6 @@
 #include <iomanip>
 
 using namespace sc_expansion;
-
-// =====================================================================
-// Gaussian elimination for a dense N x N system
-// =====================================================================
-static bool solve_linear_system(std::vector<std::vector<double>> A,
-                                std::vector<double> b,
-                                std::vector<double> &x) {
-  int n = static_cast<int>(b.size());
-  x.resize(n);
-
-  for (int col = 0; col < n; col++) {
-    int pivot = col;
-    double max_val = std::abs(A[col][col]);
-    for (int row = col + 1; row < n; row++) {
-      if (std::abs(A[row][col]) > max_val) {
-        max_val = std::abs(A[row][col]);
-        pivot   = row;
-      }
-    }
-    if (max_val < 1e-14) return false;
-
-    std::swap(A[col], A[pivot]);
-    std::swap(b[col], b[pivot]);
-
-    for (int row = col + 1; row < n; row++) {
-      double factor = A[row][col] / A[col][col];
-      for (int j = col; j < n; j++) { A[row][j] -= factor * A[col][j]; }
-      b[row] -= factor * b[col];
-    }
-  }
-
-  for (int row = n - 1; row >= 0; row--) {
-    x[row] = b[row];
-    for (int j = row + 1; j < n; j++) { x[row] -= A[row][j] * x[j]; }
-    x[row] /= A[row][row];
-  }
-  return true;
-}
-
-// =====================================================================
-// Build Vandermonde matrix and solve for polynomial coefficients.
-// Given values y_i = f(t_i), finds c_k such that f(t) ~ sum_k c_k t^k.
-// =====================================================================
-static bool vandermonde_fit(const std::vector<double> &t_values,
-                            const std::vector<double> &y_values,
-                            std::vector<double> &coeffs) {
-  int K = static_cast<int>(t_values.size());
-  std::vector<std::vector<double>> V(K, std::vector<double>(K));
-  for (int i = 0; i < K; i++) {
-    double t_pow = 1.0;
-    for (int j = 0; j < K; j++) {
-      V[i][j] = t_pow;
-      t_pow *= t_values[i];
-    }
-  }
-  return solve_linear_system(V, y_values, coeffs);
-}
 
 // =====================================================================
 // Compute isolated-dimer free energy per site: G(t0) = -ln(Z_2(t0))/(2*beta)
@@ -189,92 +136,51 @@ static MeasureResult run_atomic_mc(mpi::communicator &world, double U, double be
 }
 
 // =====================================================================
-// Main test: Vandermonde consistency check up to order 6
+// Compute isolated-atom free energy per site: -ln(Z_1)/(beta)
+// =====================================================================
+static double atom_free_energy_per_site(double U, double beta, double mu) {
+  Parameters<double> params{U, beta, mu, 0.0, true};
+  HubbardSolver<1, double> solver(params);
+  return -std::log(solver.get_Z()) / beta;
+}
+
+// =====================================================================
+// Main test: function-value consistency check up to order 6
 // =====================================================================
 
-TEST(VandermondeConsistency, DimerAtomicTaylorMatching) {
+TEST(ConsistencyCheck, DimerAtomicFunctionValue) {
   mpi::communicator world;
 
   // Physics parameters
   double U    = 8.0;
   double beta = 2.0;
   double mu   = 3.0;
+  double t    = 0.3;   // Physical hopping for function-value comparison
 
   int max_order = 6;
   int n_cycles  = 100000;
 
-  // 7 interpolation points for degree-6 polynomial (Chebyshev nodes on [0, 1])
-  int K = max_order + 1;
-  std::vector<double> t0_values(K);
-  for (int i = 0; i < K; i++) {
-    t0_values[i] = 0.5 * (1.0 + std::cos(M_PI * (2 * i + 1) / (2.0 * K)));
-  }
-
   // =================================================================
-  // Step 1: Dimer free energy G(t0) Taylor coefficients (analytic)
+  // Step 1: Analytic zeroth-order contributions
   // =================================================================
-  std::vector<double> G_coeffs;
+  double a0_atom = atom_free_energy_per_site(U, beta, mu);             // F_atom(0)
+  double G_at_t  = dimer_free_energy_per_site(U, beta, mu, t);         // G(t)
+  double G_at_0  = dimer_free_energy_per_site(U, beta, mu, 0.0);       // G(0) = a0_atom
 
   if (world.rank() == 0) {
-    std::vector<double> G_values(K);
-    for (int i = 0; i < K; i++) {
-      G_values[i] = dimer_free_energy_per_site(U, beta, mu, t0_values[i]);
-    }
-    vandermonde_fit(t0_values, G_values, G_coeffs);
-
     std::cout << std::fixed << std::setprecision(10);
     std::cout << "\n========================================" << std::endl;
-    std::cout << "  G(t0) Taylor coefficients (per site)" << std::endl;
+    std::cout << "  Analytic zeroth-order (per site)" << std::endl;
     std::cout << "========================================" << std::endl;
-    for (int m = 0; m <= max_order; m++) {
-      std::cout << "  G_" << m << " = " << G_coeffs[m] << std::endl;
-    }
-  }
-
-  // Broadcast G_coeffs to all ranks
-  if (world.rank() != 0) { G_coeffs.resize(K); }
-  MPI_Bcast(G_coeffs.data(), K, MPI_DOUBLE, 0, world.get());
-
-  // =================================================================
-  // Step 2: Dimer expansion polynomial coefficients p_{n,k}
-  //         For each even order n=2,4,...,max_order, run at K t0 values.
-  // =================================================================
-
-  // p_coeffs[n][k] = coefficient of t0^k in a_n^dimer(t0) / 2 (per site)
-  // Odd orders vanish (bipartite square lattice), so only n = 2, 4, 6.
-  std::vector<std::vector<double>> p_coeffs(max_order + 1, std::vector<double>(K, 0.0));
-
-  for (int n = 2; n <= max_order; n += 2) {
-    if (world.rank() == 0) {
-      std::cout << "\n--- Dimer order " << n << ": running " << K << " t0 values ---" << std::endl;
-    }
-
-    std::vector<double> dimer_values(K);
-    for (int i = 0; i < K; i++) {
-      if (world.rank() == 0) {
-        std::cout << "  t0 = " << t0_values[i] << " (run " << (i + 1) << "/" << K << ")" << std::endl;
-      }
-      int seed_offset = n * 10000 + i * 1000;
-      auto result = run_dimer_mc(world, U, beta, mu, t0_values[i], n, n_cycles, seed_offset);
-      // Store per-site coefficient
-      dimer_values[i] = result.coeff / 2.0;
-    }
-
-    // Vandermonde fit (all ranks have the same values via mpi broadcast in collect_results)
-    vandermonde_fit(t0_values, dimer_values, p_coeffs[n]);
-
-    if (world.rank() == 0) {
-      std::cout << "  Polynomial coefficients p_{" << n << ",k}:" << std::endl;
-      for (int k = 0; k < K; k++) {
-        std::cout << "    p_{" << n << "," << k << "} = " << p_coeffs[n][k] << std::endl;
-      }
-    }
+    std::cout << "  a0_atom  = " << a0_atom << std::endl;
+    std::cout << "  G(0)     = " << G_at_0 << std::endl;
+    std::cout << "  G(t=" << t << ") = " << G_at_t << std::endl;
   }
 
   // =================================================================
-  // Step 3: Atomic expansion coefficients a_m^atom
-  //         Only even orders (odd orders vanish on bipartite lattice).
+  // Step 2: Atomic expansion coefficients a_m^atom (even m = 2, 4, 6)
   // =================================================================
+  double atom_sum = a0_atom;
   std::vector<double> a_atom(max_order + 1, 0.0);
 
   for (int m = 2; m <= max_order; m += 2) {
@@ -284,36 +190,71 @@ TEST(VandermondeConsistency, DimerAtomicTaylorMatching) {
     int seed_offset = m * 20000;
     auto result = run_atomic_mc(world, U, beta, mu, m, n_cycles, seed_offset);
     a_atom[m] = result.mean;
+    atom_sum += a_atom[m] * std::pow(t, m);
   }
 
   // =================================================================
-  // Step 4: Check consistency identity (even orders only)
-  //   a_m^atom = G_m + sum_{n=2,4,...,m} p_{n, m-n}
+  // Step 3: Dimer expansion coefficients a_n^dimer(t) at t0 = t
+  //         Only one MC run per order (no Vandermonde interpolation).
+  // =================================================================
+  double dimer_sum = G_at_t;
+  std::vector<double> c_dimer(max_order + 1, 0.0);
+
+  for (int n = 2; n <= max_order; n += 2) {
+    if (world.rank() == 0) {
+      std::cout << "\n--- Dimer order " << n << " at t0 = " << t << " ---" << std::endl;
+    }
+    int seed_offset = n * 10000;
+    auto result = run_dimer_mc(world, U, beta, mu, t, n, n_cycles, seed_offset);
+    // Per-site contribution: (1/2) * a_n^dimer(t) * t^n
+    c_dimer[n] = result.coeff / 2.0;
+    dimer_sum += c_dimer[n] * std::pow(t, n);
+  }
+
+  // =================================================================
+  // Step 4: Compare truncated free energies
+  //   atom_sum  = a0 + sum_{m=2,4,6} a_m^atom * t^m
+  //   dimer_sum = G(t) + (1/2) * sum_{n=2,4,6} a_n^dimer(t) * t^n
+  //   These agree up to O(t^8) truncation error.
   // =================================================================
   if (world.rank() == 0) {
     std::cout << "\n========================================================" << std::endl;
-    std::cout << "  Consistency check: a_m^atom = G_m + sum p_{n, m-n}" << std::endl;
-    std::cout << "  U = " << U << ", beta = " << beta << ", mu = " << mu << std::endl;
+    std::cout << "  Consistency check: F_atom(t) vs F_dimer(t)" << std::endl;
+    std::cout << "  U = " << U << ", beta = " << beta << ", mu = " << mu << ", t = " << t << std::endl;
     std::cout << "  MC cycles per rank: " << n_cycles << std::endl;
     std::cout << "  MPI ranks: " << world.size() << std::endl;
     std::cout << "========================================================" << std::endl;
 
+    std::cout << "\n  Atomic coefficients:" << std::endl;
     for (int m = 2; m <= max_order; m += 2) {
-      double dimer_sum = G_coeffs[m];
-      for (int n = 2; n <= m; n += 2) { dimer_sum += p_coeffs[n][m - n]; }
-
-      std::cout << "  m = " << m << ":  dimer_side = " << std::setw(16) << dimer_sum
-                << "  atom_side = " << std::setw(16) << a_atom[m]
-                << "  diff = " << std::setw(14) << (dimer_sum - a_atom[m]) << std::endl;
-
-      double diff  = std::abs(dimer_sum - a_atom[m]);
-      double scale = std::max(std::abs(a_atom[m]), 1e-10);
-
-      EXPECT_LT(diff / scale, 0.20)
-         << "Order " << m << " mismatch: dimer_side=" << dimer_sum
-         << " atom_side=" << a_atom[m] << " rel_diff=" << diff / scale;
+      std::cout << "    a_" << m << " = " << a_atom[m] << std::endl;
     }
 
+    std::cout << "\n  Dimer coefficients (per site, at t0 = " << t << "):" << std::endl;
+    for (int n = 2; n <= max_order; n += 2) {
+      std::cout << "    c_" << n << "/2 = " << c_dimer[n] << std::endl;
+    }
+
+    // Compare the perturbative corrections (subtract the common zeroth order)
+    double delta_atom  = atom_sum - a0_atom;
+    double delta_dimer = dimer_sum - G_at_0;
+
+    std::cout << "\n  atom_sum   = " << atom_sum << std::endl;
+    std::cout << "  dimer_sum  = " << dimer_sum << std::endl;
+    std::cout << "  delta_atom  (atom_sum - a0)  = " << delta_atom << std::endl;
+    std::cout << "  delta_dimer (dimer_sum - G0) = " << delta_dimer << std::endl;
+    std::cout << "  diff = " << (delta_atom - delta_dimer) << std::endl;
+
+    double diff  = std::abs(delta_atom - delta_dimer);
+    double scale = std::max(std::abs(delta_atom), 1e-10);
+
+    EXPECT_LT(diff / scale, 0.20)
+       << "Function-value mismatch at t=" << t
+       << ": delta_atom=" << delta_atom
+       << " delta_dimer=" << delta_dimer
+       << " rel_diff=" << diff / scale;
+
+    std::cout << "  relative diff = " << diff / scale << std::endl;
     std::cout << "========================================================\n" << std::endl;
   }
 }
