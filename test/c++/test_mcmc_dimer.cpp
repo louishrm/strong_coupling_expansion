@@ -135,7 +135,7 @@ TEST(DimerExpansion, Order2MCMC) {
     std::cout << "Free multiplicity:       " << fm << std::endl;
     std::cout << "Relative error:          " << rel_err << std::endl;
 
-    EXPECT_LT(rel_err, 0.10) << "MC estimate " << mc_coeff << " deviates from exact " << exact << " by " << rel_err * 100 << "%";
+    EXPECT_LT(rel_err, 0.025) << "MC estimate " << mc_coeff << " deviates from exact " << exact << " by " << rel_err * 100 << "%";
   }
 }
 
@@ -161,7 +161,7 @@ TEST(DimerExpansion, Order4MCMC_3DimerCluster) {
 
   // 3-dimer triangle cluster positions on the triangular superlattice
   std::vector<std::pair<int, int>> cluster_positions = {{0, 0}, {1, 0}, {0, 1}};
-  int n_cluster_sites = 3;
+  int n_cluster_sites                                = 3;
 
   // --- MCMC: cluster-restricted DimerConfiguration ---
   int n_cycles     = 200000;
