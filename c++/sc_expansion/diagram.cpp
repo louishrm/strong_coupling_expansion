@@ -156,8 +156,9 @@ namespace sc_expansion {
 
   // =====================================================================
   // compute_spatial_configurations: for N_sites=2, embed the graph on the
-  // triangular dimer superlattice and group embeddings by hopping direction
-  // pattern. For N_sites=1, a single trivial config with the free multiplicity.
+  // rectangular (columnar dimer) superlattice and group embeddings by
+  // bond-label pattern. For N_sites=1, a single trivial config with the
+  // free multiplicity.
   // =====================================================================
   template <int N_sites, typename T> void Diagram<N_sites, T>::compute_spatial_configurations() {
 
@@ -171,8 +172,7 @@ namespace sc_expansion {
     }
 
     if constexpr (N_sites == 2) {
-      int V       = this->graph.get_V();
-      int n_lines = (int)this->hopping_lines.lines.size();
+      int V = this->graph.get_V();
 
       // --- Step 1: Recursive embedding on the triangular superlattice ---
       // Collect raw direction vectors with their embedding counts.
@@ -241,7 +241,7 @@ namespace sc_expansion {
 
   // =====================================================================
   // compute_spatial_configurations_cluster: for N_sites=2, embed the graph
-  // on a finite cluster (given set of positions on the triangular superlattice).
+  // on a finite cluster (given set of positions on the rectangular superlattice).
   // Sums over all starting positions for vertex 0, then divides by
   // n_cluster_sites to get per-dimer weights.
   // =====================================================================
@@ -254,8 +254,7 @@ namespace sc_expansion {
     }
 
     if constexpr (N_sites == 2) {
-      int V       = this->graph.get_V();
-      int n_lines = (int)this->hopping_lines.lines.size();
+      int V = this->graph.get_V();
 
       // --- Step 1: Enumerate all embeddings on the cluster ---
       // Sum over all starting positions for vertex 0.
@@ -320,8 +319,9 @@ namespace sc_expansion {
 
   // =====================================================================
   // solve_cluster_embedding: recursive backtracking to place vertices on
-  // a finite set of cluster positions. Same logic as solve_dimer_embedding
-  // but tries only cluster positions instead of all 6 NN directions.
+  // a finite set of cluster positions on the rectangular (columnar) superlattice.
+  // Same logic as solve_dimer_embedding but tries only cluster positions
+  // instead of all 4 NN directions.
   // =====================================================================
   template <int N_sites, typename T>
   void Diagram<N_sites, T>::solve_cluster_embedding(int placed_count, std::vector<bool> &placed, std::vector<std::pair<int, int>> &coords,
@@ -330,26 +330,39 @@ namespace sc_expansion {
 
     int V = this->graph.get_V();
 
-    // Base case: all vertices placed — compute direction vector
+    // Base case: all vertices placed — compute bond labels and enumerate vertical sub-bonds
     if (placed_count == V) {
       int n_lines = (int)this->hopping_lines.lines.size();
       std::vector<uint8_t> dirs(n_lines);
+      std::vector<int> vertical_lines;
 
       for (int k = 0; k < n_lines; k++) {
-        int from    = this->hopping_lines.lines[k].from_vertex;
-        int to      = this->hopping_lines.lines[k].to_vertex;
-        int dn1     = coords[to].first - coords[from].first;
-        int dn2     = coords[to].second - coords[from].second;
-        int dx_real = 2 * dn1 + dn2;
-        dirs[k]     = (dx_real > 0) ? 1 : 0;
+        int from = this->hopping_lines.lines[k].from_vertex;
+        int to   = this->hopping_lines.lines[k].to_vertex;
+        int ddx  = coords[to].first - coords[from].first;
+
+        if (ddx != 0) {
+          dirs[k] = (ddx > 0) ? 0 : 1;
+        } else {
+          dirs[k] = 2;
+          vertical_lines.push_back(k);
+        }
       }
 
-      config_counts[dirs]++;
+      // Enumerate all 2^n_vertical sub-bond combinations
+      int n_vert = (int)vertical_lines.size();
+      int n_combos = 1 << n_vert;
+      for (int combo = 0; combo < n_combos; combo++) {
+        for (int b = 0; b < n_vert; b++) {
+          dirs[vertical_lines[b]] = ((combo >> b) & 1) ? 3 : 2;
+        }
+        config_counts[dirs]++;
+      }
       return;
     }
 
-    // Find an unplaced vertex (target) connected to a placed vertex (anchor)
-    int anchor = -1, target = -1;
+    // Find an unplaced vertex (target) connected to a placed vertex
+    int target = -1;
     for (int c = 0; c < V; ++c) {
       if (!placed[c]) {
         for (int p = 0; p < V; ++p) {
@@ -357,7 +370,6 @@ namespace sc_expansion {
             uint8_t links = this->graph(c, p) + this->graph(p, c);
             if (links > 0) {
               target = c;
-              anchor = p;
               goto found_cluster_target;
             }
           }
@@ -367,13 +379,8 @@ namespace sc_expansion {
   found_cluster_target:;
     if (target == -1) return;
 
-    auto is_triangular_neighbor = [](int x1, int y1, int x2, int y2) -> bool {
-      int ddx = x1 - x2;
-      int ddy = y1 - y2;
-      if (std::abs(ddx) + std::abs(ddy) == 1) return true;
-      if (ddx == -1 && ddy == 1) return true;
-      if (ddx == 1 && ddy == -1) return true;
-      return false;
+    auto is_rect_neighbor = [](int x1, int y1, int x2, int y2) -> bool {
+      return std::abs(x1 - x2) + std::abs(y1 - y2) == 1;
     };
 
     // Try placing target at each cluster position
@@ -387,7 +394,7 @@ namespace sc_expansion {
         if (placed[i]) {
           uint8_t links = this->graph(target, i) + this->graph(i, target);
           if (links > 0) {
-            if (!is_triangular_neighbor(cx, cy, coords[i].first, coords[i].second)) {
+            if (!is_rect_neighbor(cx, cy, coords[i].first, coords[i].second)) {
               valid = false;
               break;
             }
@@ -406,15 +413,22 @@ namespace sc_expansion {
 
   // =====================================================================
   // solve_dimer_embedding: recursive backtracking to place vertices on the
-  // triangular superlattice. For each complete embedding, compute the
-  // direction vector (per hopping line: 0=left, 1=right) and accumulate.
+  // rectangular (columnar dimer) superlattice. For each complete embedding,
+  // compute the bond-label vector and enumerate vertical sub-bond choices.
   //
-  // The staggered dimer tiling maps to a triangular superlattice with
-  // 6 nearest neighbours. In abstract coords (n1, n2), the real x-displacement
-  // is dx_real = 2*dn1 + dn2. This is always nonzero for NN, giving a
-  // clean 3-left / 3-right split:
-  //   Right (dx_real > 0): (1,0), (0,1), (1,-1)
-  //   Left  (dx_real < 0): (-1,0), (0,-1), (-1,1)
+  // Columnar dimer tiling: each dimer at superlattice position (x, y) covers
+  // physical sites (2x, y) and (2x+1, y). The superlattice is rectangular
+  // (bipartite) with 4 NN directions: (+1,0), (-1,0), (0,+1), (0,-1).
+  //
+  // Bond labels (per hopping line):
+  //   0 = horizontal rightward (delta_x > 0): source site 1, dest site 0
+  //   1 = horizontal leftward  (delta_x < 0): source site 0, dest site 1
+  //   2 = vertical, site-0 bond: source site 0, dest site 0
+  //   3 = vertical, site-1 bond: source site 1, dest site 1
+  //
+  // Horizontal NN pairs share 1 bond; vertical NN pairs share 2 bonds.
+  // For vertical hopping lines, both sub-bond choices (label 2 or 3) are
+  // valid, so the base case enumerates all 2^n_vertical combinations.
   // =====================================================================
   template <int N_sites, typename T>
   void Diagram<N_sites, T>::solve_dimer_embedding(int placed_count, std::vector<bool> &placed, std::vector<std::pair<int, int>> &coords,
@@ -422,23 +436,37 @@ namespace sc_expansion {
 
     int V = this->graph.get_V();
 
-    // Base case: all vertices placed
+    // Base case: all vertices placed — compute bond labels and enumerate vertical sub-bonds
     if (placed_count == V) {
-      // Compute the direction vector for this embedding
       int n_lines = (int)this->hopping_lines.lines.size();
       std::vector<uint8_t> dirs(n_lines);
+      std::vector<int> vertical_lines; // indices of hopping lines between vertical NN
 
       for (int k = 0; k < n_lines; k++) {
         int from = this->hopping_lines.lines[k].from_vertex;
         int to   = this->hopping_lines.lines[k].to_vertex;
-        int dn1  = coords[to].first - coords[from].first;
-        int dn2  = coords[to].second - coords[from].second;
-        // Real x-displacement on the staggered dimer lattice
-        int dx_real = 2 * dn1 + dn2;
-        dirs[k]     = (dx_real > 0) ? 1 : 0;
+        int ddx  = coords[to].first - coords[from].first;
+
+        if (ddx != 0) {
+          // Horizontal bond: 1 bond per horizontal NN pair
+          dirs[k] = (ddx > 0) ? 0 : 1;
+        } else {
+          // Vertical bond: 2 possible sub-bonds (site-0 or site-1)
+          // Default to site-0 (label 2); will enumerate site-1 (label 3) below
+          dirs[k] = 2;
+          vertical_lines.push_back(k);
+        }
       }
 
-      config_counts[dirs]++;
+      // Enumerate all 2^n_vertical sub-bond combinations
+      int n_vert = (int)vertical_lines.size();
+      int n_combos = 1 << n_vert;
+      for (int combo = 0; combo < n_combos; combo++) {
+        for (int b = 0; b < n_vert; b++) {
+          dirs[vertical_lines[b]] = ((combo >> b) & 1) ? 3 : 2;
+        }
+        config_counts[dirs]++;
+      }
       return;
     }
 
@@ -461,23 +489,18 @@ namespace sc_expansion {
   found_target:;
     if (target == -1) return; // Should not happen for connected graphs
 
-    // Triangular lattice: 6 nearest-neighbour directions
-    static constexpr int dx[6] = {1, -1, -1, 0, 0, 1};
-    static constexpr int dy[6] = {0, 0, 1, 1, -1, -1};
+    // Rectangular lattice: 4 nearest-neighbour directions
+    static constexpr int dx[4] = {1, -1, 0, 0};
+    static constexpr int dy[4] = {0, 0, 1, -1};
 
-    auto is_triangular_neighbor = [](int x1, int y1, int x2, int y2) -> bool {
-      int ddx = x1 - x2;
-      int ddy = y1 - y2;
-      if (std::abs(ddx) + std::abs(ddy) == 1) return true;
-      if (ddx == -1 && ddy == 1) return true;
-      if (ddx == 1 && ddy == -1) return true;
-      return false;
+    auto is_rect_neighbor = [](int x1, int y1, int x2, int y2) -> bool {
+      return std::abs(x1 - x2) + std::abs(y1 - y2) == 1;
     };
 
     int ax = coords[anchor].first;
     int ay = coords[anchor].second;
 
-    for (int dir = 0; dir < 6; ++dir) {
+    for (int dir = 0; dir < 4; ++dir) {
       int cx = ax + dx[dir];
       int cy = ay + dy[dir];
 
@@ -487,7 +510,7 @@ namespace sc_expansion {
         if (placed[i]) {
           uint8_t links = this->graph(target, i) + this->graph(i, target);
           if (links > 0) {
-            if (!is_triangular_neighbor(cx, cy, coords[i].first, coords[i].second)) {
+            if (!is_rect_neighbor(cx, cy, coords[i].first, coords[i].second)) {
               valid = false;
               break;
             }
@@ -552,14 +575,19 @@ namespace sc_expansion {
 
   // =====================================================================
   // canonicalize_directions: compute the lexicographic minimum of the
-  // direction vector under all graph automorphisms x {identity, lattice inversion}.
+  // bond-label vector under all graph automorphisms x {identity, lattice inversion}.
   //
-  // Lattice inversion (x -> -x on the superlattice) flips all directions
-  // (0 <-> 1), corresponding to the dimer site swap (Reflect symmetry).
+  // For the columnar dimer tiling, lattice inversion (x -> -x, y -> -y)
+  // swaps site 0 <-> site 1 within each dimer, which maps bond labels as:
+  //   0 (horiz right) <-> 1 (horiz left)
+  //   2 (vert site-0) <-> 3 (vert site-1)
   // =====================================================================
   template <int N_sites, typename T>
   std::vector<uint8_t> Diagram<N_sites, T>::canonicalize_directions(std::vector<uint8_t> const &dirs,
                                                                      std::vector<std::vector<int>> const &automorphisms) const {
+
+    // Columnar inversion map: {0<->1, 2<->3}
+    static constexpr uint8_t inversion_map[4] = {1, 0, 3, 2};
 
     auto min_dirs = dirs;
 
@@ -568,9 +596,9 @@ namespace sc_expansion {
       auto permuted = this->apply_automorphism_to_directions(dirs, perm);
       if (permuted < min_dirs) { min_dirs = permuted; }
 
-      // Apply automorphism + lattice inversion (flip all directions)
+      // Apply automorphism + lattice inversion
       auto inverted = permuted;
-      for (auto &d : inverted) { d = 1 - d; }
+      for (auto &d : inverted) { d = inversion_map[d]; }
       if (inverted < min_dirs) { min_dirs = inverted; }
     }
 
@@ -644,14 +672,19 @@ namespace sc_expansion {
             int spin    = (spin_mask >> leg.line_index) & 1; // 0 = down, 1 = up
             uint8_t dir = spatial.directions[leg.line_index];
 
-            // Site: for N_sites=1, always 0. For N_sites=2, determined by direction.
+            // Site: for N_sites=1, always 0. For N_sites=2, determined by bond label.
             uint8_t site;
             if constexpr (N_sites == 1) {
               site = 0;
             } else {
-              // Right (dir=1): source site = 1, dest site = 0
-              // Left  (dir=0): source site = 0, dest site = 1
-              site = leg.is_source ? dir : (1 - dir);
+              // Bond label -> site assignment for columnar dimer tiling:
+              //   label 0 (horiz right): source=1, dest=0
+              //   label 1 (horiz left):  source=0, dest=1
+              //   label 2 (vert site-0): source=0, dest=0
+              //   label 3 (vert site-1): source=1, dest=1
+              static constexpr uint8_t source_site[4] = {1, 0, 0, 1};
+              static constexpr uint8_t dest_site[4]   = {0, 1, 0, 1};
+              site = leg.is_source ? source_site[dir] : dest_site[dir];
             }
 
             uint8_t orbital = site + spin * N_sites;

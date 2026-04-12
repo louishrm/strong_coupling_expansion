@@ -85,10 +85,14 @@ namespace sc_expansion {
   };
 
   // Stores a unique spatial embedding pattern for the dimer (N_sites=2) case.
-  // Each entry in `directions` is 0 (left/dx<0) or 1 (right/dx>0) for the corresponding hopping line.
+  // Each entry in `directions` is a bond label (0-3) for the corresponding hopping line:
+  //   0 = horizontal rightward (source site 1, dest site 0)
+  //   1 = horizontal leftward  (source site 0, dest site 1)
+  //   2 = vertical, site-0 bond (source site 0, dest site 0)
+  //   3 = vertical, site-1 bond (source site 1, dest site 1)
   // `weight` is the total number of lattice embeddings producing this pattern.
   struct SpatialConfiguration {
-    std::vector<uint8_t> directions; // Per hopping line: 0=left, 1=right
+    std::vector<uint8_t> directions; // Per hopping line: bond label 0-3
     double weight;
   };
 
@@ -149,7 +153,7 @@ namespace sc_expansion {
     void compute_diagram_sign();
     void build_vertex_instances();
 
-    // Helpers for dimer spatial embedding on the triangular superlattice
+    // Helpers for dimer spatial embedding on the rectangular (columnar) superlattice
     void solve_dimer_embedding(int placed_count, std::vector<bool> &placed, std::vector<std::pair<int, int>> &coords,
                                std::map<std::vector<uint8_t>, int> &config_counts) const;
 

@@ -54,9 +54,9 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
 
   sc_expansion::Parameters<T> params;
   if constexpr (std::is_same_v<T, Dual>) {
-    params = {Dual(U, 0.0), Dual(beta, 0.0), Dual(mu, 1.0), Dual(t_hop, 0.0), false};
+    params = {Dual(U, 0.0), Dual(beta, 0.0), Dual(mu, 1.0), Dual(t_hop, 0.0), true};
   } else {
-    params = {U, beta, mu, t_hop, false};
+    params = {U, beta, mu, t_hop, true};
   }
 
   // --- Phase 1: Rank 0 generates all vacuum diagrams, then broadcasts to all ranks ---

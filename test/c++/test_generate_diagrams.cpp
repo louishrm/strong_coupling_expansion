@@ -96,7 +96,7 @@ TEST(GenerateDiagramsTest, Order4DiagramsNonBipartite) {
   };
 
   for (auto const &m : expected_mats) {
-    int V                          = std::sqrt(m.size());
+    int V                          = (int)std::sqrt((double)m.size());
     std::vector<uint8_t> canonical = Graph(m, V).get_canonical_form();
     EXPECT_TRUE(has_canonical(canonical)) << "Missing order 4 diagram with V=" << V;
   }
@@ -129,7 +129,7 @@ TEST(GenerateDiagramsTest, Order5DiagramsNonBipartite) {
   };
 
   for (auto const &m : expected_mats) {
-    int V                          = std::sqrt(m.size());
+    int V                          = (int)std::sqrt((double)m.size());
     std::vector<uint8_t> canonical = Graph(m, V, false).get_canonical_form();
     EXPECT_TRUE(std::any_of(graphs.begin(), graphs.end(), [&](const Graph &g) { return g.get_canonical_form() == canonical; }))
        << "Missing order 5 diagram with V=" << V;
@@ -161,7 +161,7 @@ TEST(GenerateDiagramsTest, Order6DiagramsBipartite) {
   };
 
   for (auto const &m : expected_mats) {
-    int V                          = std::sqrt(m.size());
+    int V                          = (int)std::sqrt((double)m.size());
     std::vector<uint8_t> canonical = Graph(m, V).get_canonical_form();
     EXPECT_TRUE(has_canonical(canonical)) << "Missing order 6 diagram with V=" << V;
   }
