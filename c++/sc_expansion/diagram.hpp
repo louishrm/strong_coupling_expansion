@@ -146,12 +146,23 @@ namespace sc_expansion {
     // All configs share the same vertex-to-tau mapping, so we only store vertex indices.
     std::vector<std::vector<int>> tau_to_vertices;
 
+    // Factored evaluation data (N_sites=2 only)
+    // Per-vertex: the distinct op_id tuples that appear at this vertex across all global configs.
+    std::vector<std::vector<std::vector<uint8_t>>> local_states;    // [vertex][state_idx] -> op_ids
+    std::vector<std::vector<T>> local_values;                       // [vertex][state_idx] -> cached value
+    std::vector<std::vector<T>> local_values_infinite;              // [vertex][state_idx] -> cached value (inf-U)
+    std::vector<bool> vertex_dirty_finite;                          // [vertex]
+    std::vector<bool> vertex_dirty_infinite;                        // [vertex]
+    std::vector<std::vector<int>> config_to_local;                  // [gc_idx][vertex] -> state_idx
+
     void compute_hopping_lines();
     void setup_vertices(std::vector<VertexType<N_sites, T> *> const &vertex_types);
     void compute_spatial_configurations();
     void compute_valid_configurations();
     void compute_diagram_sign();
     void build_vertex_instances();
+    void build_local_state_tables();
+    T evaluate_factored(std::vector<double> const &taus, HubbardSolver<N_sites, T> const &solver, bool infinite_U);
 
     // Helpers for dimer spatial embedding on the rectangular (columnar) superlattice
     void solve_dimer_embedding(int placed_count, std::vector<bool> &placed, std::vector<std::pair<int, int>> &coords,

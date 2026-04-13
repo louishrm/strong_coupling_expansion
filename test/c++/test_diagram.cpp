@@ -194,6 +194,65 @@ TEST(DiagramGlobalConfigs, D2aDimer) {
   EXPECT_DOUBLE_EQ(total, 10.0);
 }
 
+TEST(DiagramGlobalConfigs, D2aDimerConfigCounts) {
+  Graph graph({0, 1, 1, 0}, 2);
+  std::vector<VertexType<2, double> *> vt;
+  Diagram<2, double> diagram(graph, vt);
+  auto const &spatial = diagram.get_spatial_configurations();
+  auto const &configs = diagram.get_valid_configurations();
+
+  std::cout << "\n===== Order-2 dimer config counts =====" << std::endl;
+  std::cout << "Num spatial configs:  " << spatial.size() << std::endl;
+  std::cout << "Num global configs:   " << configs.size() << std::endl;
+  for (size_t i = 0; i < spatial.size(); i++) {
+    std::cout << "  spatial[" << i << "]: weight=" << spatial[i].weight << " dirs=[";
+    for (size_t j = 0; j < spatial[i].directions.size(); j++) {
+      std::cout << (int)spatial[i].directions[j] << (j + 1 < spatial[i].directions.size() ? "," : "");
+    }
+    std::cout << "]" << std::endl;
+  }
+  for (size_t i = 0; i < configs.size(); i++) {
+    std::cout << "  global[" << i << "]: weight=" << configs[i].weight << " ops=[";
+    for (size_t j = 0; j < configs[i].config.size(); j++) {
+      std::cout << (int)configs[i].config[j] << (j + 1 < configs[i].config.size() ? "," : "");
+    }
+    std::cout << "]" << std::endl;
+  }
+  std::cout << "=======================================\n" << std::endl;
+}
+
+TEST(DiagramGlobalConfigs, Order4DimerConfigCounts) {
+  struct DiagramInfo {
+    std::string name;
+    std::vector<uint8_t> adjmat;
+    int V;
+  };
+  std::vector<DiagramInfo> diagrams = {
+     {"D4a (4-cycle, V=4)", {0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0}, 4},
+     {"D4b (star, V=3)", {0, 1, 1, 1, 0, 0, 1, 0, 0}, 3},
+     {"D4c (double edge, V=2)", {0, 2, 2, 0}, 2},
+  };
+
+  for (auto const &info : diagrams) {
+    Graph graph(info.adjmat, info.V, false);
+    std::vector<VertexType<2, double> *> vt;
+    Diagram<2, double> diagram(graph, vt);
+    auto const &spatial = diagram.get_spatial_configurations();
+    auto const &configs = diagram.get_valid_configurations();
+
+    std::cout << "\n===== " << info.name << " dimer config counts =====" << std::endl;
+    std::cout << "Num spatial configs:  " << spatial.size() << std::endl;
+    std::cout << "Num global configs:   " << configs.size() << std::endl;
+
+    double total_spatial = 0, total_global = 0;
+    for (auto const &s : spatial) total_spatial += s.weight;
+    for (auto const &c : configs) total_global += c.weight;
+    std::cout << "Total spatial weight: " << total_spatial << std::endl;
+    std::cout << "Total global weight:  " << total_global << std::endl;
+    std::cout << "============================================\n" << std::endl;
+  }
+}
+
 TEST(DiagramGlobalConfigs, D4bAtom) {
   Graph graph({0, 1, 1, 1, 0, 0, 1, 0, 0}, 3);
   std::vector<VertexType<1, double> *> vt;
@@ -359,4 +418,161 @@ TEST(DiagramBenchmark, AtomicExpansionDimerOrder4InfiniteU) {
   auto [abs_coeff, signed_coeff] = calculator.compute_infinite_U_coefficient();
 
   EXPECT_NEAR(signed_coeff, -4.0904630472238777e-04, 1e-12);
+}
+
+// =====================================================================
+// Factored evaluation tests (N_sites=2 dimer path)
+// =====================================================================
+
+TEST(FactoredEvaluation, MatchesDirectComputation) {
+  double U = 8.0, beta = 2.0, mu = 3.0, t_hop = 1.0;
+  Parameters<double> params{U, beta, mu, t_hop, false};
+  HubbardSolver<2, double> solver(params);
+
+  struct DiagramSpec {
+    std::string name;
+    std::vector<uint8_t> adjmat;
+    int V;
+  };
+  std::vector<DiagramSpec> test_graphs = {
+     {"D2a (simple)",  {0, 1, 1, 0}, 2},
+     {"D4a (4-cycle)", {0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0}, 4},
+     {"D4b (star)",    {0, 1, 1, 1, 0, 0, 1, 0, 0}, 3},
+     {"D4c (double)",  {0, 2, 2, 0}, 2},
+  };
+
+  std::vector<std::vector<double>> tau_sets = {
+     {0.1, 0.4, 0.7, 1.2},
+     {0.0, 0.5, 1.0, 1.5},
+     {0.3, 0.3, 0.8, 1.9},
+  };
+
+  for (auto &spec : test_graphs) {
+    Graph graph(spec.adjmat, spec.V, false);
+
+    // Verify both diagrams produce the same valid configurations
+    {
+      std::vector<VertexType<2, double> *> no_vt;
+      Diagram<2, double> ref(graph, no_vt);
+      VertexType<2, double> v1(2), v2(4);
+      std::vector<VertexType<2, double> *> vt = {&v1, &v2};
+      Diagram<2, double> fac(graph, vt);
+
+      auto const &rc = ref.get_valid_configurations();
+      auto const &fc = fac.get_valid_configurations();
+      ASSERT_EQ(rc.size(), fc.size()) << "Config count mismatch for " << spec.name;
+      double ref_total = 0, fac_total = 0;
+      for (size_t i = 0; i < rc.size(); i++) {
+        EXPECT_EQ(rc[i].config, fc[i].config) << "Config ops mismatch at " << i << " for " << spec.name;
+        EXPECT_DOUBLE_EQ(rc[i].weight, fc[i].weight) << "Config weight mismatch at " << i << " for " << spec.name;
+        ref_total += rc[i].weight;
+        fac_total += fc[i].weight;
+      }
+      EXPECT_DOUBLE_EQ(ref.get_diagram_sign(), fac.get_diagram_sign()) << "Sign mismatch for " << spec.name;
+      std::cout << "  " << spec.name << ": " << rc.size() << " configs, total weight=" << ref_total
+                << ", sign=" << ref.get_diagram_sign() << std::endl;
+    }
+
+    // Use fresh diagrams per tau set to avoid stale-cache complications
+    for (auto &taus : tau_sets) {
+      // Trim taus to match the diagram order (number of hopping lines)
+      int order = 0;
+      for (int i = 0; i < spec.V; i++)
+        for (int j = 0; j < spec.V; j++) order += spec.adjmat[i * spec.V + j];
+      std::vector<double> test_taus(taus.begin(), taus.begin() + std::min((int)taus.size(), order));
+      if ((int)test_taus.size() < order) continue; // skip if not enough taus
+
+      std::vector<VertexType<2, double> *> no_vt;
+      Diagram<2, double> ref_diagram(graph, no_vt);
+
+      VertexType<2, double> vt1(2), vt2(4);
+      std::vector<VertexType<2, double> *> vt = {&vt1, &vt2};
+      Diagram<2, double> factored_diagram(graph, vt);
+
+      double ref_val = ref_diagram.evaluate(test_taus, solver, false);
+      double fac_val = factored_diagram.evaluate(test_taus, solver, false);
+      EXPECT_DOUBLE_EQ(ref_val, fac_val)
+         << "Mismatch for " << spec.name << " at finite U, taus[0]=" << test_taus[0];
+
+      double ref_inf = ref_diagram.evaluate(test_taus, solver, true);
+      double fac_inf = factored_diagram.evaluate(test_taus, solver, true);
+      EXPECT_DOUBLE_EQ(ref_inf, fac_inf)
+         << "Mismatch for " << spec.name << " at infinite U, taus[0]=" << test_taus[0];
+    }
+  }
+}
+
+TEST(FactoredEvaluation, DirtyFlagCorrectness) {
+  double U = 8.0, beta = 2.0, mu = 3.0, t_hop = 1.0;
+  Parameters<double> params{U, beta, mu, t_hop, false};
+  HubbardSolver<2, double> solver(params);
+
+  Graph graph({0, 1, 1, 1, 0, 0, 1, 0, 0}, 3, false); // D4b star
+  VertexType<2, double> vt1(2);
+  VertexType<2, double> vt2(4);
+  std::vector<VertexType<2, double> *> vt = {&vt1, &vt2};
+
+  // Evaluate at taus_1
+  Diagram<2, double> diagram(graph, vt);
+  std::vector<double> taus1 = {0.1, 0.4, 0.7, 1.2};
+  double val1 = diagram.evaluate(taus1, solver, false);
+  EXPECT_TRUE(std::isfinite(val1));
+
+  // Change taus[0], mark dirty, evaluate at taus_2
+  std::vector<double> taus2 = {0.9, 0.4, 0.7, 1.2};
+  diagram.mark_tau_dirty(0);
+  double val2 = diagram.evaluate(taus2, solver, false);
+
+  // Construct fresh diagram and evaluate at taus_2 for reference
+  Diagram<2, double> fresh_diagram(graph, vt);
+  double val2_fresh = fresh_diagram.evaluate(taus2, solver, false);
+
+  EXPECT_DOUBLE_EQ(val2, val2_fresh);
+  // Also verify it changed from val1 (sanity)
+  EXPECT_NE(val1, val2);
+
+  // Test mark_all_dirty
+  std::vector<double> taus3 = {0.2, 0.6, 0.3, 1.8};
+  diagram.mark_all_dirty();
+  double val3 = diagram.evaluate(taus3, solver, false);
+
+  Diagram<2, double> fresh_diagram2(graph, vt);
+  double val3_fresh = fresh_diagram2.evaluate(taus3, solver, false);
+  EXPECT_DOUBLE_EQ(val3, val3_fresh);
+}
+
+TEST(FactoredEvaluation, LocalStateCounts) {
+  struct DiagramInfo {
+    std::string name;
+    std::vector<uint8_t> adjmat;
+    int V;
+  };
+  std::vector<DiagramInfo> diagrams = {
+     {"D4a (4-cycle, V=4)", {0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0}, 4},
+     {"D4b (star, V=3)", {0, 1, 1, 1, 0, 0, 1, 0, 0}, 3},
+     {"D4c (double edge, V=2)", {0, 2, 2, 0}, 2},
+  };
+
+  std::cout << "\n===== Factored Evaluation: Local State Counts =====" << std::endl;
+  for (auto const &info : diagrams) {
+    Graph graph(info.adjmat, info.V, false);
+    VertexType<2, double> vt1(2);
+    VertexType<2, double> vt2(4);
+    std::vector<VertexType<2, double> *> vt = {&vt1, &vt2};
+    Diagram<2, double> diagram(graph, vt);
+
+    auto const &configs = diagram.get_valid_configurations();
+    int n_global = (int)configs.size();
+    int V = info.V;
+
+    std::cout << "\n  " << info.name << ":" << std::endl;
+    std::cout << "    Global configs: " << n_global << std::endl;
+
+    // To access local_states we use the factored path indirectly:
+    // Just print the config count and vertex count as a diagnostic.
+    int old_evals = n_global * V;
+    std::cout << "    Cumulant evals (old): " << old_evals << " = " << n_global << " configs * " << V << " vertices" << std::endl;
+    std::cout << "    (New path computes each distinct local state once per vertex)" << std::endl;
+  }
+  std::cout << "===================================================\n" << std::endl;
 }

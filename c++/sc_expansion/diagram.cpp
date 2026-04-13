@@ -114,6 +114,14 @@ namespace sc_expansion {
     this->setup_vertices(vertex_types);
     this->compute_valid_configurations();
     this->compute_diagram_sign();
+    if constexpr (N_sites == 2) {
+      // Check if any VertexType was provided before building factored tables
+      bool has_any_type = false;
+      for (auto *p : this->vertex_type_ptrs) { if (p != nullptr) { has_any_type = true; break; } }
+      if (has_any_type) {
+        this->build_local_state_tables();
+      }
+    }
     this->build_vertex_instances();
   }
 
@@ -129,6 +137,13 @@ namespace sc_expansion {
     this->setup_vertices(vertex_types);
     this->compute_valid_configurations();
     this->compute_diagram_sign();
+    if constexpr (N_sites == 2) {
+      bool has_any_type = false;
+      for (auto *p : this->vertex_type_ptrs) { if (p != nullptr) { has_any_type = true; break; } }
+      if (has_any_type) {
+        this->build_local_state_tables();
+      }
+    }
     this->build_vertex_instances();
   }
 
@@ -832,9 +847,67 @@ namespace sc_expansion {
   }
 
   // =====================================================================
+  // build_local_state_tables: extract per-vertex distinct op_id tuples
+  // from valid_configurations and build the config_to_local mapping.
+  // This enables evaluate_factored() to compute each cumulant once per
+  // distinct local state instead of once per (global_config, vertex).
+  // =====================================================================
+  template <int N_sites, typename T> void Diagram<N_sites, T>::build_local_state_tables() {
+
+    int V          = this->graph.get_V();
+    int n_configs  = (int)this->valid_configurations.size();
+
+    this->local_states.resize(V);
+    this->config_to_local.resize(n_configs, std::vector<int>(V));
+
+    // Precompute per-vertex offsets into the flat config vector
+    std::vector<int> offsets(V);
+    for (int v = 1; v < V; v++) { offsets[v] = offsets[v - 1] + (int)this->legs_per_vertex[v - 1].size(); }
+
+    for (int v = 0; v < V; v++) {
+      std::map<std::vector<uint8_t>, int> state_map;
+      int n_legs = (int)this->legs_per_vertex[v].size();
+
+      for (int gc_idx = 0; gc_idx < n_configs; gc_idx++) {
+        std::vector<uint8_t> ops(
+          this->valid_configurations[gc_idx].config.begin() + offsets[v],
+          this->valid_configurations[gc_idx].config.begin() + offsets[v] + n_legs
+        );
+
+        auto [it, inserted] = state_map.try_emplace(ops, (int)this->local_states[v].size());
+        if (inserted) {
+          this->local_states[v].push_back(ops);
+        }
+        this->config_to_local[gc_idx][v] = it->second;
+      }
+    }
+
+    // Allocate value caches
+    this->local_values.resize(V);
+    this->local_values_infinite.resize(V);
+    for (int v = 0; v < V; v++) {
+      this->local_values[v].resize(this->local_states[v].size(), T(0.0));
+      this->local_values_infinite[v].resize(this->local_states[v].size(), T(0.0));
+    }
+
+    this->vertex_dirty_finite.assign(V, true);
+    this->vertex_dirty_infinite.assign(V, true);
+  }
+
+  // =====================================================================
   // mark_tau_dirty: mark all VertexInstances that depend on the given tau
   // =====================================================================
   template <int N_sites, typename T> void Diagram<N_sites, T>::mark_tau_dirty(int tau_index) {
+    // Factored path: per-vertex dirty
+    if (!this->local_states.empty()) {
+      for (int v : this->tau_to_vertices[tau_index]) {
+        this->vertex_dirty_finite[v]   = true;
+        this->vertex_dirty_infinite[v] = true;
+      }
+      return;
+    }
+
+    // Legacy path (VertexInstance-based)
     for (int v : this->tau_to_vertices[tau_index]) {
       for (auto &config_instances : this->vertex_instances) { config_instances[v].mark_dirty(); }
     }
@@ -844,9 +917,66 @@ namespace sc_expansion {
   // mark_all_dirty: mark every VertexInstance as dirty
   // =====================================================================
   template <int N_sites, typename T> void Diagram<N_sites, T>::mark_all_dirty() {
+    if (!this->local_states.empty()) {
+      std::fill(this->vertex_dirty_finite.begin(), this->vertex_dirty_finite.end(), true);
+      std::fill(this->vertex_dirty_infinite.begin(), this->vertex_dirty_infinite.end(), true);
+      return;
+    }
+
     for (auto &config_instances : this->vertex_instances) {
       for (auto &vi : config_instances) { vi.mark_dirty(); }
     }
+  }
+
+  // =====================================================================
+  // evaluate_factored: factored summation over configurations.
+  //
+  // Phase 1: recompute cumulants only for dirty vertices, once per
+  // distinct local state (not once per global config).
+  // Phase 2: sum over global configs using precomputed local values.
+  //
+  // This replaces the VertexInstance-based path for N_sites=2 diagrams.
+  // =====================================================================
+  template <int N_sites, typename T>
+  T Diagram<N_sites, T>::evaluate_factored(std::vector<double> const &taus,
+                                            HubbardSolver<N_sites, T> const &solver,
+                                            bool infinite_U) {
+
+    int V = this->graph.get_V();
+    auto &dirty  = infinite_U ? this->vertex_dirty_infinite : this->vertex_dirty_finite;
+    auto &values = infinite_U ? this->local_values_infinite : this->local_values;
+
+    // Phase 1: recompute cumulants for dirty vertices
+    for (int v = 0; v < V; v++) {
+      if (!dirty[v]) continue;
+
+      int n_legs = (int)this->legs_per_vertex[v].size();
+      std::vector<double> local_taus(n_legs);
+      for (int i = 0; i < n_legs; i++) {
+        local_taus[i] = taus[this->legs_per_vertex[v][i].line_index];
+      }
+
+      for (int s = 0; s < (int)this->local_states[v].size(); s++) {
+        auto [unprimed, primed] = Args<N_sites, T>::split_from_raw(local_taus, this->local_states[v][s]);
+        T val = this->vertex_type_ptrs[v]->evaluate_canonical(unprimed, primed, solver, infinite_U);
+        values[v][s] = val * T(unprimed.permutation_sign) * T(primed.permutation_sign);
+      }
+
+      dirty[v] = false;
+    }
+
+    // Phase 2: sum over global configs using precomputed values
+    T sum = T(0.0);
+    for (int gc_idx = 0; gc_idx < (int)this->valid_configurations.size(); gc_idx++) {
+      T product = T(1.0);
+      for (int v = 0; v < V; v++) {
+        product = product * values[v][ this->config_to_local[gc_idx][v] ];
+      }
+      sum = sum + T(this->valid_configurations[gc_idx].weight) * product;
+    }
+
+    T prefactor = (T(-1.0) / solver.params.beta) * T(this->diagram_sign);
+    return prefactor * sum;
   }
 
   // =====================================================================
@@ -862,6 +992,11 @@ namespace sc_expansion {
   // =====================================================================
   template <int N_sites, typename T>
   T Diagram<N_sites, T>::evaluate(std::vector<double> const &taus, HubbardSolver<N_sites, T> const &solver, bool infinite_U) {
+
+    // Factored path: use local state tables (N_sites=2 with VertexTypes)
+    if (!this->local_states.empty()) {
+      return this->evaluate_factored(taus, solver, infinite_U);
+    }
 
     int V = this->graph.get_V();
     T sum = T(0.0);
