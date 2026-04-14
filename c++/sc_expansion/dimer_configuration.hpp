@@ -6,8 +6,8 @@
 template <typename T> class DimerConfiguration : public ConfigurationBase<T> {
 
   public:
-  DimerConfiguration(sc_expansion::Parameters<T> const &params, int order,
-                     sc_expansion::FreeEnergyCalculator<2, T> &calculator, double alpha = 0.0);
+  DimerConfiguration(sc_expansion::Parameters<T> const &params, int order, sc_expansion::FreeEnergyCalculator<2, T> &calculator,
+                     double alpha = 0.001);
 
   double evaluate_proposed() override;
   void commit_proposal() override;
