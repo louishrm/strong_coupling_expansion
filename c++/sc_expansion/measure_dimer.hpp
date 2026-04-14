@@ -3,7 +3,6 @@
 #include <triqs/stat/accumulator.hpp>
 #include "myjackknife.hpp"
 #include <iostream>
-#include <random>
 #include <chrono>
 #include <memory>
 
@@ -20,20 +19,18 @@ template <typename T> struct measure_dimer {
 
   DimerConfiguration<T> *config;
 
-  // Accumulator for the sign of Omega (from |Omega| Metropolis sampling)
-  triqs::stat::accumulator<double> acc_sign;
+  // Accumulators for defensive importance sampling ratio estimator:
+  //   acc_integrand: accumulates Omega / W
+  //   acc_reference: accumulates alpha / W
+  // where W = |Omega + alpha| is the Metropolis weight.
+  triqs::stat::accumulator<double> acc_integrand;
+  triqs::stat::accumulator<double> acc_reference;
 
-  // Accumulator for |Omega| from uniform sampling (normalization estimate)
-  triqs::stat::accumulator<double> acc_norm;
-
+  double alpha;
   double mu;
 
   // Shared result struct — survives copy into mc_generic internals
   std::shared_ptr<DimerMeasureResult> result;
-
-  // RNG for drawing uniform tau samples (independent of the Metropolis chain)
-  std::mt19937 rng;
-  std::uniform_real_distribution<double> tau_dist;
 
   // Progress tracking
   long step_count  = 0;
@@ -41,23 +38,20 @@ template <typename T> struct measure_dimer {
   int verbosity    = 0;
   std::chrono::high_resolution_clock::time_point last_report;
 
-  measure_dimer(DimerConfiguration<T> *config_, int n_bins, int block_size, double mu_, int random_seed, int verbosity_ = 0)
-     : config(config_), acc_sign(0.0, 0, n_bins, block_size + 100), acc_norm(0.0, 0, n_bins, block_size + 100), mu(mu_),
+  measure_dimer(DimerConfiguration<T> *config_, int n_bins, int block_size, double mu_, int verbosity_ = 0)
+     : config(config_), acc_integrand(0.0, 0, n_bins, block_size + 100), acc_reference(0.0, 0, n_bins, block_size + 100),
+       alpha(config_->get_alpha()), mu(mu_),
        result(std::make_shared<DimerMeasureResult>()),
-       rng(random_seed), tau_dist(0.0, config_->beta), verbosity(verbosity_),
+       verbosity(verbosity_),
        last_report(std::chrono::high_resolution_clock::now()) {}
 
   void accumulate(double) {
     double W = config->metropolis_weight;
 
-    // Sign estimation from |Omega| Metropolis sampling
-    if (W > 0.0) { acc_sign << (config->get_integrand() >= 0.0 ? 1.0 : -1.0); }
-
-    // Normalization estimation: evaluate |Omega| at uniform random taus
-    int order = config->get_order();
-    std::vector<double> uniform_taus(order);
-    for (int i = 0; i < order; i++) { uniform_taus[i] = tau_dist(rng); }
-    acc_norm << std::abs(config->evaluate_at(uniform_taus));
+    if (W > 0.0) {
+      acc_integrand << (config->get_integrand() / W);
+      acc_reference << (this->alpha / W);
+    }
 
     this->step_count++;
     if (this->verbosity > 0 && this->step_count % this->report_every == 0) {
@@ -71,33 +65,36 @@ template <typename T> struct measure_dimer {
 
   void collect_results(mpi::communicator c) {
 
-    auto identity_func = [](double x) { return x; };
-
-    auto sign_jk = triqs::stat::local::jackknife_mpi(c, identity_func, acc_sign);
-    auto norm_jk = triqs::stat::local::jackknife_mpi(c, identity_func, acc_norm);
-
+    // Ratio estimator: coeff = alpha * beta^n * <Omega/W> / <alpha/W>
     int order   = config->get_order();
-    double beta_n = std::pow(config->beta, order);
+    double norm = this->alpha * std::pow(config->beta, order);
 
-    this->result->mean_sign  = std::get<0>(sign_jk);
-    this->result->sign_error = std::get<1>(sign_jk);
-    this->result->mean_abs   = std::get<0>(norm_jk);
-    this->result->abs_error  = std::get<1>(norm_jk);
+    auto ratio_func = [norm](double avg_int, double avg_ref) {
+      if (std::abs(avg_ref) < 1e-18) return 0.0;
+      return (avg_int / avg_ref) * norm;
+    };
 
-    // Combined coefficient: beta^n * <|Omega|>_uniform * <sign>
-    this->result->coeff = beta_n * this->result->mean_abs * this->result->mean_sign;
-    // Error propagation (independent estimators):
-    // delta(coeff) = beta^n * sqrt( (<|Omega|> * delta_sign)^2 + (<sign> * delta_|Omega|)^2 )
-    this->result->error = beta_n * std::sqrt(this->result->mean_abs * this->result->mean_abs * this->result->sign_error * this->result->sign_error
-                                             + this->result->mean_sign * this->result->mean_sign * this->result->abs_error * this->result->abs_error);
+    auto jk = triqs::stat::local::jackknife_mpi(c, ratio_func, acc_integrand, acc_reference);
+
+    this->result->coeff = std::get<0>(jk);
+    this->result->error = std::get<1>(jk);
+
+    // Diagnostic quantities from the individual accumulators
+    auto identity_func = [](double x) { return x; };
+    auto int_jk = triqs::stat::local::jackknife_mpi(c, identity_func, acc_integrand);
+    auto ref_jk = triqs::stat::local::jackknife_mpi(c, identity_func, acc_reference);
+
+    this->result->mean_sign  = std::get<0>(int_jk);
+    this->result->sign_error = std::get<1>(int_jk);
+    this->result->mean_abs   = std::get<0>(ref_jk);
+    this->result->abs_error  = std::get<1>(ref_jk);
 
     if (c.rank() == 0) {
-      std::cout << "--- Measurement Results (Dimer, uniform reference) ---" << std::endl;
-      std::cout << "Mean sign:           " << this->result->mean_sign << std::endl;
-      std::cout << "Sign error:          " << this->result->sign_error << std::endl;
-      std::cout << "Mean |Omega| (unif): " << this->result->mean_abs << std::endl;
-      std::cout << "|Omega| error:       " << this->result->abs_error << std::endl;
-      std::cout << "Jackknife Mean:      " << this->result->coeff << std::endl;
+      std::cout << "--- Measurement Results (Dimer, defensive ratio estimator) ---" << std::endl;
+      std::cout << "Alpha:               " << this->alpha << std::endl;
+      std::cout << "Mean Omega/W:        " << this->result->mean_sign << std::endl;
+      std::cout << "Mean alpha/W:        " << this->result->mean_abs << std::endl;
+      std::cout << "Jackknife Coeff:     " << this->result->coeff << std::endl;
       std::cout << "Jackknife Error:     " << this->result->error << std::endl;
     }
   }

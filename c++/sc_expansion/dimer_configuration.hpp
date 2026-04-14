@@ -7,7 +7,7 @@ template <typename T> class DimerConfiguration : public ConfigurationBase<T> {
 
   public:
   DimerConfiguration(sc_expansion::Parameters<T> const &params, int order,
-                     sc_expansion::FreeEnergyCalculator<2, T> &calculator);
+                     sc_expansion::FreeEnergyCalculator<2, T> &calculator, double alpha = 0.0);
 
   double evaluate_proposed() override;
   void commit_proposal() override;
@@ -17,7 +17,7 @@ template <typename T> class DimerConfiguration : public ConfigurationBase<T> {
 
   void mark_tau_dirty(int tau_index) override;
 
-  double evaluate_at(std::vector<double> const &taus) const;
+  double get_alpha() const;
 
   private:
   // Committed cache
@@ -25,6 +25,9 @@ template <typename T> class DimerConfiguration : public ConfigurationBase<T> {
 
   // Tentative cache
   double proposed_omega;
+
+  // Defensive weight constant for ratio estimator
+  double alpha;
 
   // Diagram evaluation (non-owning reference to externally-owned calculator)
   sc_expansion::FreeEnergyCalculator<2, T> &calculator;

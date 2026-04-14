@@ -32,19 +32,21 @@
 using namespace sc_expansion;
 
 // =====================================================================
-// MCMC test: order 2, cluster-restricted sign-based sampling
+// MCMC test: order 2, defensive ratio estimator
 //
 // Uses FreeEnergyCalculator with cluster-restricted embedding on the
 // 3-dimer L-shaped cluster. The integrand already has per-dimer weights.
 //
-// coefficient = beta^n * <|Omega|>_uniform * <sign>
+// Defensive scheme: W = |Omega + alpha|, ratio estimator with known
+// normalization alpha * beta^n.
 // =====================================================================
 
 TEST(DimerExpansion, Order2MCMC) {
   mpi::communicator world;
 
   double U = 8.0, beta = 2.0, mu = 3.0, t_intra = 1.0;
-  int order = 2;
+  int order    = 2;
+  double alpha = 0.01;
   Parameters<double> params{U, beta, mu, t_intra, true};
 
   // 3-dimer L-shaped cluster on the rectangular superlattice
@@ -57,7 +59,7 @@ TEST(DimerExpansion, Order2MCMC) {
   int length_cycle = 1;
 
   FreeEnergyCalculator<2, double> calculator(params, order, cluster_positions, n_cluster_sites);
-  auto config = std::make_unique<DimerConfiguration<double>>(params, order, calculator);
+  auto config = std::make_unique<DimerConfiguration<double>>(params, order, calculator, alpha);
 
   int random_seed = 32186222 + world.rank() * 786512;
   int verbosity   = (world.rank() == 0 ? 2 : 0);
@@ -67,8 +69,7 @@ TEST(DimerExpansion, Order2MCMC) {
   int n_bins     = 50;
   int block_size = (n_cycles / n_bins) + 1;
 
-  int measure_seed = 99871234 + world.rank() * 314159;
-  measure_dimer<double> meas(config.get(), n_bins, block_size, mu, measure_seed);
+  measure_dimer<double> meas(config.get(), n_bins, block_size, mu);
   mc.add_move(move<double>(config.get(), mc.get_rng()), "time_swap");
   mc.add_measure(meas, "dimer_measure");
 
@@ -76,18 +77,13 @@ TEST(DimerExpansion, Order2MCMC) {
   mc.collect_results(world);
 
   if (world.rank() == 0) {
-    // coefficient = beta^n * <|Omega|>_uniform * <sign>  (no fm division — cluster weights)
-    double abs_integral = std::pow(beta, order) * meas.result->mean_abs;
-    double mc_coeff     = abs_integral * meas.result->mean_sign;
-    double exact        = -0.130006787492;
-    double rel_err      = std::abs(mc_coeff - exact) / std::abs(exact);
+    double mc_coeff = meas.result->coeff;
+    double exact    = -0.130006787492;
+    double rel_err  = std::abs(mc_coeff - exact) / std::abs(exact);
 
     std::cout << "Exact (Python ED):       " << exact << std::endl;
     std::cout << "MC coefficient:          " << mc_coeff << std::endl;
-    std::cout << "|Omega| integral (MC):   " << abs_integral << std::endl;
-    std::cout << "Mean |Omega| (uniform):  " << meas.result->mean_abs << std::endl;
-    std::cout << "Mean sign:               " << meas.result->mean_sign << std::endl;
-    std::cout << "Sign error:              " << meas.result->sign_error << std::endl;
+    std::cout << "MC error:                " << meas.result->error << std::endl;
     std::cout << "Relative error:          " << rel_err << std::endl;
 
     EXPECT_LT(rel_err, 0.025) << "MC estimate " << mc_coeff << " deviates from exact " << exact << " by " << rel_err * 100 << "%";
@@ -102,8 +98,7 @@ TEST(DimerExpansion, Order2MCMC) {
 //   A--B vertical: 2 bonds (site0-site0, site1-site1)
 //   A--C horizontal: 1 bond (A.site1 <-> C.site0)
 //
-// DimerConfiguration uses cluster-restricted spatial embeddings, so
-// the integrand already has per-dimer weights — no fm division needed.
+// Defensive ratio estimator: W = |Omega + alpha|.
 //
 // ED reference from analytical/benchmark_columnar_dimer_expansion.py:
 //   Order 4 coefficient on the 3-dimer cluster = -0.037169097044
@@ -113,7 +108,8 @@ TEST(DimerExpansion, Order4MCMC_3DimerCluster) {
   mpi::communicator world;
 
   double U = 8.0, beta = 2.0, mu = 3.0, t_intra = 1.0;
-  int order = 4;
+  int order    = 4;
+  double alpha = 0.001;
   Parameters<double> params{U, beta, mu, t_intra, true}; // bipartite (rectangular superlattice)
 
   // 3-dimer L-shaped cluster positions on the rectangular superlattice
@@ -126,7 +122,7 @@ TEST(DimerExpansion, Order4MCMC_3DimerCluster) {
   int length_cycle = 1;
 
   FreeEnergyCalculator<2, double> calculator(params, order, cluster_positions, n_cluster_sites);
-  auto config = std::make_unique<DimerConfiguration<double>>(params, order, calculator);
+  auto config = std::make_unique<DimerConfiguration<double>>(params, order, calculator, alpha);
 
   int random_seed = 42186333 + world.rank() * 786512;
   int verbosity   = (world.rank() == 0 ? 2 : 0);
@@ -136,8 +132,7 @@ TEST(DimerExpansion, Order4MCMC_3DimerCluster) {
   int n_bins     = 50;
   int block_size = (n_cycles / n_bins) + 1;
 
-  int measure_seed = 77871234 + world.rank() * 271828;
-  measure_dimer<double> meas(config.get(), n_bins, block_size, mu, measure_seed);
+  measure_dimer<double> meas(config.get(), n_bins, block_size, mu);
   mc.add_move(move<double>(config.get(), mc.get_rng()), "time_swap");
   mc.add_measure(meas, "dimer_measure");
 
@@ -145,19 +140,14 @@ TEST(DimerExpansion, Order4MCMC_3DimerCluster) {
   mc.collect_results(world);
 
   if (world.rank() == 0) {
-    // Cluster per-dimer weights are already in the integrand — no fm division
-    double abs_integral = std::pow(beta, order) * meas.result->mean_abs;
-    double mc_coeff     = abs_integral * meas.result->mean_sign;
-    double exact        = -0.037169097044;
-    double rel_err      = std::abs(mc_coeff - exact) / std::abs(exact);
+    double mc_coeff = meas.result->coeff;
+    double exact    = -0.037169097044;
+    double rel_err  = std::abs(mc_coeff - exact) / std::abs(exact);
 
     std::cout << "\n=== Order 4, 3-dimer L-shaped cluster (columnar) ===" << std::endl;
     std::cout << "Exact (Python ED):       " << exact << std::endl;
     std::cout << "MC coefficient:          " << mc_coeff << std::endl;
-    std::cout << "|Omega| integral (MC):   " << abs_integral << std::endl;
-    std::cout << "Mean |Omega| (uniform):  " << meas.result->mean_abs << std::endl;
-    std::cout << "Mean sign:               " << meas.result->mean_sign << std::endl;
-    std::cout << "Sign error:              " << meas.result->sign_error << std::endl;
+    std::cout << "MC error:                " << meas.result->error << std::endl;
     std::cout << "Relative error:          " << rel_err << std::endl;
 
     EXPECT_LT(rel_err, 0.05) << "MC estimate " << mc_coeff << " deviates from exact " << exact << " by " << rel_err * 100 << "%";
