@@ -183,19 +183,21 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
 int main(int argc, char *argv[]) {
 
   if (argc < 8) {
-    if (mpi::communicator().rank() == 0) { std::cerr << "Usage: " << argv[0] << " order n_cycles U beta mu t_hop alpha [use_dual] [use_diagmc]" << std::endl; }
+    if (mpi::communicator().rank() == 0) {
+      std::cerr << "Usage: " << argv[0] << " order n_cycles U beta mu t_hop alpha [use_dual] [use_diagmc]" << std::endl;
+    }
     return 1;
   }
 
-  int order     = std::stoi(argv[1]);
-  int n_cycles  = std::stoi(argv[2]);
-  double U      = std::stod(argv[3]);
-  double beta   = std::stod(argv[4]);
-  double mu     = std::stod(argv[5]);
-  double t_hop  = std::stod(argv[6]);
-  double alpha  = std::stod(argv[7]);
-  bool use_dual    = (argc > 8 ? std::stoi(argv[8]) != 0 : false);
-  bool use_diagmc  = (argc > 9 ? std::stoi(argv[9]) != 0 : false);
+  int order       = std::stoi(argv[1]);
+  int n_cycles    = std::stoi(argv[2]);
+  double U        = std::stod(argv[3]);
+  double beta     = std::stod(argv[4]);
+  double mu       = std::stod(argv[5]);
+  double t_hop    = std::stod(argv[6]);
+  double alpha    = std::stod(argv[7]);
+  bool use_dual   = (argc > 8 ? std::stoi(argv[8]) != 0 : false);
+  bool use_diagmc = (argc > 9 ? std::stoi(argv[9]) != 0 : false);
 
   mpi::environment env(argc, argv);
   mpi::communicator world;
@@ -208,7 +210,7 @@ int main(int argc, char *argv[]) {
   }
 
   int length_cycle        = 1;
-  int n_warmup_cycles     = 2000;
+  int n_warmup_cycles     = 5000;
   std::string random_name = "";
   int random_seed         = 32186222 + world.rank() * 786512;
   int verbosity           = (world.rank() == 0 ? 2 : 0);

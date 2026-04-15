@@ -19,19 +19,21 @@ DiagMCConfiguration<T>::DiagMCConfiguration(sc_expansion::Parameters<T> const &p
   this->current_diagram = 1;
   this->mark_diagram_all_dirty(1);
   double val            = this->evaluate_diagram(1);
+  this->clear_global_caches();
   this->current_signed  = val;
   this->current_abs     = std::abs(val) + this->defensive_per_diagram;
 }
 
 template <typename T> double DiagMCConfiguration<T>::evaluate_diagram(int d) {
   T val = this->calculator.evaluate_single_diagram(d - 1, this->state, false);
-  this->calculator.clear_all_caches();
   if constexpr (std::is_same_v<T, Dual>) {
     return val.derivative;
   } else {
     return val;
   }
 }
+
+template <typename T> void DiagMCConfiguration<T>::clear_global_caches() { this->calculator.clear_all_caches(); }
 
 template <typename T> void DiagMCConfiguration<T>::mark_diagram_tau_dirty(int d, int tau_index) {
   this->calculator.mark_single_diagram_dirty(d - 1, tau_index);

@@ -18,6 +18,9 @@ template <typename T> class DiagMCConfiguration {
   void mark_diagram_tau_dirty(int d, int tau_index);
   void mark_diagram_all_dirty(int d);
 
+  // Clear global VertexType caches (call after tau moves, not after diagram moves)
+  void clear_global_caches();
+
   // Accessors
   double get_alpha() const;
   double get_defensive_per_diagram() const;

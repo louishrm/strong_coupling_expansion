@@ -36,6 +36,9 @@ template <typename T> struct DiagMCMove {
       this->old_tau          = config->state[this->changed_tau_index];
       config->state[this->changed_tau_index] = new_tau;
 
+      // Taus changed — clear global VertexType cache (old entries are stale)
+      config->clear_global_caches();
+
       // Mark dirty and evaluate current diagram
       config->mark_diagram_tau_dirty(config->current_diagram, this->changed_tau_index);
       this->proposed_signed = config->evaluate_diagram(config->current_diagram);
@@ -52,7 +55,7 @@ template <typename T> struct DiagMCMove {
         this->proposed_abs    = config->current_abs;
         this->proposed_signed = config->current_signed;
       } else {
-        // Evaluate proposed diagram from scratch
+        // Taus unchanged — keep global cache so d' can reuse cumulant entries from d
         config->mark_diagram_all_dirty(this->proposed_diagram);
         this->proposed_signed = config->evaluate_diagram(this->proposed_diagram);
         this->proposed_abs    = std::abs(this->proposed_signed) + this->c;
@@ -75,6 +78,7 @@ template <typename T> struct DiagMCMove {
       // Revert the tau and re-dirty so the stale local cache is not reused
       config->state[this->changed_tau_index] = this->old_tau;
       config->mark_diagram_tau_dirty(config->current_diagram, this->changed_tau_index);
+      // Global cache was already cleared in attempt() before the evaluation
     }
     // Diagram moves don't modify state on proposal, nothing to revert.
   }
