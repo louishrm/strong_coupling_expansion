@@ -105,8 +105,9 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
   // Ensure results directory exists
   if (world.rank() == 0) { std::filesystem::create_directory("./results"); }
 
-  int n_bins     = 50;
-  int block_size = (n_cycles / n_bins) + 1;
+  int target_block_size = 2000;
+  int n_bins            = std::max(50, n_cycles / target_block_size);
+  int block_size        = (n_cycles / n_bins) + 1;
 
   // Shared result pointer — filled by whichever MC scheme runs
   std::shared_ptr<DimerMeasureResult> result;

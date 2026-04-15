@@ -176,8 +176,9 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
   // Construct MC loop
   triqs::mc_tools::mc_generic<double> mc(random_name, random_seed, verbosity);
 
-  int n_bins     = 50;
-  int block_size = (n_cycles / n_bins) + 1;
+  int target_block_size = 2000;
+  int n_bins            = std::max(50, n_cycles / target_block_size);
+  int block_size        = (n_cycles / n_bins) + 1;
 
   measure<T> meas(config.get(), reference_integral, signed_reference_integral, n_bins, block_size, mu, verbosity);
   mc.add_move(move<T>(config.get(), mc.get_rng()), "time_swap");
