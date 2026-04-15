@@ -26,12 +26,12 @@ static void broadcast_graphs(std::vector<sc_expansion::Graph> &graphs, mpi::comm
 
     if (world.rank() == 0) {
       auto const &graph = graphs[g];
-      V        = graph.get_V();
-      aut      = graph.get_automorphism_count();
-      sym      = (int)graph.get_symmetry_factor();
-      fm       = (int)graph.get_free_multiplicity();
-      bip_only = graph.get_bipartite_only() ? 1 : 0;
-      adj      = graph.get_canonical_form();
+      V                 = graph.get_V();
+      aut               = graph.get_automorphism_count();
+      sym               = (int)graph.get_symmetry_factor();
+      fm                = (int)graph.get_free_multiplicity();
+      bip_only          = graph.get_bipartite_only() ? 1 : 0;
+      adj               = graph.get_canonical_form();
     }
 
     MPI_Bcast(&V, 1, MPI_INT, 0, world.get());
@@ -66,15 +66,36 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
     auto t0 = std::chrono::high_resolution_clock::now();
     sc_expansion::VacuumDiagramGenerator gen(order, params.bipartite);
     gen.generate();
-    graphs = gen.get_unique_graphs();
+    graphs  = gen.get_unique_graphs();
     auto t1 = std::chrono::high_resolution_clock::now();
-    std::cout << "Generated " << graphs.size() << " unique diagrams in "
-              << std::chrono::duration<double>(t1 - t0).count() << " s." << std::endl;
+    std::cout << "Generated " << graphs.size() << " unique diagrams in " << std::chrono::duration<double>(t1 - t0).count() << " s." << std::endl;
   }
   broadcast_graphs(graphs, world);
 
   // --- Phase 2: All ranks construct the calculator from pre-built graphs ---
   sc_expansion::FreeEnergyCalculator<2, T> calculator(params, order, graphs);
+
+  // Print diagram structure diagnostics
+  if (world.rank() == 0) {
+    auto const &diags = calculator.get_diagrams();
+    auto const &gr    = calculator.get_graphs();
+    std::cout << "\n--- Diagram structure ---" << std::endl;
+    std::cout << std::left;
+    std::cout << "Graph   V     SymFactor   SpatCfgs    GlobalCfgs  TotalWeight   LocalStates" << std::endl;
+    std::cout << std::string(90, '-') << std::endl;
+    for (size_t d = 0; d < diags.size(); d++) {
+      auto const &g  = gr[d];
+      auto const &di = diags[d];
+      double tw      = 0;
+      for (auto const &c : di.get_valid_configurations()) tw += c.weight;
+      auto ls_counts = di.get_local_state_counts();
+      std::cout << d << "\t" << g.get_V() << "\t" << g.get_symmetry_factor() << "\t\t" << di.get_spatial_configurations().size() << "\t\t"
+                << di.get_valid_configurations().size() << "\t\t" << tw << "\t\t[";
+      for (size_t v = 0; v < ls_counts.size(); v++) { std::cout << ls_counts[v] << (v + 1 < ls_counts.size() ? "," : ""); }
+      std::cout << "]" << std::endl;
+    }
+    std::cout << std::endl;
+  }
 
   // --- Phase 3: MC sampling ---
   auto config = std::make_unique<DimerConfiguration<T>>(params, order, calculator, alpha);

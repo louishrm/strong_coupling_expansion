@@ -29,6 +29,7 @@ namespace sc_expansion {
 
     std::deque<Graph> const &get_graphs() const { return this->graphs; }
     std::deque<VertexType<N_sites, T>> const &get_vertex_types() const { return this->vertex_types; }
+    std::deque<Diagram<N_sites, T>> const &get_diagrams() const { return this->diagrams; }
 
     private:
     Parameters<T> const &params;

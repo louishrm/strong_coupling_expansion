@@ -2,6 +2,7 @@
 #include <numeric>
 #include <cmath>
 #include <iostream>
+#include <iomanip>
 #include <gtest/gtest.h>
 #include "sc_expansion/diagram.hpp"
 #include "sc_expansion/graph.hpp"
@@ -575,4 +576,103 @@ TEST(FactoredEvaluation, LocalStateCounts) {
     std::cout << "    (New path computes each distinct local state once per vertex)" << std::endl;
   }
   std::cout << "===================================================\n" << std::endl;
+}
+
+// =====================================================================
+// Diagnostics: Order-8 columnar dimer global config counts
+// =====================================================================
+
+TEST(DiagramDiagnostics, Order8DimerGlobalConfigCounts) {
+  double U = 8.0, beta = 2.0, mu = 3.0, t_hop = 1.0;
+  Parameters<double> params{U, beta, mu, t_hop, false};
+
+  FreeEnergyCalculator<2, double> calculator(params, 8);
+
+  auto const &graphs   = calculator.get_graphs();
+  auto const &diagrams = calculator.get_diagrams();
+
+  std::cout << "\n===== Order-8 Columnar Dimer: Global Config Counts =====" << std::endl;
+  std::cout << std::left << std::setw(8) << "Graph"
+            << std::setw(6)  << "V"
+            << std::setw(12) << "SymFactor"
+            << std::setw(12) << "SpatCfgs"
+            << std::setw(12) << "GlobalCfgs"
+            << std::setw(14) << "TotalWeight"
+            << std::endl;
+  std::cout << std::string(64, '-') << std::endl;
+
+  double grand_total_weight = 0;
+  int print_idx = 0;
+  for (size_t i = 0; i < diagrams.size(); i++) {
+    auto const &diagram = diagrams[i];
+    auto const &graph   = graphs[i];
+
+    if (!graph.get_bipartite()) continue;
+
+    auto const &spatial = diagram.get_spatial_configurations();
+    auto const &configs = diagram.get_valid_configurations();
+
+    double total_weight = 0;
+    for (auto const &c : configs) total_weight += c.weight;
+    grand_total_weight += total_weight;
+
+    std::cout << std::left << std::setw(8) << print_idx++
+              << std::setw(6)  << graph.get_V()
+              << std::setw(12) << graph.get_symmetry_factor()
+              << std::setw(12) << spatial.size()
+              << std::setw(12) << configs.size()
+              << std::setw(14) << total_weight
+              << std::endl;
+  }
+
+  std::cout << std::string(64, '-') << std::endl;
+  std::cout << "Bipartite graphs: " << print_idx << " / " << diagrams.size()
+            << "  |  Grand total weight: " << grand_total_weight << std::endl;
+  std::cout << "=========================================================\n" << std::endl;
+}
+
+TEST(DiagramDiagnostics, Order8AtomGlobalConfigCounts) {
+  double U = 8.0, beta = 2.0, mu = 3.0;
+  Parameters<double> params{U, beta, mu, 0.0, true};
+
+  FreeEnergyCalculator<1, double> calculator(params, 8);
+
+  auto const &graphs   = calculator.get_graphs();
+  auto const &diagrams = calculator.get_diagrams();
+
+  std::cout << "\n===== Order-8 Atomic: Global Config Counts =====" << std::endl;
+  std::cout << std::left << std::setw(8) << "Graph"
+            << std::setw(6)  << "V"
+            << std::setw(12) << "SymFactor"
+            << std::setw(12) << "FreeMult"
+            << std::setw(12) << "GlobalCfgs"
+            << std::setw(14) << "TotalWeight"
+            << std::endl;
+  std::cout << std::string(64, '-') << std::endl;
+
+  double grand_total_weight = 0;
+  for (size_t i = 0; i < diagrams.size(); i++) {
+    auto const &diagram = diagrams[i];
+    auto const &graph   = graphs[i];
+
+    auto const &configs = diagram.get_valid_configurations();
+    double free_mult = diagram.get_free_multiplicity();
+
+    double total_weight = 0;
+    for (auto const &c : configs) total_weight += c.weight;
+    grand_total_weight += total_weight;
+
+    std::cout << std::left << std::setw(8) << i
+              << std::setw(6)  << graph.get_V()
+              << std::setw(12) << graph.get_symmetry_factor()
+              << std::setw(12) << free_mult
+              << std::setw(12) << configs.size()
+              << std::setw(14) << total_weight
+              << std::endl;
+  }
+
+  std::cout << std::string(64, '-') << std::endl;
+  std::cout << "Total graphs: " << diagrams.size()
+            << "  |  Grand total weight: " << grand_total_weight << std::endl;
+  std::cout << "=========================================================\n" << std::endl;
 }

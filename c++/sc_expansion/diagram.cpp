@@ -1,6 +1,7 @@
 #include "diagram.hpp"
 #include <numeric>
 #include <cmath>
+#include <chrono>
 
 namespace sc_expansion {
 
@@ -947,8 +948,10 @@ namespace sc_expansion {
     auto &values = infinite_U ? this->local_values_infinite : this->local_values;
 
     // Phase 1: recompute cumulants for dirty vertices
+    auto t_p1 = std::chrono::high_resolution_clock::now();
     for (int v = 0; v < V; v++) {
-      if (!dirty[v]) continue;
+      if (!dirty[v]) { this->local_cache_hits++; continue; }
+      this->local_cache_misses++;
 
       int n_legs = (int)this->legs_per_vertex[v].size();
       std::vector<double> local_taus(n_legs);
@@ -964,6 +967,7 @@ namespace sc_expansion {
 
       dirty[v] = false;
     }
+    auto t_p2 = std::chrono::high_resolution_clock::now();
 
     // Phase 2: sum over global configs using precomputed values
     T sum = T(0.0);
@@ -974,6 +978,10 @@ namespace sc_expansion {
       }
       sum = sum + T(this->valid_configurations[gc_idx].weight) * product;
     }
+    auto t_end = std::chrono::high_resolution_clock::now();
+
+    this->phase1_seconds += std::chrono::duration<double>(t_p2 - t_p1).count();
+    this->phase2_seconds += std::chrono::duration<double>(t_end - t_p2).count();
 
     T prefactor = (T(-1.0) / solver.params.beta) * T(this->diagram_sign);
     return prefactor * sum;

@@ -129,6 +129,17 @@ namespace sc_expansion {
     const std::vector<ValidGlobalConfig> &get_valid_configurations() const { return this->valid_configurations; }
     double get_diagram_sign() const { return (double)this->diagram_sign; }
     Graph const &get_graph() const { return this->graph; }
+    std::pair<long, long> get_local_cache_stats() const { return {this->local_cache_hits, this->local_cache_misses}; }
+    std::vector<int> get_local_state_counts() const {
+      std::vector<int> counts;
+      for (auto const &ls : this->local_states) counts.push_back((int)ls.size());
+      return counts;
+    }
+    std::vector<std::vector<std::vector<uint8_t>>> const &get_local_states() const { return this->local_states; }
+
+    // Profiling: cumulative time (seconds) in Phase 1 (cumulant eval) and Phase 2 (config sum)
+    double get_phase1_time() const { return this->phase1_seconds; }
+    double get_phase2_time() const { return this->phase2_seconds; }
 
     private:
     Graph const &graph;
@@ -153,6 +164,10 @@ namespace sc_expansion {
     std::vector<std::vector<T>> local_values_infinite;              // [vertex][state_idx] -> cached value (inf-U)
     std::vector<bool> vertex_dirty_finite;                          // [vertex]
     std::vector<bool> vertex_dirty_infinite;                        // [vertex]
+    mutable long local_cache_hits   = 0;                            // factored path: vertex was clean
+    mutable long local_cache_misses = 0;                            // factored path: vertex was dirty
+    mutable double phase1_seconds   = 0.0;                          // cumulative Phase 1 time
+    mutable double phase2_seconds   = 0.0;                          // cumulative Phase 2 time
     std::vector<std::vector<int>> config_to_local;                  // [gc_idx][vertex] -> state_idx
 
     void compute_hopping_lines();

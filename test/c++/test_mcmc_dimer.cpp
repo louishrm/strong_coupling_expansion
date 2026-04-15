@@ -28,6 +28,7 @@
 #include <mpi/mpi.hpp>
 #include <cmath>
 #include <memory>
+#include <random>
 
 using namespace sc_expansion;
 
@@ -85,6 +86,34 @@ TEST(DimerExpansion, Order2MCMC) {
     std::cout << "MC coefficient:          " << mc_coeff << std::endl;
     std::cout << "MC error:                " << meas.result->error << std::endl;
     std::cout << "Relative error:          " << rel_err << std::endl;
+
+    // Profiling and cache statistics
+    std::cout << "\n--- Profile & Cache (Order 2) ---" << std::endl;
+    auto const &vt2 = config->get_calculator().get_vertex_types();
+    for (size_t i = 0; i < vt2.size(); i++) {
+      auto [hits, misses] = vt2[i].get_cache_stats();
+      long total = hits + misses;
+      double hit_rate = total > 0 ? 100.0 * hits / total : 0.0;
+      std::cout << "Global cache (cumulant order " << (i + 1) << "): hits=" << hits
+                << " misses=" << misses << " hit_rate=" << hit_rate << "%" << std::endl;
+    }
+    auto const &diags2 = config->get_calculator().get_diagrams();
+    double total_p1 = 0, total_p2 = 0;
+    long total_local_hits = 0, total_local_misses = 0;
+    for (size_t d = 0; d < diags2.size(); d++) {
+      auto [lh, lm] = diags2[d].get_local_cache_stats();
+      total_local_hits += lh;
+      total_local_misses += lm;
+      total_p1 += diags2[d].get_phase1_time();
+      total_p2 += diags2[d].get_phase2_time();
+    }
+    long total_local = total_local_hits + total_local_misses;
+    double local_hit_rate = total_local > 0 ? 100.0 * total_local_hits / total_local : 0.0;
+    std::cout << "Local cache: hits=" << total_local_hits << " misses=" << total_local_misses
+              << " hit_rate=" << local_hit_rate << "%" << std::endl;
+    std::cout << "Phase 1 (cumulants): " << total_p1 << " s" << std::endl;
+    std::cout << "Phase 2 (contraction): " << total_p2 << " s" << std::endl;
+    std::cout << "Phase 1 fraction: " << (total_p1 + total_p2 > 0 ? 100.0 * total_p1 / (total_p1 + total_p2) : 0) << "%" << std::endl;
 
     EXPECT_LT(rel_err, 0.025) << "MC estimate " << mc_coeff << " deviates from exact " << exact << " by " << rel_err * 100 << "%";
   }
@@ -150,8 +179,109 @@ TEST(DimerExpansion, Order4MCMC_3DimerCluster) {
     std::cout << "MC error:                " << meas.result->error << std::endl;
     std::cout << "Relative error:          " << rel_err << std::endl;
 
+    // Profiling and cache statistics
+    std::cout << "\n--- Profile & Cache (Order 4) ---" << std::endl;
+    auto const &vt4 = config->get_calculator().get_vertex_types();
+    for (size_t i = 0; i < vt4.size(); i++) {
+      auto [hits, misses] = vt4[i].get_cache_stats();
+      long total = hits + misses;
+      double hit_rate = total > 0 ? 100.0 * hits / total : 0.0;
+      std::cout << "Global cache (cumulant order " << (i + 1) << "): hits=" << hits
+                << " misses=" << misses << " hit_rate=" << hit_rate << "%" << std::endl;
+    }
+    auto const &diags4 = config->get_calculator().get_diagrams();
+    double total_p1 = 0, total_p2 = 0;
+    long total_local_hits = 0, total_local_misses = 0;
+    for (size_t d = 0; d < diags4.size(); d++) {
+      auto [lh, lm] = diags4[d].get_local_cache_stats();
+      total_local_hits += lh;
+      total_local_misses += lm;
+      total_p1 += diags4[d].get_phase1_time();
+      total_p2 += diags4[d].get_phase2_time();
+    }
+    long total_local = total_local_hits + total_local_misses;
+    double local_hit_rate = total_local > 0 ? 100.0 * total_local_hits / total_local : 0.0;
+    std::cout << "Local cache: hits=" << total_local_hits << " misses=" << total_local_misses
+              << " hit_rate=" << local_hit_rate << "%" << std::endl;
+    std::cout << "Phase 1 (cumulants): " << total_p1 << " s" << std::endl;
+    std::cout << "Phase 2 (contraction): " << total_p2 << " s" << std::endl;
+    std::cout << "Phase 1 fraction: " << (total_p1 + total_p2 > 0 ? 100.0 * total_p1 / (total_p1 + total_p2) : 0) << "%" << std::endl;
+
     EXPECT_LT(rel_err, 0.05) << "MC estimate " << mc_coeff << " deviates from exact " << exact << " by " << rel_err * 100 << "%";
   }
+}
+
+// =====================================================================
+// Diagnostic: per-diagram contribution at order 4
+//
+// Evaluates each diagram independently at several random tau points
+// to measure the relative magnitude of each diagram's integrand.
+// Shows how much the V=2 diagram contributes vs the total.
+// =====================================================================
+
+TEST(DimerExpansion, Order4PerDiagramContribution) {
+  mpi::communicator world;
+  if (world.rank() != 0) return; // single-rank test
+
+  double U = 8.0, beta = 2.0, mu = 3.0, t_intra = 1.0;
+  int order = 4;
+  Parameters<double> params{U, beta, mu, t_intra, true};
+
+  std::vector<std::pair<int, int>> cluster_positions = {{0, 0}, {0, 1}, {1, 0}};
+  int n_cluster_sites = 3;
+
+  FreeEnergyCalculator<2, double> calculator(params, order, cluster_positions, n_cluster_sites);
+  HubbardSolver<2, double> solver(params);
+
+  auto const &diags  = calculator.get_diagrams();
+  auto const &graphs = calculator.get_graphs();
+  int n_diags = (int)diags.size();
+
+  // Evaluate each diagram at many random tau points and accumulate |D_d|
+  std::mt19937 rng(12345);
+  std::uniform_real_distribution<double> tau_dist(0.0, beta);
+  int n_samples = 5000;
+
+  std::vector<double> avg_abs(n_diags, 0.0);
+  double avg_abs_total = 0.0;
+
+  for (int s = 0; s < n_samples; s++) {
+    std::vector<double> taus(order);
+    for (int i = 0; i < order; i++) taus[i] = tau_dist(rng);
+
+    double total = 0.0;
+    for (int d = 0; d < n_diags; d++) {
+      auto &diagram = const_cast<Diagram<2, double>&>(diags[d]);
+      diagram.mark_all_dirty();
+      double val = diagram.evaluate(taus, solver, false);
+      avg_abs[d] += std::abs(val);
+      total += val;
+    }
+    avg_abs_total += std::abs(total);
+  }
+
+  std::cout << "\n=== Per-diagram contribution (Order 4, " << n_samples << " samples) ===" << std::endl;
+  std::cout << "Diag\tV\tSymF\t<|D_d|>\t\t\tfraction of <|Omega|>" << std::endl;
+  std::cout << std::string(70, '-') << std::endl;
+
+  double sum_avg_abs = 0;
+  for (int d = 0; d < n_diags; d++) sum_avg_abs += avg_abs[d];
+
+  for (int d = 0; d < n_diags; d++) {
+    avg_abs[d] /= n_samples;
+    std::cout << d << "\t" << graphs[d].get_V() << "\t" << graphs[d].get_symmetry_factor() << "\t"
+              << avg_abs[d] << "\t\t" << 100.0 * avg_abs[d] * n_samples / sum_avg_abs << "%" << std::endl;
+  }
+  avg_abs_total /= n_samples;
+  std::cout << "Total <|Omega|> = " << avg_abs_total << std::endl;
+
+  // Show V=2 contribution specifically
+  double v2_total = 0;
+  for (int d = 0; d < n_diags; d++) {
+    if (graphs[d].get_V() <= 2) v2_total += avg_abs[d];
+  }
+  std::cout << "\nV<=2 fraction of sum(|D_d|): " << 100.0 * v2_total * n_samples / sum_avg_abs << "%" << std::endl;
+  std::cout << "======================================================\n" << std::endl;
 }
 
 int main(int argc, char **argv) {

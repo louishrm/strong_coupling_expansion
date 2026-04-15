@@ -43,5 +43,8 @@ template <typename T> void DimerConfiguration<T>::mark_tau_dirty(int tau_index) 
 
 template <typename T> double DimerConfiguration<T>::get_alpha() const { return this->alpha; }
 
+template <typename T>
+sc_expansion::FreeEnergyCalculator<2, T> const &DimerConfiguration<T>::get_calculator() const { return this->calculator; }
+
 template class DimerConfiguration<double>;
 template class DimerConfiguration<Dual>;

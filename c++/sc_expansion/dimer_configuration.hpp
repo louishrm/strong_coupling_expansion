@@ -18,6 +18,7 @@ template <typename T> class DimerConfiguration : public ConfigurationBase<T> {
   void mark_tau_dirty(int tau_index) override;
 
   double get_alpha() const;
+  sc_expansion::FreeEnergyCalculator<2, T> const &get_calculator() const;
 
   private:
   // Committed cache
