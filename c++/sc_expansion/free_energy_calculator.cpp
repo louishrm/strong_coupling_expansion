@@ -119,6 +119,23 @@ namespace sc_expansion {
     for (auto &diagram : this->diagrams) { diagram.mark_all_dirty(); }
   }
 
+  // --- DiagMC support: single-diagram access ---
+
+  template <int N_sites, typename T>
+  T FreeEnergyCalculator<N_sites, T>::evaluate_single_diagram(int idx, std::vector<double> const &taus, bool infinite_U) const {
+    return const_cast<Diagram<N_sites, T> &>(this->diagrams[idx]).evaluate(taus, this->solver, infinite_U);
+  }
+
+  template <int N_sites, typename T>
+  void FreeEnergyCalculator<N_sites, T>::mark_single_diagram_dirty(int idx, int tau_index) {
+    this->diagrams[idx].mark_tau_dirty(tau_index);
+  }
+
+  template <int N_sites, typename T>
+  void FreeEnergyCalculator<N_sites, T>::mark_single_diagram_all_dirty(int idx) {
+    this->diagrams[idx].mark_all_dirty();
+  }
+
   template <int N_sites, typename T> std::pair<double, double> FreeEnergyCalculator<N_sites, T>::compute_infinite_U_coefficient(bool dimer) const {
     int n = this->order;
     std::vector<double> taus(n);

@@ -1,7 +1,10 @@
 #include "sc_expansion/dimer_configuration.hpp"
+#include "sc_expansion/diagmc_configuration.hpp"
 #include "sc_expansion/generate_diagrams.hpp"
 #include "sc_expansion/move.hpp"
 #include "sc_expansion/measure_dimer.hpp"
+#include "sc_expansion/diagmc_move.hpp"
+#include "sc_expansion/measure_diagmc.hpp"
 #include "sc_expansion/dual.hpp"
 #include <triqs/mc_tools/mc_generic.hpp>
 #include <triqs/utility/callbacks.hpp>
@@ -50,7 +53,7 @@ static void broadcast_graphs(std::vector<sc_expansion::Graph> &graphs, mpi::comm
 
 template <typename T>
 void run(mpi::communicator &world, int order, int n_cycles, double U, double beta, double mu, double t_hop, double alpha, int n_warmup_cycles,
-         int length_cycle, std::string random_name, int random_seed, int verbosity) {
+         int length_cycle, std::string random_name, int random_seed, int verbosity, bool use_diagmc) {
 
   sc_expansion::Parameters<T> params;
   if constexpr (std::is_same_v<T, Dual>) {
@@ -98,44 +101,81 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
   }
 
   // --- Phase 3: MC sampling ---
-  auto config = std::make_unique<DimerConfiguration<T>>(params, order, calculator, alpha);
 
   // Ensure results directory exists
   if (world.rank() == 0) { std::filesystem::create_directory("./results"); }
 
-  // Construct MC loop
-  triqs::mc_tools::mc_generic<double> mc(random_name, random_seed, verbosity);
-
   int n_bins     = 50;
   int block_size = (n_cycles / n_bins) + 1;
 
-  measure_dimer<T> meas(config.get(), n_bins, block_size, mu, verbosity);
-  mc.add_move(move<T>(config.get(), mc.get_rng()), "time_swap");
-  mc.add_measure(meas, "dimer_measure");
+  // Shared result pointer — filled by whichever MC scheme runs
+  std::shared_ptr<DimerMeasureResult> result;
+  double config_U, config_beta;
 
-  auto start_time = std::chrono::high_resolution_clock::now();
-  mc.warmup_and_accumulate(n_warmup_cycles, n_cycles, length_cycle, triqs::utility::clock_callback(-1));
-  mc.collect_results(world);
+  if (use_diagmc) {
+    // --- DiagMC: sample over (diagram, tau) jointly ---
+    auto config = std::make_unique<DiagMCConfiguration<T>>(params, order, calculator, alpha);
+    config_U    = config->get_U();
+    config_beta = config->beta;
+
+    if (world.rank() == 0) { std::cout << "\nUsing DiagMC mode with " << config->get_n_diagrams() << " physical diagrams" << std::endl; }
+
+    triqs::mc_tools::mc_generic<double> mc(random_name, random_seed, verbosity);
+    MeasureDiagMC<T> meas(config.get(), n_bins, block_size, verbosity);
+    mc.add_move(DiagMCMove<T>(config.get(), mc.get_rng()), "diagmc_move");
+    mc.add_measure(meas, "diagmc_measure");
+
+    auto start_time = std::chrono::high_resolution_clock::now();
+    mc.warmup_and_accumulate(n_warmup_cycles, n_cycles, length_cycle, triqs::utility::clock_callback(-1));
+    mc.collect_results(world);
+    result = meas.result;
+
+    if (world.rank() == 0) {
+      auto end_time                         = std::chrono::high_resolution_clock::now();
+      std::chrono::duration<double> elapsed = end_time - start_time;
+      double total_time                     = elapsed.count();
+      long total_steps                      = (long)(n_warmup_cycles + n_cycles) * world.size();
+      std::cout << "Total time (s): " << total_time << std::endl;
+      std::cout << "Time per step (s): " << total_time / total_steps << std::endl;
+    }
+
+  } else {
+    // --- Standard defensive scheme: evaluate all diagrams at every step ---
+    auto config = std::make_unique<DimerConfiguration<T>>(params, order, calculator, alpha);
+    config_U    = config->get_U();
+    config_beta = config->beta;
+
+    triqs::mc_tools::mc_generic<double> mc(random_name, random_seed, verbosity);
+    measure_dimer<T> meas(config.get(), n_bins, block_size, mu, verbosity);
+    mc.add_move(move<T>(config.get(), mc.get_rng()), "time_swap");
+    mc.add_measure(meas, "dimer_measure");
+
+    auto start_time = std::chrono::high_resolution_clock::now();
+    mc.warmup_and_accumulate(n_warmup_cycles, n_cycles, length_cycle, triqs::utility::clock_callback(-1));
+    mc.collect_results(world);
+    result = meas.result;
+
+    if (world.rank() == 0) {
+      auto end_time                         = std::chrono::high_resolution_clock::now();
+      std::chrono::duration<double> elapsed = end_time - start_time;
+      double total_time                     = elapsed.count();
+      long total_steps                      = (long)(n_warmup_cycles + n_cycles) * world.size();
+      std::cout << "Total time (s): " << total_time << std::endl;
+      std::cout << "Time per step (s): " << total_time / total_steps << std::endl;
+    }
+  }
 
   if (world.rank() == 0) {
-    auto end_time                         = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> elapsed = end_time - start_time;
-    double total_time                     = elapsed.count();
-    long total_steps                      = (long)(n_warmup_cycles + n_cycles) * world.size();
-
-    std::cout << "Total time (s): " << total_time << std::endl;
-    std::cout << "Time per step (s): " << total_time / total_steps << std::endl;
-
     // Save results to HDF5
-    std::string filename = "./results/dimer_data_order_" + std::to_string(order) + "_U_" + std::to_string(config->get_U()) + "_beta_"
-       + std::to_string(config->beta) + "_mu_" + std::to_string(mu) + ".h5";
+    std::string filename = "./results/dimer_data_order_" + std::to_string(order) + "_U_" + std::to_string(config_U) + "_beta_"
+       + std::to_string(config_beta) + "_mu_" + std::to_string(mu) + ".h5";
     h5::file file(filename, 'w');
-    h5_write(file, "mean", meas.result->coeff);
-    h5_write(file, "error", meas.result->error);
-    h5_write(file, "mean_sign", meas.result->mean_sign);
-    h5_write(file, "sign_error", meas.result->sign_error);
-    h5_write(file, "mean_abs_integrand", meas.result->mean_abs);
-    h5_write(file, "abs_integrand_error", meas.result->abs_error);
+    h5_write(file, "mean", result->coeff);
+    h5_write(file, "error", result->error);
+    h5_write(file, "mean_sign", result->mean_sign);
+    h5_write(file, "sign_error", result->sign_error);
+    h5_write(file, "mean_abs_integrand", result->mean_abs);
+    h5_write(file, "abs_integrand_error", result->abs_error);
     h5_write(file, "mu", mu);
   }
 }
@@ -143,7 +183,7 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
 int main(int argc, char *argv[]) {
 
   if (argc < 8) {
-    if (mpi::communicator().rank() == 0) { std::cerr << "Usage: " << argv[0] << " order n_cycles U beta mu t_hop alpha [use_dual]" << std::endl; }
+    if (mpi::communicator().rank() == 0) { std::cerr << "Usage: " << argv[0] << " order n_cycles U beta mu t_hop alpha [use_dual] [use_diagmc]" << std::endl; }
     return 1;
   }
 
@@ -154,7 +194,8 @@ int main(int argc, char *argv[]) {
   double mu     = std::stod(argv[5]);
   double t_hop  = std::stod(argv[6]);
   double alpha  = std::stod(argv[7]);
-  bool use_dual = (argc > 8 ? std::stoi(argv[8]) != 0 : false);
+  bool use_dual    = (argc > 8 ? std::stoi(argv[8]) != 0 : false);
+  bool use_diagmc  = (argc > 9 ? std::stoi(argv[9]) != 0 : false);
 
   mpi::environment env(argc, argv);
   mpi::communicator world;
@@ -162,7 +203,8 @@ int main(int argc, char *argv[]) {
   if (world.rank() == 0) {
     std::cout << "=== Strong Coupling MC (Dimer) ===" << std::endl;
     std::cout << "MPI ranks: " << world.size() << std::endl;
-    std::cout << "Order=" << order << " U=" << U << " beta=" << beta << " mu=" << mu << " t_hop=" << t_hop << " alpha=" << alpha << std::endl;
+    std::cout << "Order=" << order << " U=" << U << " beta=" << beta << " mu=" << mu << " t_hop=" << t_hop << " alpha=" << alpha
+              << " diagmc=" << use_diagmc << std::endl;
   }
 
   int length_cycle        = 1;
@@ -172,9 +214,9 @@ int main(int argc, char *argv[]) {
   int verbosity           = (world.rank() == 0 ? 2 : 0);
 
   if (use_dual) {
-    run<Dual>(world, order, n_cycles, U, beta, mu, t_hop, alpha, n_warmup_cycles, length_cycle, random_name, random_seed, verbosity);
+    run<Dual>(world, order, n_cycles, U, beta, mu, t_hop, alpha, n_warmup_cycles, length_cycle, random_name, random_seed, verbosity, use_diagmc);
   } else {
-    run<double>(world, order, n_cycles, U, beta, mu, t_hop, alpha, n_warmup_cycles, length_cycle, random_name, random_seed, verbosity);
+    run<double>(world, order, n_cycles, U, beta, mu, t_hop, alpha, n_warmup_cycles, length_cycle, random_name, random_seed, verbosity, use_diagmc);
   }
 
   return 0;

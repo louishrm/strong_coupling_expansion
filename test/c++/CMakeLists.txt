@@ -16,6 +16,8 @@ list(REMOVE_ITEM all_tests
   test_dimer_order6.cpp
   test_vandermonde_dimer.cpp
   test_dimer_quadrature.cpp
+  test_diagmc.cpp
+  test_diagmc_infinite.cpp
 )
 
 foreach(test ${all_tests})
@@ -54,18 +56,14 @@ add_executable(test_mcmc_dimer test_mcmc_dimer.cpp)
 target_link_libraries(test_mcmc_dimer ${PROJECT_NAME}::${PROJECT_NAME}_c ${PROJECT_NAME}_warnings gtest)
 add_test(NAME test_mcmc_dimer COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 4 ${CMAKE_CURRENT_BINARY_DIR}/test_mcmc_dimer)
 
-add_executable(test_compare_atom_dimer test_compare_atom_dimer.cpp)
-target_link_libraries(test_compare_atom_dimer ${PROJECT_NAME}::${PROJECT_NAME}_c ${PROJECT_NAME}_warnings gtest)
-add_test(NAME test_compare_atom_dimer COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 4 ${CMAKE_CURRENT_BINARY_DIR}/test_compare_atom_dimer)
-
 add_executable(test_dimer_order6 test_dimer_order6.cpp)
 target_link_libraries(test_dimer_order6 ${PROJECT_NAME}::${PROJECT_NAME}_c ${PROJECT_NAME}_warnings gtest)
 add_test(NAME test_dimer_order6 COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 4 ${CMAKE_CURRENT_BINARY_DIR}/test_dimer_order6)
 
-add_executable(test_vandermonde_dimer test_vandermonde_dimer.cpp)
-target_link_libraries(test_vandermonde_dimer ${PROJECT_NAME}::${PROJECT_NAME}_c ${PROJECT_NAME}_warnings gtest)
-add_test(NAME test_vandermonde_dimer COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 4 ${CMAKE_CURRENT_BINARY_DIR}/test_vandermonde_dimer)
+add_executable(test_diagmc test_diagmc.cpp)
+target_link_libraries(test_diagmc ${PROJECT_NAME}::${PROJECT_NAME}_c ${PROJECT_NAME}_warnings gtest)
+add_test(NAME test_diagmc COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 4 ${CMAKE_CURRENT_BINARY_DIR}/test_diagmc)
 
-add_executable(test_dimer_quadrature test_dimer_quadrature.cpp)
-target_link_libraries(test_dimer_quadrature ${PROJECT_NAME}::${PROJECT_NAME}_c ${PROJECT_NAME}_warnings gtest)
-add_test(NAME test_dimer_quadrature COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 1 ${CMAKE_CURRENT_BINARY_DIR}/test_dimer_quadrature)
+add_executable(test_diagmc_infinite test_diagmc_infinite.cpp)
+target_link_libraries(test_diagmc_infinite ${PROJECT_NAME}::${PROJECT_NAME}_c ${PROJECT_NAME}_warnings gtest)
+add_test(NAME test_diagmc_infinite COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 4 ${CMAKE_CURRENT_BINARY_DIR}/test_diagmc_infinite)

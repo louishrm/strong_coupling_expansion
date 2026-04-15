@@ -31,6 +31,12 @@ namespace sc_expansion {
     std::deque<VertexType<N_sites, T>> const &get_vertex_types() const { return this->vertex_types; }
     std::deque<Diagram<N_sites, T>> const &get_diagrams() const { return this->diagrams; }
 
+    // DiagMC support: single-diagram access
+    int get_n_diagrams() const { return (int)this->diagrams.size(); }
+    T evaluate_single_diagram(int idx, std::vector<double> const &taus, bool infinite_U) const;
+    void mark_single_diagram_dirty(int idx, int tau_index);
+    void mark_single_diagram_all_dirty(int idx);
+
     private:
     Parameters<T> const &params;
     int order;
