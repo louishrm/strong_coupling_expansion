@@ -4,6 +4,7 @@
 //   generate_bipartite_diagrams <order>
 
 #include "sc_expansion/generate_diagrams.hpp"
+#include "sc_expansion/graph_serialization.hpp"
 #include <cstdlib>
 #include <iomanip>
 #include <iostream>
@@ -28,6 +29,9 @@ static void print_bipartite_diagrams(int order) {
     std::cout << std::endl;
   }
   std::cout << "Total bipartite diagrams at order " << order << ": " << graphs.size() << std::endl;
+
+  save_bipartite_graphs(order, graphs);
+  std::cout << "Saved to " << bipartite_diagrams_path(order) << std::endl;
 }
 
 int main(int argc, char *argv[]) {

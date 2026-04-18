@@ -1,6 +1,7 @@
 #include "sc_expansion/atomic_configuration.hpp"
 #include "sc_expansion/free_energy_calculator.hpp"
 #include "sc_expansion/generate_diagrams.hpp"
+#include "sc_expansion/graph_serialization.hpp"
 #include "sc_expansion/combinatorics.hpp"
 #include "sc_expansion/move.hpp"
 #include "sc_expansion/measure.hpp"
@@ -143,14 +144,24 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
   // --- Phase 1: Rank 0 generates all vacuum diagrams, then broadcasts to all ranks ---
   std::vector<sc_expansion::Graph> graphs;
   if (world.rank() == 0) {
-    std::cout << "Generating vacuum diagrams on rank 0..." << std::endl;
-    auto t0 = std::chrono::high_resolution_clock::now();
-    sc_expansion::VacuumDiagramGenerator gen(order, params.bipartite);
-    gen.generate();
-    graphs = gen.get_unique_graphs();
-    auto t1 = std::chrono::high_resolution_clock::now();
-    std::cout << "Generated " << graphs.size() << " unique diagrams in "
-              << std::chrono::duration<double>(t1 - t0).count() << " s." << std::endl;
+    bool loaded = false;
+    if (params.bipartite) {
+      auto path = sc_expansion::bipartite_diagrams_path(order);
+      if (sc_expansion::load_bipartite_graphs(order, graphs)) {
+        std::cout << "Loaded " << graphs.size() << " cached diagrams from " << path << std::endl;
+        loaded = true;
+      }
+    }
+    if (!loaded) {
+      std::cout << "Generating vacuum diagrams on rank 0..." << std::endl;
+      auto t0 = std::chrono::high_resolution_clock::now();
+      sc_expansion::VacuumDiagramGenerator gen(order, params.bipartite);
+      gen.generate();
+      graphs = gen.get_unique_graphs();
+      auto t1 = std::chrono::high_resolution_clock::now();
+      std::cout << "Generated " << graphs.size() << " unique diagrams in "
+                << std::chrono::duration<double>(t1 - t0).count() << " s." << std::endl;
+    }
   }
   broadcast_graphs(graphs, world);
 
