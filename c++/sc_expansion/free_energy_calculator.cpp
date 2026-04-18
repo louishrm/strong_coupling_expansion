@@ -38,8 +38,6 @@ namespace sc_expansion {
 
     // Sort by descending vertex count for optimal global cache seeding
     auto order_idx = sorted_graph_indices(unique_graphs);
-    this->graphs.reserve(order_idx.size());
-    this->diagrams.reserve(order_idx.size());
     for (int i : order_idx) {
       auto const &g = unique_graphs[i];
       if (override_fm_ >= 0) {
@@ -64,8 +62,6 @@ namespace sc_expansion {
     for (int k = 0; k < max_cumulant_order; k++) { vt_ptrs[k] = &this->vertex_types[k]; }
 
     auto order_idx = sorted_graph_indices(prebuilt_graphs);
-    this->graphs.reserve(order_idx.size());
-    this->diagrams.reserve(order_idx.size());
     for (int i : order_idx) {
       this->graphs.emplace_back(prebuilt_graphs[i]);
       this->diagrams.emplace_back(this->graphs.back(), vt_ptrs);
@@ -88,8 +84,6 @@ namespace sc_expansion {
     for (int k = 0; k < max_cumulant_order; k++) { vt_ptrs[k] = &this->vertex_types[k]; }
 
     auto order_idx = sorted_graph_indices(unique_graphs);
-    this->graphs.reserve(order_idx.size());
-    this->diagrams.reserve(order_idx.size());
     for (int i : order_idx) {
       this->graphs.emplace_back(unique_graphs[i]);
       this->diagrams.emplace_back(this->graphs.back(), vt_ptrs, cluster_positions, n_cluster_sites);
