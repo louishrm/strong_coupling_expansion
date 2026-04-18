@@ -242,7 +242,7 @@ int main(int argc, char *argv[]) {
   }
 
   int length_cycle        = 1;
-  int n_warmup_cycles     = 1;
+  int n_warmup_cycles     = 2000;
   std::string random_name = "";
   int random_seed         = 32186222 + world.rank() * 786512;
   int verbosity           = (world.rank() == 0 ? 2 : 0);
