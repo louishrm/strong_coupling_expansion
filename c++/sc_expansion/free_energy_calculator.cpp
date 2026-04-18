@@ -127,6 +127,11 @@ namespace sc_expansion {
   }
 
   template <int N_sites, typename T>
+  std::vector<T> FreeEnergyCalculator<N_sites, T>::evaluate_per_config_diagram(int idx, std::vector<double> const &taus, bool infinite_U) const {
+    return const_cast<Diagram<N_sites, T> &>(this->diagrams[idx]).evaluate_per_config(taus, this->solver, infinite_U);
+  }
+
+  template <int N_sites, typename T>
   void FreeEnergyCalculator<N_sites, T>::mark_single_diagram_dirty(int idx, int tau_index) {
     this->diagrams[idx].mark_tau_dirty(tau_index);
   }

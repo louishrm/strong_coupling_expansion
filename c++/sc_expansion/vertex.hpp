@@ -85,6 +85,12 @@ namespace sc_expansion {
     mutable T local_cache_infinite;
     mutable bool is_dirty_finite   = true;
     mutable bool is_dirty_infinite = true;
+
+    // τ-independent Möbius decomposition plans for this instance's op pattern.
+    // Built lazily (on first get_value) since the HubbardSolver is only available then.
+    mutable CumulantPlan plan_finite;
+    mutable CumulantPlan plan_infinite;
+    mutable bool plans_built = false;
   };
 
 } // namespace sc_expansion

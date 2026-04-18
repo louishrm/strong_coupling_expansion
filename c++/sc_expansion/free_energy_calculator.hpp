@@ -34,6 +34,9 @@ namespace sc_expansion {
     // DiagMC support: single-diagram access
     int get_n_diagrams() const { return (int)this->diagrams.size(); }
     T evaluate_single_diagram(int idx, std::vector<double> const &taus, bool infinite_U) const;
+
+    // Diagnostic: per-config signed contributions for a single diagram (no -1/beta prefactor).
+    std::vector<T> evaluate_per_config_diagram(int idx, std::vector<double> const &taus, bool infinite_U) const;
     void mark_single_diagram_dirty(int idx, int tau_index);
     void mark_single_diagram_all_dirty(int idx);
 

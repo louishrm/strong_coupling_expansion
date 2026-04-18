@@ -930,6 +930,51 @@ namespace sc_expansion {
   }
 
   // =====================================================================
+  // build_local_plans: precompute one CumulantPlan per (vertex, local_state).
+  //
+  // The plan encodes the τ-independent Möbius decomposition structure
+  // (in stable basis — see cumulant_plan.hpp). At MC time, evaluate_plan
+  // walks this flat DAG with current τ values, replacing the recursive
+  // CumulantSolver::solve path that dominated the profile.
+  //
+  // Dummy τ values are fine: the plan depends only on operator identities.
+  // We use all-equal τ so that Args's stable_sort is a no-op (stable pos
+  // == input pos), keeping the plan's index semantics trivial.
+  // =====================================================================
+  template <int N_sites, typename T>
+  void Diagram<N_sites, T>::build_local_plans(HubbardSolver<N_sites, T> const &solver) {
+
+    int V = this->graph.get_V();
+    this->local_plans_finite.assign(V, {});
+    this->local_plans_infinite.assign(V, {});
+
+    for (int v = 0; v < V; v++) {
+      int n_legs = (int)this->legs_per_vertex[v].size();
+      std::vector<double> dummy_taus(n_legs, 0.5);
+
+      int ns = (int)this->local_states[v].size();
+      this->local_plans_finite[v].reserve(ns);
+      this->local_plans_infinite[v].reserve(ns);
+
+      for (int s = 0; s < ns; s++) {
+        auto [u, p] = Args<N_sites, T>::split_from_raw(dummy_taus, this->local_states[v][s]);
+
+        CumulantPlan plan_f;
+        CumulantSolver<N_sites, T> builder_f(u, p, solver, /*infinite_U=*/false);
+        builder_f.record_plan(plan_f);
+        this->local_plans_finite[v].push_back(std::move(plan_f));
+
+        CumulantPlan plan_i;
+        CumulantSolver<N_sites, T> builder_i(u, p, solver, /*infinite_U=*/true);
+        builder_i.record_plan(plan_i);
+        this->local_plans_infinite[v].push_back(std::move(plan_i));
+      }
+    }
+
+    this->local_plans_built = true;
+  }
+
+  // =====================================================================
   // evaluate_factored: factored summation over configurations.
   //
   // Phase 1: recompute cumulants only for dirty vertices, once per
@@ -943,9 +988,12 @@ namespace sc_expansion {
                                             HubbardSolver<N_sites, T> const &solver,
                                             bool infinite_U) {
 
+    if (!this->local_plans_built) this->build_local_plans(solver);
+
     int V = this->graph.get_V();
     auto &dirty  = infinite_U ? this->vertex_dirty_infinite : this->vertex_dirty_finite;
     auto &values = infinite_U ? this->local_values_infinite : this->local_values;
+    auto &plans  = infinite_U ? this->local_plans_infinite : this->local_plans_finite;
 
     // Phase 1: recompute cumulants for dirty vertices
     auto t_p1 = std::chrono::high_resolution_clock::now();
@@ -961,7 +1009,10 @@ namespace sc_expansion {
 
       for (int s = 0; s < (int)this->local_states[v].size(); s++) {
         auto [unprimed, primed] = Args<N_sites, T>::split_from_raw(local_taus, this->local_states[v][s]);
-        T val = this->vertex_type_ptrs[v]->evaluate_canonical(unprimed, primed, solver, infinite_U);
+        // evaluate_plan returns the τ-sorted-basis cumulant (same convention as the old
+        // evaluate_canonical path); the permutation_sign multiplication below converts it
+        // to the diagram's canonical (stable) leg convention.
+        T val = evaluate_plan(plans[v][s], unprimed, primed, solver, infinite_U);
         values[v][s] = val * T(unprimed.permutation_sign) * T(primed.permutation_sign);
       }
 
@@ -1042,6 +1093,49 @@ namespace sc_expansion {
     // Free-energy prefactor: -1/beta * diagram_sign
     T prefactor = (T(-1.0) / solver.params.beta) * T(this->diagram_sign);
     return prefactor * sum;
+  }
+
+  // =====================================================================
+  // evaluate_per_config: diagnostic — return the signed contribution of
+  // every valid global configuration for a given tau vector.
+  //
+  // contribution[gc] = diagram_sign * weight[gc] * prod_v C_v(taus, ops)
+  //
+  // The -1/beta prefactor is NOT applied. Factored path only.
+  // =====================================================================
+  template <int N_sites, typename T>
+  std::vector<T> Diagram<N_sites, T>::evaluate_per_config(std::vector<double> const &taus,
+                                                          HubbardSolver<N_sites, T> const &solver,
+                                                          bool infinite_U) {
+    if (!this->local_plans_built) this->build_local_plans(solver);
+
+    int V = this->graph.get_V();
+    this->mark_all_dirty();
+    auto &dirty  = infinite_U ? this->vertex_dirty_infinite : this->vertex_dirty_finite;
+    auto &values = infinite_U ? this->local_values_infinite : this->local_values;
+    auto &plans  = infinite_U ? this->local_plans_infinite : this->local_plans_finite;
+
+    for (int v = 0; v < V; v++) {
+      int n_legs = (int)this->legs_per_vertex[v].size();
+      std::vector<double> local_taus(n_legs);
+      for (int i = 0; i < n_legs; i++) { local_taus[i] = taus[this->legs_per_vertex[v][i].line_index]; }
+      for (int s = 0; s < (int)this->local_states[v].size(); s++) {
+        auto [unprimed, primed] = Args<N_sites, T>::split_from_raw(local_taus, this->local_states[v][s]);
+        T val        = evaluate_plan(plans[v][s], unprimed, primed, solver, infinite_U);
+        values[v][s] = val * T(unprimed.permutation_sign) * T(primed.permutation_sign);
+      }
+      dirty[v] = false;
+    }
+
+    std::vector<T> contribs;
+    contribs.reserve(this->valid_configurations.size());
+    T sign = T((double)this->diagram_sign);
+    for (int gc_idx = 0; gc_idx < (int)this->valid_configurations.size(); gc_idx++) {
+      T product = T(1.0);
+      for (int v = 0; v < V; v++) { product = product * values[v][this->config_to_local[gc_idx][v]]; }
+      contribs.push_back(sign * T(this->valid_configurations[gc_idx].weight) * product);
+    }
+    return contribs;
   }
 
   // =====================================================================

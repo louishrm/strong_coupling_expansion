@@ -51,10 +51,23 @@ namespace sc_expansion {
     // 3. Split and Sort (via Args)
     auto [unprimed, primed] = Args<N_sites, T>::split_from_raw(local_taus, this->op_ids);
 
-    // 4. Get the math result (potentially from Shared Spreadsheet)
-    T canonical_val = this->type->evaluate_canonical(unprimed, primed, solver, infinite_U);
+    // 4. Build plans lazily on first evaluation (op pattern is fixed for the instance).
+    if (!this->plans_built) {
+      std::vector<double> dummy_taus(this->op_ids.size(), 0.5);
+      auto [u0, p0]     = Args<N_sites, T>::split_from_raw(dummy_taus, this->op_ids);
+      CumulantSolver<N_sites, T> builder_f(u0, p0, solver, /*infinite_U=*/false);
+      builder_f.record_plan(this->plan_finite);
+      CumulantSolver<N_sites, T> builder_i(u0, p0, solver, /*infinite_U=*/true);
+      builder_i.record_plan(this->plan_infinite);
+      this->plans_built = true;
+    }
 
-    // 5. Restore the Diagram's leg convention using the saved signs
+    // 5. Evaluate via the plan. Result is τ-sorted basis (same convention as the old
+    // evaluate_canonical path), so the permutation_sign conversion below is unchanged.
+    CumulantPlan const &plan = infinite_U ? this->plan_infinite : this->plan_finite;
+    T canonical_val          = evaluate_plan(plan, unprimed, primed, solver, infinite_U);
+
+    // 6. Restore the Diagram's leg convention using the saved signs
     // C(raw) = C(canonical) * sign(unprimed_sort) * sign(primed_sort)
     cache = canonical_val * T(unprimed.permutation_sign) * T(primed.permutation_sign);
     dirty = false;

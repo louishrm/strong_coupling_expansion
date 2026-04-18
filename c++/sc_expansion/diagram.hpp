@@ -107,10 +107,15 @@ namespace sc_expansion {
 
     // Cluster-restricted embedding: spatial configs computed from only the given positions.
     // Weights are divided by n_cluster_sites to give per-site (per-dimer) values.
-    Diagram(Graph const &graph, std::vector<VertexType<N_sites, T> *> const &vertex_types,
-            std::vector<std::pair<int, int>> const &cluster_positions, int n_cluster_sites);
+    Diagram(Graph const &graph, std::vector<VertexType<N_sites, T> *> const &vertex_types, std::vector<std::pair<int, int>> const &cluster_positions,
+            int n_cluster_sites);
 
     T evaluate(std::vector<double> const &taus, HubbardSolver<N_sites, T> const &solver, bool infinite_U);
+
+    // Diagnostic: per-config signed contributions (diagram_sign * w_c * prod_v C_v)
+    // WITHOUT the -1/beta prefactor. Factored path (N_sites=2) only.
+    // Forces full recomputation (marks all vertices dirty) so taus can be set freely.
+    std::vector<T> evaluate_per_config(std::vector<double> const &taus, HubbardSolver<N_sites, T> const &solver, bool infinite_U);
 
     // Mark all VertexInstances that depend on tau_index as dirty
     void mark_tau_dirty(int tau_index);
@@ -159,19 +164,29 @@ namespace sc_expansion {
 
     // Factored evaluation data (N_sites=2 only)
     // Per-vertex: the distinct op_id tuples that appear at this vertex across all global configs.
-    std::vector<std::vector<std::vector<uint8_t>>> local_states;    // [vertex][state_idx] -> op_ids
-    std::vector<std::vector<T>> local_values;                       // [vertex][state_idx] -> cached value
-    std::vector<std::vector<T>> local_values_infinite;              // [vertex][state_idx] -> cached value (inf-U)
-    std::vector<bool> vertex_dirty_finite;                          // [vertex]
-    std::vector<bool> vertex_dirty_infinite;                        // [vertex]
-    mutable long local_cache_hits   = 0;                            // factored path: vertex was clean
-    mutable long local_cache_misses = 0;                            // factored path: vertex was dirty
-    mutable double phase1_seconds   = 0.0;                          // cumulative Phase 1 time
-    mutable double phase2_seconds   = 0.0;                          // cumulative Phase 2 time
-    std::vector<std::vector<int>> config_to_local;                  // [gc_idx][vertex] -> state_idx
+    std::vector<std::vector<std::vector<uint8_t>>> local_states; // [vertex][state_idx] -> op_ids
+    std::vector<std::vector<T>> local_values;                    // [vertex][state_idx] -> cached value
+    std::vector<std::vector<T>> local_values_infinite;           // [vertex][state_idx] -> cached value (inf-U)
+
+    // Precomputed τ-independent decomposition plans for each (vertex, local_state) pair.
+    // Built lazily on first evaluate call (requires HubbardSolver, only available then).
+    // Replaces the partition recursion previously done inside CumulantSolver::solve on every MC step.
+    std::vector<std::vector<CumulantPlan>> local_plans_finite;   // [vertex][state_idx]
+    std::vector<std::vector<CumulantPlan>> local_plans_infinite; // [vertex][state_idx]
+    bool local_plans_built = false;
+    std::vector<bool> vertex_dirty_finite;                       // [vertex]
+    std::vector<bool> vertex_dirty_infinite;                     // [vertex]
+    mutable long local_cache_hits   = 0;                         // factored path: vertex was clean
+    mutable long local_cache_misses = 0;                         // factored path: vertex was dirty
+    mutable double phase1_seconds   = 0.0;                       // cumulative Phase 1 time
+    mutable double phase2_seconds   = 0.0;                       // cumulative Phase 2 time
+    std::vector<std::vector<int>> config_to_local;               // [gc_idx][vertex] -> state_idx
 
     void compute_hopping_lines();
     void setup_vertices(std::vector<VertexType<N_sites, T> *> const &vertex_types);
+    // Build a CumulantPlan per (vertex, local_state) pair. Called once, lazily, on first
+    // evaluate_factored / evaluate_per_config so the HubbardSolver is available.
+    void build_local_plans(HubbardSolver<N_sites, T> const &solver);
     void compute_spatial_configurations();
     void compute_valid_configurations();
     void compute_diagram_sign();
@@ -185,13 +200,11 @@ namespace sc_expansion {
 
     // Cluster-restricted embedding: only place vertices at positions in cluster_positions
     void solve_cluster_embedding(int placed_count, std::vector<bool> &placed, std::vector<std::pair<int, int>> &coords,
-                                 std::map<std::vector<uint8_t>, int> &config_counts,
-                                 std::vector<std::pair<int, int>> const &cluster_positions) const;
+                                 std::map<std::vector<uint8_t>, int> &config_counts, std::vector<std::pair<int, int>> const &cluster_positions) const;
 
     void compute_spatial_configurations_cluster(std::vector<std::pair<int, int>> const &cluster_positions, int n_cluster_sites);
 
-    std::vector<uint8_t> canonicalize_directions(std::vector<uint8_t> const &dirs,
-                                                 std::vector<std::vector<int>> const &automorphisms) const;
+    std::vector<uint8_t> canonicalize_directions(std::vector<uint8_t> const &dirs, std::vector<std::vector<int>> const &automorphisms) const;
 
     std::vector<uint8_t> apply_automorphism_to_directions(std::vector<uint8_t> const &dirs, std::vector<int> const &perm) const;
   };

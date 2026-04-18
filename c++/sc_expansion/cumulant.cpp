@@ -281,6 +281,180 @@ namespace sc_expansion {
     return result;
   }
 
+  // ============================================================================
+  //  Plan recording — STABLE-BASIS implementation.
+  //
+  //  The existing solve() path works in τ-sorted basis: its bitmasks index into the
+  //  τ-sorted master arrays, and compute_extraction_sign is applied to local (sorted)
+  //  positions. Those signs DEPEND ON τ (a different τ-sort puts the same stable ops
+  //  at different local positions → different sign).
+  //
+  //  For a τ-independent plan, we rerun the Möbius recursion but with everything
+  //  re-indexed in STABLE (pre-sort) positions:
+  //    - bitmasks are over stable positions
+  //    - compute_extraction_sign operates on stable-local indices (τ-invariant)
+  //    - plan leaves list ops in ascending stable order
+  //    - sub-cumulants are recursively in stable basis
+  //
+  //  The Möbius formula is basis-independent: applied consistently in stable basis
+  //  it produces the stable-basis cumulant. evaluate_plan converts back to τ-sorted
+  //  basis at the root by multiplying by master_u.permutation_sign × master_p.permutation_sign,
+  //  matching the existing convention (see vertex.cpp:59).
+  // ============================================================================
+
+  template <int N_sites, typename T>
+  void CumulantSolver<N_sites, T>::record_distribute_primed(const std::vector<uint64_t> &u_partition_masks, int u_idx,
+                                                            uint64_t current_p_pool, int overall_sign,
+                                                            std::vector<int> &factors_so_far,
+                                                            const std::vector<int> &stable_map_u,
+                                                            const std::vector<int> &stable_map_p,
+                                                            std::vector<CumulantPlan::ProductTerm> &out,
+                                                            CumulantPlan &plan) {
+
+    // All arguments are in local (stable-index ctz) space. Masks in u_partition_masks
+    // are local-bit masks over [0, order). stable_map_{u,p}[local_bit] = global stable pos.
+    if (u_idx == (int)u_partition_masks.size()) {
+      CumulantPlan::ProductTerm term;
+      term.sign            = overall_sign;
+      term.factor_node_ids = factors_so_far;
+      out.push_back(std::move(term));
+      return;
+    }
+
+    uint64_t u_mask = u_partition_masks[u_idx];
+    int needed_k    = __builtin_popcountll(u_mask);
+
+    for_each_subset(current_p_pool, needed_k, [&](uint64_t p_submask) {
+      int step_sign_p = compute_extraction_sign(current_p_pool, p_submask);
+
+      // Map local-bit masks to GLOBAL STABLE-position masks via stable_map_{u,p}
+      uint64_t global_mask_u_stable = 0, global_mask_p_stable = 0;
+      {
+        uint64_t t = u_mask;
+        while (t) { int b = __builtin_ctzll(t); global_mask_u_stable |= (1ULL << stable_map_u[b]); t &= ~(1ULL << b); }
+      }
+      {
+        uint64_t t = p_submask;
+        while (t) { int b = __builtin_ctzll(t); global_mask_p_stable |= (1ULL << stable_map_p[b]); t &= ~(1ULL << b); }
+      }
+
+      int child_id = this->solve_record(global_mask_u_stable, global_mask_p_stable, plan);
+      if (child_id < 0) return; // prune: any product term with a zero factor is zero
+
+      factors_so_far.push_back(child_id);
+      this->record_distribute_primed(u_partition_masks, u_idx + 1, current_p_pool ^ p_submask,
+                                     overall_sign * step_sign_p, factors_so_far,
+                                     stable_map_u, stable_map_p, out, plan);
+      factors_so_far.pop_back();
+    });
+  }
+
+  template <int N_sites, typename T>
+  int CumulantSolver<N_sites, T>::solve_record(uint64_t mask_u_stable, uint64_t mask_p_stable, CumulantPlan &plan) {
+
+    // 1. Spin conservation — uses stable-basis spin masks populated in record_plan().
+    if (__builtin_popcountll(mask_u_stable & plan_spin_mask_stable_u)
+        != __builtin_popcountll(mask_p_stable & plan_spin_mask_stable_p))
+      return -1;
+
+    // 2. Dedup on stable (mask_u, mask_p).
+    CacheKey key{mask_u_stable, mask_p_stable};
+    if (auto it = plan_node_ids.find(key); it != plan_node_ids.end()) return it->second;
+
+    // 3. Unpack stable masks into ordered stable positions (ctz = ascending stable pos).
+    std::vector<int> stable_map_u, stable_map_p;
+    {
+      uint64_t t = mask_u_stable;
+      while (t) { int i = __builtin_ctzll(t); stable_map_u.push_back(i); t &= ~(1ULL << i); }
+    }
+    {
+      uint64_t t = mask_p_stable;
+      while (t) { int i = __builtin_ctzll(t); stable_map_p.push_back(i); t &= ~(1ULL << i); }
+    }
+    int order = (int)stable_map_u.size();
+
+    // 4. Leaf: list stable positions in ascending stable order.
+    //    evaluate_plan uses this order to build the leaf Args and call G0n in stable basis.
+    CumulantPlan::Node node;
+    node.leaf.u_global_idx = stable_map_u;
+    node.leaf.p_global_idx = stable_map_p;
+
+    // 5. Order-1: cumulant equals G0 (still in stable basis). No subtraction terms.
+    if (order == 1) {
+      int new_id = (int)plan.nodes.size();
+      plan.nodes.push_back(std::move(node));
+      plan_node_ids.emplace(key, new_id);
+      return new_id;
+    }
+
+    // 6. Iterate non-trivial partitions of local [0, order). Signs are computed on
+    //    local-bit masks, where local bit i corresponds to stable position stable_map_u[i].
+    //    Since stable_map_u is in ascending stable order, the local-bit ordering is
+    //    itself τ-invariant.
+    const auto &unprimed_partitions = get_partitions(order);
+    for (const auto &partition : unprimed_partitions) {
+      if (partition.size() == 1) continue;
+
+      int sign_u                      = 1;
+      uint64_t u_pool_local           = (order == 64) ? ~0ULL : (1ULL << order) - 1;
+      std::vector<uint64_t> u_partition_local_masks;
+      for (const auto &subset : partition) {
+        uint64_t submask_local = 0;
+        for (int idx : subset) submask_local |= (1ULL << idx);
+        sign_u *= compute_extraction_sign(u_pool_local, submask_local);
+        u_pool_local ^= submask_local;
+        u_partition_local_masks.push_back(submask_local);
+      }
+
+      int base_sign             = -sign_u;
+      uint64_t full_local_p_mask = (order == 64) ? ~0ULL : (1ULL << order) - 1;
+
+      std::vector<int> factors_scratch;
+      factors_scratch.reserve(partition.size());
+      this->record_distribute_primed(u_partition_local_masks, 0, full_local_p_mask, base_sign,
+                                     factors_scratch, stable_map_u, stable_map_p,
+                                     node.subtraction_terms, plan);
+    }
+
+    int new_id = (int)plan.nodes.size();
+    plan.nodes.push_back(std::move(node));
+    plan_node_ids.emplace(key, new_id);
+    return new_id;
+  }
+
+  template <int N_sites, typename T>
+  void CumulantSolver<N_sites, T>::record_plan(CumulantPlan &plan) {
+    plan.nodes.clear();
+    plan.root_id = -1;
+    plan_node_ids.clear();
+
+    int order = this->master_unprimed.order;
+
+    // Precompute inv_argsort: stable_pos → sorted_pos in master.
+    this->plan_inv_argsort_u.assign(order, 0);
+    this->plan_inv_argsort_p.assign(order, 0);
+    for (int sorted_pos = 0; sorted_pos < order; ++sorted_pos) {
+      this->plan_inv_argsort_u[this->master_unprimed.argsort[sorted_pos]] = sorted_pos;
+      this->plan_inv_argsort_p[this->master_primed.argsort[sorted_pos]]   = sorted_pos;
+    }
+
+    // Precompute stable-basis spin masks: bit stable_pos = 1 iff op at stable_pos is spin up.
+    this->plan_spin_mask_stable_u = 0;
+    this->plan_spin_mask_stable_p = 0;
+    for (int stable_pos = 0; stable_pos < order; ++stable_pos) {
+      int sp_u = this->plan_inv_argsort_u[stable_pos];
+      int sp_p = this->plan_inv_argsort_p[stable_pos];
+      if (this->master_unprimed.ops[sp_u].get_orbital_index() >= N_sites)
+        this->plan_spin_mask_stable_u |= (1ULL << stable_pos);
+      if (this->master_primed.ops[sp_p].get_orbital_index() >= N_sites)
+        this->plan_spin_mask_stable_p |= (1ULL << stable_pos);
+    }
+
+    uint64_t full_mask = (order == 64) ? ~0ULL : (1ULL << order) - 1;
+    int root = this->solve_record(full_mask, full_mask, plan);
+    plan.root_id = root; // -1 if identically zero by spin
+  }
+
   template class CumulantSolver<1, double>;
   template class CumulantSolver<1, Dual>;
   template class CumulantSolver<2, double>;

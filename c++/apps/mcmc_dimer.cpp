@@ -105,6 +105,35 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
   // Ensure results directory exists
   if (world.rank() == 0) { std::filesystem::create_directory("./results"); }
 
+  auto report_cache_stats = [&]() {
+    long long local_global_hits = 0, local_global_misses = 0;
+    for (auto const &vt : calculator.get_vertex_types()) {
+      auto [h, m] = vt.get_cache_stats();
+      local_global_hits += h;
+      local_global_misses += m;
+    }
+    long long local_local_hits = 0, local_local_misses = 0;
+    for (auto const &d : calculator.get_diagrams()) {
+      auto [h, m] = d.get_local_cache_stats();
+      local_local_hits += h;
+      local_local_misses += m;
+    }
+    long long gh = 0, gm = 0, lh = 0, lm = 0;
+    MPI_Reduce(&local_global_hits, &gh, 1, MPI_LONG_LONG, MPI_SUM, 0, world.get());
+    MPI_Reduce(&local_global_misses, &gm, 1, MPI_LONG_LONG, MPI_SUM, 0, world.get());
+    MPI_Reduce(&local_local_hits, &lh, 1, MPI_LONG_LONG, MPI_SUM, 0, world.get());
+    MPI_Reduce(&local_local_misses, &lm, 1, MPI_LONG_LONG, MPI_SUM, 0, world.get());
+    if (world.rank() == 0) {
+      auto rate = [](long long h, long long m) {
+        long long tot = h + m;
+        return tot > 0 ? 100.0 * double(h) / double(tot) : 0.0;
+      };
+      std::cout << "\n--- Cache statistics (summed over " << world.size() << " ranks) ---" << std::endl;
+      std::cout << "Global (VertexType):  hits=" << gh << "  misses=" << gm << "  hit_rate=" << rate(gh, gm) << "%" << std::endl;
+      std::cout << "Local  (Diagram):     hits=" << lh << "  misses=" << lm << "  hit_rate=" << rate(lh, lm) << "%" << std::endl;
+    }
+  };
+
   int target_block_size = 2000;
   int n_bins            = std::max(50, n_cycles / target_block_size);
   int block_size        = (n_cycles / n_bins) + 1;
@@ -130,6 +159,7 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
     mc.warmup_and_accumulate(n_warmup_cycles, n_cycles, length_cycle, triqs::utility::clock_callback(-1));
     mc.collect_results(world);
     result = meas.result;
+    report_cache_stats();
 
     if (world.rank() == 0) {
       auto end_time                         = std::chrono::high_resolution_clock::now();
@@ -155,6 +185,7 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
     mc.warmup_and_accumulate(n_warmup_cycles, n_cycles, length_cycle, triqs::utility::clock_callback(-1));
     mc.collect_results(world);
     result = meas.result;
+    report_cache_stats();
 
     if (world.rank() == 0) {
       auto end_time                         = std::chrono::high_resolution_clock::now();
@@ -211,7 +242,7 @@ int main(int argc, char *argv[]) {
   }
 
   int length_cycle        = 1;
-  int n_warmup_cycles     = 5000;
+  int n_warmup_cycles     = 1;
   std::string random_name = "";
   int random_seed         = 32186222 + world.rank() * 786512;
   int verbosity           = (world.rank() == 0 ? 2 : 0);

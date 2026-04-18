@@ -3,6 +3,7 @@
 
 #include "hubbard_solver.hpp"
 #include "args.hpp"
+#include "cumulant_plan.hpp"
 #include <vector>
 #include <unordered_map>
 #include <cstdint>
@@ -57,6 +58,42 @@ namespace sc_expansion {
 
     // Wrapper to match the test usage
     T compute_cumulant_decomposition();
+
+    // --- Plan recording (τ-independent decomposition blueprint) ---
+    // Walks the same recursion as compute_cumulant_decomposition but, instead of evaluating
+    // numerical cumulant values, records the decomposition structure into `plan`.
+    // After this call, evaluate_plan(plan, ...) reproduces the numerical result at any τ.
+    void record_plan(CumulantPlan &plan);
+
+    private:
+    // Memo mapping (mask_u, mask_p) → node id in the plan being built.
+    // The masks are over STABLE (pre-sort) positions — see note on record_plan.
+    // Distinct from `memo` (which stores T values keyed on sorted-basis masks). -1 = zero.
+    std::unordered_map<CacheKey, int, KeyHasher> plan_node_ids;
+
+    // Stable-basis spin masks and stable→sorted permutation, populated at the start of
+    // record_plan(). solve_record / record_distribute_primed use STABLE masks internally
+    // so that all combinatorial signs are τ-invariant.
+    uint64_t plan_spin_mask_stable_u = 0;
+    uint64_t plan_spin_mask_stable_p = 0;
+    std::vector<int> plan_inv_argsort_u; // inv_argsort_u[stable_pos] = sorted_pos in master_unprimed
+    std::vector<int> plan_inv_argsort_p;
+
+    // Mirrors solve(). Returns the node id representing C(mask_u|mask_p), or -1 if zero.
+    int solve_record(uint64_t mask_u, uint64_t mask_p, CumulantPlan &plan);
+
+    // Mirrors distribute_primed(). For one fixed unprimed partition, enumerates every
+    // primed-assignment and appends one ProductTerm per assignment into `out`.
+    // overall_sign is the cumulative (sign_u * Π step_sign_p) carried through the recursion;
+    // factors_so_far is the list of child node ids accumulated so far.
+    // Returns false if any emitted term would be zero (current path is pruned).
+    void record_distribute_primed(const std::vector<uint64_t> &u_partition_masks, int u_idx,
+                                  uint64_t current_p_pool, int overall_sign,
+                                  std::vector<int> &factors_so_far,
+                                  const std::vector<int> &global_map_u,
+                                  const std::vector<int> &global_map_p,
+                                  std::vector<CumulantPlan::ProductTerm> &out,
+                                  CumulantPlan &plan);
   };
 
   template <int N_sites, typename T>
