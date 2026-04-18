@@ -50,17 +50,23 @@ namespace sc_expansion {
     const SparseMatrix<T> &get_operator_matrix(int op_idx) const { return this->operator_matrices[op_idx]; }
 
     private:
-    constexpr static int N_STATES     = 1 << (2 * N_sites); // 4 states for atom, 16 for dimer
-    constexpr static int N_OPS        = 4 * N_sites;        // 4 ops for atom, 8 for dimer
-    static constexpr double SQRT2_INV = 0.70710678118654752440;
+    constexpr static int N_STATES      = 1 << (2 * N_sites); // 4 states for atom, 16 for dimer
+    constexpr static int N_OPS         = 4 * N_sites;        // 4 ops for atom, 8 for dimer
+    constexpr static int MAX_G0N_ORDER = 16;                 // max 2*cumulant_order supported in G0n
+    static constexpr double SQRT2_INV  = 0.70710678118654752440;
+
+    using ExpTable = std::array<std::array<T, N_STATES>, MAX_G0N_ORDER>;
+
     std::array<FermionOperator<N_sites, T>, N_OPS> operators;
     std::array<Eigenstate<T>, N_STATES> all_eigenstates;
     std::array<std::array<TransitionList<T>, N_STATES>, N_OPS> transition_table;
     std::array<SparseMatrix<T>, N_OPS> operator_matrices;
     std::array<T, N_STATES> exp_beta_E;
+    std::array<T, N_STATES> eigenstate_energies; // E[s] cached contiguously for fast access in G0n
 
     void compute_eigenstates();
     void compute_transition_table();
+    void build_tau_exp_tables(Args<N_sites, T> const &args, ExpTable &fwd, ExpTable &inv) const;
   };
 
 } // namespace sc_expansion

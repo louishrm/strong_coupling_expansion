@@ -17,20 +17,21 @@ namespace sc_expansion {
 
   template <int N_sites, typename T> void Args<N_sites, T>::sort_args() {
 
-    std::vector<int> argsort(this->order);
-    std::iota(argsort.begin(), argsort.end(), 0);
-    std::stable_sort(argsort.begin(), argsort.end(), [&](int i, int j) { return this->taus[i] > this->taus[j]; });
+    std::vector<int> argsort_local(this->order);
+    std::iota(argsort_local.begin(), argsort_local.end(), 0);
+    std::stable_sort(argsort_local.begin(), argsort_local.end(), [&](int i, int j) { return this->taus[i] > this->taus[j]; });
 
     // Rearrange ops and taus according to the sorted order
     std::vector<double> sorted_taus;
     sorted_taus.reserve(this->order);
     std::vector<FermionOperator<N_sites, T>> sorted_ops;
     sorted_ops.reserve(this->order);
-    for (int i : argsort) {
+    for (int i : argsort_local) {
       sorted_taus.push_back(this->taus[i]);
       sorted_ops.push_back(this->ops[i]);
     }
-    this->permutation_sign = (double)compute_permutation_sign(argsort);
+    this->permutation_sign = (double)compute_permutation_sign(argsort_local);
+    this->argsort          = std::move(argsort_local);
     this->taus             = std::move(sorted_taus);
     this->ops              = std::move(sorted_ops);
   }
