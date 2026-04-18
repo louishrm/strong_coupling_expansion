@@ -62,8 +62,10 @@ template <typename T> struct MeasureDiagMC {
   }
 
   void collect_results(mpi::communicator comm) {
-    std::cout << "[DiagMC] rank " << comm.rank() << " finished | " << this->step_count << " steps" << std::endl;
-    std::cout.flush();
+    if (comm.rank() == 0) {
+      std::cout << "[DiagMC] rank 0 finished | " << this->step_count << " steps" << std::endl;
+      std::cout.flush();
+    }
 
     int order   = config->get_order();
     double norm = this->alpha * std::pow(config->beta, order);
