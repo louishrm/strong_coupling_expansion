@@ -45,6 +45,56 @@ TEST_F(HubbardSolverTest, AtomG01FiniteU) {
   EXPECT_NEAR(g0, G0_exact, 1e-10);
 }
 
+TEST_F(HubbardSolverTest, AtomG01MatchesG0n) {
+  // Regression test: closed-form G01 must agree with the trace-loop G0n across
+  // a range of (tau_1, tau_1') values and both input operator orderings.
+  struct Case {
+    double t1, t1p;
+  };
+  std::vector<Case> cases = {{0.0, 0.5}, {0.5, 0.0}, {0.2, 0.8}, {0.9, 0.1}, {0.3, 0.3001}, {0.4, 0.4}};
+
+  for (auto const &c : cases) {
+    // Input order [c^dag(t1'), c(t1)]
+    {
+      std::vector<double> taus                    = {c.t1p, c.t1};
+      std::vector<FermionOperator<1, double>> ops = {FermionOperator<1, double>(3), FermionOperator<1, double>(1)};
+      Args<1, double> args(taus, ops);
+      double g0  = solver->G0n(args);
+      double g01 = solver->G01(args);
+      EXPECT_NEAR(g01, g0, 1e-12) << "mismatch at (t1,t1')=(" << c.t1 << "," << c.t1p << ") order [cdag,c]";
+    }
+    // Input order [c(t1), c^dag(t1')]
+    {
+      std::vector<double> taus                    = {c.t1, c.t1p};
+      std::vector<FermionOperator<1, double>> ops = {FermionOperator<1, double>(1), FermionOperator<1, double>(3)};
+      Args<1, double> args(taus, ops);
+      double g0  = solver->G0n(args);
+      double g01 = solver->G01(args);
+      EXPECT_NEAR(g01, g0, 1e-12) << "mismatch at (t1,t1')=(" << c.t1 << "," << c.t1p << ") order [c,cdag]";
+    }
+  }
+}
+
+TEST_F(HubbardSolverTest, AtomG01DualMatchesG0n) {
+  // Dual version: check both value and derivative match between G01 and G0n.
+  Dual U_d(U, 0.0);
+  Dual beta_d(beta, 0.0);
+  Dual mu_d(mu, 1.0); // derivative wrt mu
+  Parameters<Dual> params_d{U_d, beta_d, mu_d, Dual(0.0), true};
+  HubbardSolver<1, Dual> solver_d(params_d);
+
+  std::vector<std::pair<double, double>> cases = {{0.0, 0.5}, {0.5, 0.0}, {0.2, 0.8}, {0.9, 0.1}};
+  for (auto const &[t1, t1p] : cases) {
+    std::vector<double> taus                  = {t1p, t1};
+    std::vector<FermionOperator<1, Dual>> ops = {FermionOperator<1, Dual>(3), FermionOperator<1, Dual>(1)};
+    Args<1, Dual> args(taus, ops);
+    Dual g0  = solver_d.G0n(args);
+    Dual g01 = solver_d.G01(args);
+    EXPECT_NEAR(g01.value, g0.value, 1e-12) << "value mismatch at (" << t1 << "," << t1p << ")";
+    EXPECT_NEAR(g01.derivative, g0.derivative, 1e-12) << "derivative mismatch at (" << t1 << "," << t1p << ")";
+  }
+}
+
 TEST_F(HubbardSolverTest, AtomG0DerivativeMu) {
   double tau = 0.4;
 

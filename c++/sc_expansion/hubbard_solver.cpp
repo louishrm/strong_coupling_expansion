@@ -153,6 +153,11 @@ namespace sc_expansion {
 
     int n = args.order;
 
+    // Fast path: closed-form one-body propagator (atom only for now).
+    if constexpr (N_sites == 1) {
+      if (n == 2) return this->G01(args);
+    }
+
     // exp(tau * deltaE) = exp(tau * E_row) * inv_exp(tau * E_col), avoiding exp() in the inner loop.
     ExpTable exp_tau_E, inv_exp_tau_E;
     this->build_tau_exp_tables(args, exp_tau_E, inv_exp_tau_E);
@@ -197,6 +202,40 @@ namespace sc_expansion {
     } else {
       return exp(this->params.beta * this->params.mu) * (T(1.0) / this->Z_infinite_U) * args.permutation_sign;
     }
+  }
+
+  template <int N_sites, typename T> T HubbardSolver<N_sites, T>::G01(Args<N_sites, T> const &args) const {
+    /* Closed-form one-body propagator.
+       Operates on the (already time-sorted) args: taus[0] >= taus[1], delta = taus[0] - taus[1] >= 0.
+       Works out, by inspecting which op sits at the larger tau, which raw trace applies:
+         - annihilator first (sorted): Tr[e^{-bH} c(tau_1) c^dag(tau_1')]  (physical tau_1 > tau_1')
+         - creator     first (sorted): Tr[e^{-bH} c^dag(tau_1') c(tau_1)]  (physical tau_1' > tau_1)
+       The fermionic-input sign is applied via args.permutation_sign, matching G0n's convention. */
+
+    using std::exp;
+    T result = T(0.0);
+
+    if (!args.operator_sequence_is_valid()) return result;
+
+    if constexpr (N_sites == 1) {
+      T const &mu   = this->params.mu;
+      T const &U    = this->params.U;
+      T const &beta = this->params.beta;
+      double delta  = args.taus[0] - args.taus[1];
+      bool c_first  = (args.ops[0].get_action() == 0); // action 0 = annihilator
+
+      T trace;
+      if (c_first) {
+        // Tr[e^{-bH} c(tau_1) c^dag(tau_1')], delta = tau_1 - tau_1' > 0
+        trace = exp(mu * delta) + exp(beta * mu + (mu - U) * delta);
+      } else {
+        // Tr[e^{-bH} c^dag(tau_1') c(tau_1)], delta = tau_1' - tau_1 > 0
+        trace = exp(beta * mu - mu * delta) + exp(-beta * (U - T(2.0) * mu) + (U - mu) * delta);
+      }
+      return args.permutation_sign * trace / this->Z;
+    }
+
+    return result;
   }
 
   template class HubbardSolver<1, double>;

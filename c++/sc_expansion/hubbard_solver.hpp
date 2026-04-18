@@ -42,6 +42,7 @@ namespace sc_expansion {
 
     T G0n(Args<N_sites, T> const &args) const;
     T G0n_infinite_U(Args<N_sites, T> const &args) const;
+    T G01(Args<N_sites, T> const &args) const; // closed-form one-body propagator (atom only for now)
 
     // Accessors for testing
     T get_Z() const { return this->Z; }
