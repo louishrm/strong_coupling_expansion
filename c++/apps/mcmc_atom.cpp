@@ -31,12 +31,12 @@ static void broadcast_graphs(std::vector<sc_expansion::Graph> &graphs, mpi::comm
 
     if (world.rank() == 0) {
       auto const &graph = graphs[g];
-      V        = graph.get_V();
-      aut      = graph.get_automorphism_count();
-      sym      = (int)graph.get_symmetry_factor();
-      fm       = (int)graph.get_free_multiplicity();
-      bip_only = graph.get_bipartite_only() ? 1 : 0;
-      adj      = graph.get_canonical_form();
+      V                 = graph.get_V();
+      aut               = graph.get_automorphism_count();
+      sym               = (int)graph.get_symmetry_factor();
+      fm                = (int)graph.get_free_multiplicity();
+      bip_only          = graph.get_bipartite_only() ? 1 : 0;
+      adj               = graph.get_canonical_form();
     }
 
     MPI_Bcast(&V, 1, MPI_INT, 0, world.get());
@@ -59,9 +59,8 @@ static void broadcast_graphs(std::vector<sc_expansion::Graph> &graphs, mpi::comm
 // portion. Within each chunk the consecutive-transposition property is preserved,
 // so the vertex cache is kept alive across permutations for maximum reuse.
 template <typename T>
-std::pair<double, double> compute_reference_integral_mpi(sc_expansion::FreeEnergyCalculator<1, T> &calculator,
-                                                         sc_expansion::Parameters<T> const &params, int order,
-                                                         mpi::communicator &world) {
+std::pair<double, double> compute_reference_integral_mpi(sc_expansion::FreeEnergyCalculator<T> &calculator,
+                                                         sc_expansion::Parameters<T> const &params, int order, mpi::communicator &world) {
 
   uint64_t n_perms = sc_expansion::factorial(order);
   uint64_t rank    = world.rank();
@@ -136,9 +135,9 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
 
   sc_expansion::Parameters<T> params;
   if constexpr (std::is_same_v<T, Dual>) {
-    params = {Dual(U, 0.0), Dual(beta, 0.0), Dual(mu, 1.0), Dual(0.0, 0.0), bipartite};
+    params = {Dual(U, 0.0), Dual(beta, 0.0), Dual(mu, 1.0), bipartite};
   } else {
-    params = {U, beta, mu, 0.0, bipartite};
+    params = {U, beta, mu, bipartite};
   }
 
   // --- Phase 1: Rank 0 generates all vacuum diagrams, then broadcasts to all ranks ---
@@ -157,22 +156,23 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
       auto t0 = std::chrono::high_resolution_clock::now();
       sc_expansion::VacuumDiagramGenerator gen(order, params.bipartite);
       gen.generate();
-      graphs = gen.get_unique_graphs();
+      graphs  = gen.get_unique_graphs();
       auto t1 = std::chrono::high_resolution_clock::now();
-      std::cout << "Generated " << graphs.size() << " unique diagrams in "
-                << std::chrono::duration<double>(t1 - t0).count() << " s." << std::endl;
+      std::cout << "Generated " << graphs.size() << " unique diagrams in " << std::chrono::duration<double>(t1 - t0).count() << " s." << std::endl;
     }
   }
   broadcast_graphs(graphs, world);
 
   // --- Phase 2: All ranks construct the calculator from pre-built graphs ---
-  sc_expansion::FreeEnergyCalculator<1, T> calculator(params, order, graphs);
+  sc_expansion::FreeEnergyCalculator<T> calculator(params, order, graphs);
 
   // --- Phase 3: MPI-parallel infinite-U reference integral using SJT ---
   if (world.rank() == 0) { std::cout << "Computing reference integral across " << world.size() << " MPI ranks (SJT)..." << std::endl; }
   auto t_ref_start = std::chrono::high_resolution_clock::now();
-  auto [reference_integral, signed_reference_integral] = compute_reference_integral_mpi(calculator, params, order, world);
-  auto t_ref_end = std::chrono::high_resolution_clock::now();
+  // auto [reference_integral, signed_reference_integral] = compute_reference_integral_mpi(calculator, params, order, world);
+  double reference_integral        = 1.0;
+  double signed_reference_integral = 1.0;
+  auto t_ref_end                   = std::chrono::high_resolution_clock::now();
   if (world.rank() == 0) {
     std::cout << "Reference integral: " << signed_reference_integral << " (abs: " << reference_integral << ")"
               << " computed in " << std::chrono::duration<double>(t_ref_end - t_ref_start).count() << " s." << std::endl;

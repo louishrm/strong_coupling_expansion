@@ -3,8 +3,8 @@
 #include <vector>
 #include <map>
 #include <set>
-#include <numeric>   // For std::accumulate
-#include <algorithm> // For std::next_permutation
+#include <numeric>
+#include <algorithm>
 #include <queue>
 #include "./hubbard_solver.hpp"
 #include "./cumulant.hpp"
@@ -25,36 +25,23 @@ namespace sc_expansion {
   };
 
   // Helper to store valid physics states during generation
-  template <int N_sites> struct GlobalConfiguration {
-    std::vector<uint8_t> config; // Size = Total number of legs in the diagram
+  struct GlobalConfiguration {
+    std::vector<uint8_t> config;
 
     bool operator<(const GlobalConfiguration &other) const { return this->config < other.config; }
     bool operator==(const GlobalConfiguration &other) const { return this->config == other.config; }
   };
 
-  // Helper for symmetry operations (Spin Flip and Lattice Reflection)
-  template <int N_sites, typename T> struct SymmetryGroup {
-    using Config = GlobalConfiguration<N_sites>;
+  // Helper for the cumulant symmetry group (spin flip).
+  template <typename T> struct SymmetryGroup {
+    using Config = GlobalConfiguration;
 
     static Config apply_spin_flip(Config const &c) {
       Config res = c;
-      for (auto &op_id : res.config) { op_id = FermionOperator<N_sites, T>(op_id).apply_spin_flip().op; }
+      for (auto &op_id : res.config) { op_id = FermionOperator<T>(op_id).apply_spin_flip().op; }
       return res;
     }
 
-    static Config apply_reflection(Config const &c) {
-      Config res = c;
-      if constexpr (N_sites == 2) {
-        for (auto &op_id : res.config) { op_id = FermionOperator<N_sites, T>(op_id).apply_reflection().op; }
-      }
-      return res;
-    }
-
-    // Computes all unique configurations in the orbit of the given configuration.
-    // Only SpinFlip is used here — for N_sites=2, the Reflect (dimer site-swap)
-    // symmetry is equivalent to lattice inversion, which is already applied in
-    // canonicalize_directions when merging spatial configurations. Including
-    // Reflect here would double-count those embeddings.
     static std::vector<Config> get_orbit(Config const &c) {
       std::vector<Config> orbit;
       orbit.push_back(c);
@@ -66,7 +53,7 @@ namespace sc_expansion {
 
     static Config get_canonical(Config const &c) {
       auto orbit = get_orbit(c);
-      return orbit[0]; // Lexicographically smallest
+      return orbit[0];
     }
   };
 
@@ -77,135 +64,48 @@ namespace sc_expansion {
   };
 
   // A symmetry-reduced global configuration with its total weight.
-  // config stores the full op_id vector: legs at v0, then v1, ..., in hopping-line iteration order.
-  // weight = spatial_weight * orbit_size / automorphism_count
   struct ValidGlobalConfig {
     std::vector<uint8_t> config;
     double weight;
   };
 
-  // Stores a unique spatial embedding pattern for the dimer (N_sites=2) case.
-  // Each entry in `directions` is a bond label (0-3) for the corresponding hopping line:
-  //   0 = horizontal rightward (source site 1, dest site 0)
-  //   1 = horizontal leftward  (source site 0, dest site 1)
-  //   2 = vertical, site-0 bond (source site 0, dest site 0)
-  //   3 = vertical, site-1 bond (source site 1, dest site 1)
-  // `weight` is the total number of lattice embeddings producing this pattern.
-  struct SpatialConfiguration {
-    std::vector<uint8_t> directions; // Per hopping line: bond label 0-3
-    double weight;
-  };
-
   // Lattice embedding count for a graph on the square (bipartite) or triangular (non-bipartite) lattice.
-  // Moved here from Graph — this is the N_sites=1 (single-site) free multiplicity.
   int compute_lattice_free_multiplicity(Graph const &graph);
 
-  template <int N_sites, typename T> class Diagram {
+  template <typename T> class Diagram {
 
     public:
-    explicit Diagram(Graph const &graph, std::vector<VertexType<N_sites, T> *> const &vertex_types);
+    explicit Diagram(Graph const &graph, std::vector<VertexType<T> *> const &vertex_types);
 
-    // Cluster-restricted embedding: spatial configs computed from only the given positions.
-    // Weights are divided by n_cluster_sites to give per-site (per-dimer) values.
-    Diagram(Graph const &graph, std::vector<VertexType<N_sites, T> *> const &vertex_types, std::vector<std::pair<int, int>> const &cluster_positions,
-            int n_cluster_sites);
+    T evaluate(std::vector<double> const &taus, HubbardSolver<T> const &solver, bool infinite_U);
 
-    T evaluate(std::vector<double> const &taus, HubbardSolver<N_sites, T> const &solver, bool infinite_U);
-
-    // Diagnostic: per-config signed contributions (diagram_sign * w_c * prod_v C_v)
-    // WITHOUT the -1/beta prefactor. Factored path (N_sites=2) only.
-    // Forces full recomputation (marks all vertices dirty) so taus can be set freely.
-    std::vector<T> evaluate_per_config(std::vector<double> const &taus, HubbardSolver<N_sites, T> const &solver, bool infinite_U);
-
-    // Mark all VertexInstances that depend on tau_index as dirty
     void mark_tau_dirty(int tau_index);
-
-    // Mark all VertexInstances as dirty (e.g. after full tau replacement)
     void mark_all_dirty();
 
-    const std::vector<SpatialConfiguration> &get_spatial_configurations() const { return this->spatial_configurations; }
-
-    double get_free_multiplicity() const {
-      double total = 0.0;
-      for (auto const &sc : this->spatial_configurations) { total += sc.weight; }
-      return total;
-    }
+    double get_free_multiplicity() const { return this->graph.get_free_multiplicity(); }
 
     const std::vector<ValidGlobalConfig> &get_valid_configurations() const { return this->valid_configurations; }
     double get_diagram_sign() const { return (double)this->diagram_sign; }
     Graph const &get_graph() const { return this->graph; }
-    std::pair<long, long> get_local_cache_stats() const { return {this->local_cache_hits, this->local_cache_misses}; }
-    std::vector<int> get_local_state_counts() const {
-      std::vector<int> counts;
-      for (auto const &ls : this->local_states) counts.push_back((int)ls.size());
-      return counts;
-    }
-    std::vector<std::vector<std::vector<uint8_t>>> const &get_local_states() const { return this->local_states; }
-
-    // Profiling: cumulative time (seconds) in Phase 1 (cumulant eval) and Phase 2 (config sum)
-    double get_phase1_time() const { return this->phase1_seconds; }
-    double get_phase2_time() const { return this->phase2_seconds; }
 
     private:
     Graph const &graph;
-    std::vector<VertexType<N_sites, T> *> vertex_type_ptrs; // Per-vertex VertexType* for caching (may be nullptr)
+    std::vector<VertexType<T> *> vertex_type_ptrs;
     std::vector<ValidGlobalConfig> valid_configurations;
-    std::vector<SpatialConfiguration> spatial_configurations;
     std::vector<std::vector<LegInfo>> legs_per_vertex;
     Lines hopping_lines;
     int diagram_sign = 1;
 
-    // VertexInstances: [config_idx][vertex_idx] — local cache per (config, vertex) pair
-    std::vector<std::vector<VertexInstance<N_sites, T>>> vertex_instances;
+    // VertexInstances: [config_idx][vertex_idx]
+    std::vector<std::vector<VertexInstance<T>>> vertex_instances;
 
     // Precomputed inverse map: tau_index → list of vertex indices that depend on it.
-    // All configs share the same vertex-to-tau mapping, so we only store vertex indices.
     std::vector<std::vector<int>> tau_to_vertices;
 
-    // Factored evaluation data (N_sites=2 only)
-    // Per-vertex: the distinct op_id tuples that appear at this vertex across all global configs.
-    std::vector<std::vector<std::vector<uint8_t>>> local_states; // [vertex][state_idx] -> op_ids
-    std::vector<std::vector<T>> local_values;                    // [vertex][state_idx] -> cached value
-    std::vector<std::vector<T>> local_values_infinite;           // [vertex][state_idx] -> cached value (inf-U)
-
-    // Precomputed τ-independent decomposition plans for each (vertex, local_state) pair.
-    // Built lazily on first evaluate call (requires HubbardSolver, only available then).
-    // Replaces the partition recursion previously done inside CumulantSolver::solve on every MC step.
-    std::vector<std::vector<CumulantPlan>> local_plans_finite;   // [vertex][state_idx]
-    std::vector<std::vector<CumulantPlan>> local_plans_infinite; // [vertex][state_idx]
-    bool local_plans_built = false;
-    std::vector<bool> vertex_dirty_finite;                       // [vertex]
-    std::vector<bool> vertex_dirty_infinite;                     // [vertex]
-    mutable long local_cache_hits   = 0;                         // factored path: vertex was clean
-    mutable long local_cache_misses = 0;                         // factored path: vertex was dirty
-    mutable double phase1_seconds   = 0.0;                       // cumulative Phase 1 time
-    mutable double phase2_seconds   = 0.0;                       // cumulative Phase 2 time
-    std::vector<std::vector<int>> config_to_local;               // [gc_idx][vertex] -> state_idx
-
     void compute_hopping_lines();
-    void setup_vertices(std::vector<VertexType<N_sites, T> *> const &vertex_types);
-    // Build a CumulantPlan per (vertex, local_state) pair. Called once, lazily, on first
-    // evaluate_factored / evaluate_per_config so the HubbardSolver is available.
-    void build_local_plans(HubbardSolver<N_sites, T> const &solver);
-    void compute_spatial_configurations();
+    void setup_vertices(std::vector<VertexType<T> *> const &vertex_types);
     void compute_valid_configurations();
     void compute_diagram_sign();
     void build_vertex_instances();
-    void build_local_state_tables();
-    T evaluate_factored(std::vector<double> const &taus, HubbardSolver<N_sites, T> const &solver, bool infinite_U);
-
-    // Helpers for dimer spatial embedding on the rectangular (columnar) superlattice
-    void solve_dimer_embedding(int placed_count, std::vector<bool> &placed, std::vector<std::pair<int, int>> &coords,
-                               std::map<std::vector<uint8_t>, int> &config_counts) const;
-
-    // Cluster-restricted embedding: only place vertices at positions in cluster_positions
-    void solve_cluster_embedding(int placed_count, std::vector<bool> &placed, std::vector<std::pair<int, int>> &coords,
-                                 std::map<std::vector<uint8_t>, int> &config_counts, std::vector<std::pair<int, int>> const &cluster_positions) const;
-
-    void compute_spatial_configurations_cluster(std::vector<std::pair<int, int>> const &cluster_positions, int n_cluster_sites);
-
-    std::vector<uint8_t> canonicalize_directions(std::vector<uint8_t> const &dirs, std::vector<std::vector<int>> const &automorphisms) const;
-
-    std::vector<uint8_t> apply_automorphism_to_directions(std::vector<uint8_t> const &dirs, std::vector<int> const &perm) const;
   };
 }; // namespace sc_expansion

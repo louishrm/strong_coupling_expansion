@@ -23,7 +23,7 @@
 #include <cmath>
 #include <memory>
 
-TEST(McmcAtom, Order4DimerCoefficient) {
+TEST(McmcAtom, Order4Coefficient) {
 
   mpi::communicator world;
 
@@ -44,18 +44,18 @@ TEST(McmcAtom, Order4DimerCoefficient) {
   // Exact order-4 coefficient from the Python ED benchmark
   double exact_coeff = -0.019604213442906773;
 
-  sc_expansion::Parameters<double> params{U, beta, mu, 0.0, true};
+  sc_expansion::Parameters<double> params{U, beta, mu, true};
 
   // =====================================================================
   // Construct calculator once with override_fm, compute reference integral
   // =====================================================================
-  sc_expansion::FreeEnergyCalculator<1, double> calculator(params, order, override_fm);
+  sc_expansion::FreeEnergyCalculator<double> calculator(params, order, override_fm);
 
   double reference_integral        = 0.0;
   double signed_reference_integral = 0.0;
 
   if (world.rank() == 0) {
-    auto [ref_abs, ref_signed] = calculator.compute_infinite_U_coefficient(false);
+    auto [ref_abs, ref_signed] = calculator.compute_infinite_U_coefficient();
     reference_integral         = ref_abs;
     signed_reference_integral  = ref_signed;
   }

@@ -4,7 +4,7 @@
 
 template <typename T>
 AtomicConfiguration<T>::AtomicConfiguration(sc_expansion::Parameters<T> const &params_, int order_, double alpha_,
-                                            sc_expansion::FreeEnergyCalculator<1, T> &calculator_)
+                                            sc_expansion::FreeEnergyCalculator<T> &calculator_)
    : ConfigurationBase<T>(params_, order_), alpha(alpha_), integrand(0.0), reference_integrand(0.0), proposed_integrand(0.0),
      proposed_reference_integrand(0.0), calculator(calculator_) {
 

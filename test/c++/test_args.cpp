@@ -18,12 +18,12 @@ TEST(ArgsTest, ConstructorAndSorting) {
   // create up:       3
 
   std::vector<double> taus = {0.2, 0.8};
-  std::vector<FermionOperator<1, double>> ops = {
-    FermionOperator<1, double>(3), // create up
-    FermionOperator<1, double>(1)  // annihilate up
+  std::vector<FermionOperator<double>> ops = {
+    FermionOperator<double>(3), // create up
+    FermionOperator<double>(1)  // annihilate up
   };
 
-  Args<1, double> args(taus, ops);
+  Args<double> args(taus, ops);
 
   EXPECT_EQ(args.order, 2);
   // Sorted descending:
@@ -41,13 +41,13 @@ TEST(ArgsTest, ConstructorAndSorting) {
 TEST(ArgsTest, PermutationSignComplex) {
   // 4 operators, multiple swaps
   std::vector<double> taus = {0.1, 0.4, 0.2, 0.3}; // argsort: {1, 3, 2, 0}
-  std::vector<FermionOperator<1, double>> ops = {
-    FermionOperator<1, double>(0),
-    FermionOperator<1, double>(2),
-    FermionOperator<1, double>(1),
-    FermionOperator<1, double>(3)
+  std::vector<FermionOperator<double>> ops = {
+    FermionOperator<double>(0),
+    FermionOperator<double>(2),
+    FermionOperator<double>(1),
+    FermionOperator<double>(3)
   };
-  Args<1, double> args(taus, ops);
+  Args<double> args(taus, ops);
 
   // inversions in {1, 3, 2, 0}:
   // (1,0), (3,2), (3,0), (2,0) -> 4 inversions. Sign = +1.0.
@@ -62,22 +62,22 @@ TEST(ArgsTest, VerifyConsecutiveTermsInfiniteU) {
   // Path: |up> --(1)--> |0> --(3)--> |up>  VALID
   {
     std::vector<double> taus = {0.8, 0.2};
-    std::vector<FermionOperator<1, double>> ops = {
-        FermionOperator<1, double>(1), // cup
-        FermionOperator<1, double>(3)  // cdag_up
+    std::vector<FermionOperator<double>> ops = {
+        FermionOperator<double>(1), // cup
+        FermionOperator<double>(3)  // cdag_up
     };
-    Args<1, double> args(taus, ops);
+    Args<double> args(taus, ops);
     EXPECT_TRUE(args.operator_sequence_is_valid_infinite_U());
   }
 
   // Invalid: Consecutive creations on same orbital (Pauli exclusion)
   {
     std::vector<double> taus = {0.8, 0.2};
-    std::vector<FermionOperator<1, double>> ops = {
-        FermionOperator<1, double>(3), // cdag_up
-        FermionOperator<1, double>(3)  // cdag_up
+    std::vector<FermionOperator<double>> ops = {
+        FermionOperator<double>(3), // cdag_up
+        FermionOperator<double>(3)  // cdag_up
     };
-    Args<1, double> args(taus, ops);
+    Args<double> args(taus, ops);
     EXPECT_FALSE(args.operator_sequence_is_valid_infinite_U());
   }
 
@@ -88,11 +88,11 @@ TEST(ArgsTest, VerifyConsecutiveTermsInfiniteU) {
   // start |down>: |down> --(3)--> |up down> (forbidden)
   {
     std::vector<double> taus = {0.8, 0.2};
-    std::vector<FermionOperator<1, double>> ops = {
-        FermionOperator<1, double>(3), // cdag_up
-        FermionOperator<1, double>(0)  // cdn
+    std::vector<FermionOperator<double>> ops = {
+        FermionOperator<double>(3), // cdag_up
+        FermionOperator<double>(0)  // cdn
     };
-    Args<1, double> args(taus, ops);
+    Args<double> args(taus, ops);
     EXPECT_FALSE(args.operator_sequence_is_valid_infinite_U());
   }
 
@@ -138,13 +138,13 @@ TEST(ArgsTest, VerifyConsecutiveTermsInfiniteU) {
   // Start |up>: |up> --(1)--> |0> --(3)--> |up> --(1)--> |0> --(3)--> |up>  VALID!
   {
     std::vector<double> taus = {0.9, 0.7, 0.5, 0.3};
-    std::vector<FermionOperator<1, double>> ops = {
-        FermionOperator<1, double>(1), // cup
-        FermionOperator<1, double>(3), // cdag_up
-        FermionOperator<1, double>(1), // cup
-        FermionOperator<1, double>(3)  // cdag_up
+    std::vector<FermionOperator<double>> ops = {
+        FermionOperator<double>(1), // cup
+        FermionOperator<double>(3), // cdag_up
+        FermionOperator<double>(1), // cup
+        FermionOperator<double>(3)  // cdag_up
     };
-    Args<1, double> args(taus, ops);
+    Args<double> args(taus, ops);
     EXPECT_TRUE(args.operator_sequence_is_valid_infinite_U());
   }
 }

@@ -7,7 +7,7 @@ template <typename T> class AtomicConfiguration : public ConfigurationBase<T> {
 
   public:
   AtomicConfiguration(sc_expansion::Parameters<T> const &params, int order, double alpha,
-                      sc_expansion::FreeEnergyCalculator<1, T> &calculator);
+                      sc_expansion::FreeEnergyCalculator<T> &calculator);
 
   double evaluate_proposed() override;
   void commit_proposal() override;
@@ -17,7 +17,7 @@ template <typename T> class AtomicConfiguration : public ConfigurationBase<T> {
 
   void mark_tau_dirty(int tau_index) override;
 
-  sc_expansion::FreeEnergyCalculator<1, T> const &get_calculator() const { return this->calculator; }
+  sc_expansion::FreeEnergyCalculator<T> const &get_calculator() const { return this->calculator; }
 
   private:
   double alpha;
@@ -31,7 +31,7 @@ template <typename T> class AtomicConfiguration : public ConfigurationBase<T> {
   double proposed_reference_integrand;
 
   // Diagram evaluation (non-owning reference to externally-owned calculator)
-  sc_expansion::FreeEnergyCalculator<1, T> &calculator;
+  sc_expansion::FreeEnergyCalculator<T> &calculator;
 
   double compute_weight(double finite_U, double infinite_U) const;
   std::pair<double, double> compute_integrands() const;

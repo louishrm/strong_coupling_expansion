@@ -6,8 +6,8 @@
 
 namespace sc_expansion {
 
-  template <int N_sites, typename T>
-  Args<N_sites, T>::Args(std::vector<double> taus_, std::vector<FermionOperator<N_sites, T>> ops_) : taus(std::move(taus_)), ops(std::move(ops_)) {
+  template <typename T>
+  Args<T>::Args(std::vector<double> taus_, std::vector<FermionOperator<T>> ops_) : taus(std::move(taus_)), ops(std::move(ops_)) {
     if (taus.size() != ops.size()) { throw std::runtime_error("Error in Args constructor: taus and ops must have the same size"); }
 
     this->order            = taus.size();
@@ -15,7 +15,7 @@ namespace sc_expansion {
     this->sort_args();
   }
 
-  template <int N_sites, typename T> void Args<N_sites, T>::sort_args() {
+  template <typename T> void Args<T>::sort_args() {
 
     std::vector<int> argsort_local(this->order);
     std::iota(argsort_local.begin(), argsort_local.end(), 0);
@@ -24,7 +24,7 @@ namespace sc_expansion {
     // Rearrange ops and taus according to the sorted order
     std::vector<double> sorted_taus;
     sorted_taus.reserve(this->order);
-    std::vector<FermionOperator<N_sites, T>> sorted_ops;
+    std::vector<FermionOperator<T>> sorted_ops;
     sorted_ops.reserve(this->order);
     for (int i : argsort_local) {
       sorted_taus.push_back(this->taus[i]);
@@ -36,10 +36,10 @@ namespace sc_expansion {
     this->ops              = std::move(sorted_ops);
   }
 
-  template <int N_sites, typename T> bool Args<N_sites, T>::operator_sequence_is_valid() const {
-    int last_action[Args<N_sites, T>::N_ORBITALS];
+  template <typename T> bool Args<T>::operator_sequence_is_valid() const {
+    int last_action[Args<T>::N_ORBITALS];
     std::fill(std::begin(last_action), std::end(last_action), -1);
-    int ops_count[Args<N_sites, T>::N_ORBITALS] = {0};
+    int ops_count[Args<T>::N_ORBITALS] = {0};
 
     //1. ensure Pauli exclusion is respected
     for (auto const &f_op : ops) {
@@ -51,15 +51,13 @@ namespace sc_expansion {
     }
 
     //ensure that trace loop closes: each orbital must be acted on an even number of times (created and destroyed the same number of times)
-    for (int i = 0; i < Args<N_sites, T>::N_ORBITALS; ++i) {
+    for (int i = 0; i < Args<T>::N_ORBITALS; ++i) {
       if (ops_count[i] % 2 != 0) { return false; }
     }
     return true;
   }
 
-  template <int N_sites, typename T> bool Args<N_sites, T>::operator_sequence_is_valid_infinite_U() const {
-    if constexpr (N_sites != 1) return true; // Only defined for Hubbard Atom currently
-
+  template <typename T> bool Args<T>::operator_sequence_is_valid_infinite_U() const {
     if (!this->operator_sequence_is_valid()) return false;
 
     // Start states: |0>, |down>, |up> (bit representation: 00, 01, 10)
@@ -98,16 +96,15 @@ namespace sc_expansion {
     return false;
   }
 
-  template <int N_sites, typename T>
-  std::pair<Args<N_sites, T>, Args<N_sites, T>> Args<N_sites, T>::split_from_raw(std::vector<double> const &taus,
-                                                                               std::vector<uint8_t> const &op_ids) {
+  template <typename T>
+  std::pair<Args<T>, Args<T>> Args<T>::split_from_raw(std::vector<double> const &taus, std::vector<uint8_t> const &op_ids) {
     if (taus.size() != op_ids.size()) { throw std::runtime_error("Error in Args::split_from_raw: taus and op_ids must have the same size"); }
 
     std::vector<double> t_u, t_p;
-    std::vector<FermionOperator<N_sites, T>> o_u, o_p;
+    std::vector<FermionOperator<T>> o_u, o_p;
 
     for (size_t i = 0; i < taus.size(); ++i) {
-      FermionOperator<N_sites, T> op(op_ids[i]);
+      FermionOperator<T> op(op_ids[i]);
       if (op.get_action() == 0) { // Destruction
         t_u.push_back(taus[i]);
         o_u.push_back(op);
@@ -117,12 +114,10 @@ namespace sc_expansion {
       }
     }
     // Note: The Args constructor automatically performs the canonical time-sorting and computes the permutation_sign.
-    return {Args<N_sites, T>(std::move(t_u), std::move(o_u)), Args<N_sites, T>(std::move(t_p), std::move(o_p))};
+    return {Args<T>(std::move(t_u), std::move(o_u)), Args<T>(std::move(t_p), std::move(o_p))};
   }
 
-  template struct Args<1, double>;
-  template struct Args<1, Dual>;
-  template struct Args<2, double>;
-  template struct Args<2, Dual>;
+  template struct Args<double>;
+  template struct Args<Dual>;
 
 } // namespace sc_expansion

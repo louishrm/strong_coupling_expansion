@@ -7,8 +7,8 @@
 
 namespace sc_expansion {
 
-  template <int N_sites> struct FockState {
-    int state; // lowest N_sites bits: spin down, next N_sites bits: spin up
+  struct FockState {
+    int state; // bit 0: spin down, bit 1: spin up
     FockState(int state_);
     bool is_occupied(uint8_t orbital_index) const;
   };
@@ -38,22 +38,21 @@ namespace sc_expansion {
     std::vector<Entry> entries;
   };
 
-  template <int N_sites, typename T> struct FermionOperator {
+  template <typename T> struct FermionOperator {
 
     public:
-    uint8_t op; // Bit N_sites is the 'action' bit: 0 = destroy, 1 = create
+    uint8_t op; // Bit 1 is the 'action' bit: 0 = destroy, 1 = create
     FermionOperator() = default;
     FermionOperator(uint8_t op_);
     uint8_t get_action() const;
     uint8_t get_orbital_index() const;
-    Transition<T> act_on_state(FockState<N_sites> const &fock_state) const;
+    Transition<T> act_on_state(FockState const &fock_state) const;
     T compute_matrix_element(Eigenstate<T> const &bra, Eigenstate<T> const &ket) const;
 
-    FermionOperator<N_sites, T> apply_spin_flip() const;
-    FermionOperator<N_sites, T> apply_reflection() const;
+    FermionOperator<T> apply_spin_flip() const;
 
-    static constexpr uint8_t N_STATES     = 1 << (2 * N_sites); //4^N_sites
-    static constexpr uint8_t ACTION_BIT   = (1 << N_sites);
+    static constexpr uint8_t N_STATES     = 4;
+    static constexpr uint8_t ACTION_BIT   = 2;
     static constexpr uint8_t ORBITAL_MASK = ACTION_BIT - 1;
 
     SparseMatrix<T> compute_sparse_matrix(std::array<Eigenstate<T>, N_STATES> const &all_eigenstates) const;

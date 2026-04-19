@@ -8,16 +8,8 @@ endforeach()
 file(GLOB_RECURSE all_tests RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} *.cpp)
 list(REMOVE_ITEM all_tests
   test_mcmc_atom.cpp
-  test_mcmc_dimer.cpp
-  test_dimer_diagnostics.cpp
-  test_compare_atom_dimer.cpp
   test_hubbard_atom.cpp
   test_atomic_cumulant.cpp
-  test_dimer_order6.cpp
-  test_vandermonde_dimer.cpp
-  test_dimer_quadrature.cpp
-  test_diagmc.cpp
-  test_diagmc_infinite.cpp
 )
 
 foreach(test ${all_tests})
@@ -52,18 +44,3 @@ add_executable(test_mcmc_atom test_mcmc_atom.cpp)
 target_link_libraries(test_mcmc_atom ${PROJECT_NAME}::${PROJECT_NAME}_c ${PROJECT_NAME}_warnings gtest)
 add_test(NAME test_mcmc_atom COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 4 ${CMAKE_CURRENT_BINARY_DIR}/test_mcmc_atom)
 
-add_executable(test_mcmc_dimer test_mcmc_dimer.cpp)
-target_link_libraries(test_mcmc_dimer ${PROJECT_NAME}::${PROJECT_NAME}_c ${PROJECT_NAME}_warnings gtest)
-add_test(NAME test_mcmc_dimer COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 4 ${CMAKE_CURRENT_BINARY_DIR}/test_mcmc_dimer)
-
-add_executable(test_dimer_order6 test_dimer_order6.cpp)
-target_link_libraries(test_dimer_order6 ${PROJECT_NAME}::${PROJECT_NAME}_c ${PROJECT_NAME}_warnings gtest)
-add_test(NAME test_dimer_order6 COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 4 ${CMAKE_CURRENT_BINARY_DIR}/test_dimer_order6)
-
-add_executable(test_diagmc test_diagmc.cpp)
-target_link_libraries(test_diagmc ${PROJECT_NAME}::${PROJECT_NAME}_c ${PROJECT_NAME}_warnings gtest)
-add_test(NAME test_diagmc COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 4 ${CMAKE_CURRENT_BINARY_DIR}/test_diagmc)
-
-add_executable(test_diagmc_infinite test_diagmc_infinite.cpp)
-target_link_libraries(test_diagmc_infinite ${PROJECT_NAME}::${PROJECT_NAME}_c ${PROJECT_NAME}_warnings gtest)
-add_test(NAME test_diagmc_infinite COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 4 ${CMAKE_CURRENT_BINARY_DIR}/test_diagmc_infinite)

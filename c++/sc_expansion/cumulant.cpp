@@ -1,19 +1,17 @@
 #include "cumulant.hpp"
+#include "dual.hpp"
 #include <numeric>
-#include <set>
 #include <algorithm>
-#include <stdexcept>
-#include <functional> // Required for std::forward
+#include <functional>
 
 namespace {
 
-  // Type definitions for partition generation
   using subset_t         = std::vector<int>;
   using partition_t      = std::vector<subset_t>;
   using all_partitions_t = std::vector<partition_t>;
 
   void fill_partitions(std::vector<int> const &set, int index, all_partitions_t &ans, partition_t &current_partition) {
-    if (index == set.size()) {
+    if (index == (int)set.size()) {
       ans.push_back(current_partition);
       return;
     }
@@ -40,15 +38,12 @@ namespace {
     return partition_cache[n] = std::move(ans);
   }
 
-  // --- Bitwise Helpers ---
-
   inline int popcount(uint64_t n) { return __builtin_popcountll(n); }
   inline int ctz(uint64_t n) { return __builtin_ctzll(n); }
 
   int compute_extraction_sign(uint64_t pool, uint64_t subset) {
     int inversions     = 0;
     uint64_t remaining = pool ^ subset;
-
     while (subset) {
       int bit             = ctz(subset);
       uint64_t lower_mask = (1ULL << bit) - 1;
@@ -58,7 +53,7 @@ namespace {
     return (inversions % 2 == 0) ? 1 : -1;
   }
 
-  // Recursive Subset Generator (Avoids template depth issues)
+  // Enumerates all k-element subsets of `pool` (a bitmask) and invokes `callback` on each.
   template <typename Func> void recursive_subset_generator(uint64_t pool, int k, uint64_t current_subset, Func &&callback) {
     if (k == 0) {
       callback(current_subset);
@@ -70,249 +65,32 @@ namespace {
     uint64_t bit_mask  = (1ULL << bit);
     uint64_t next_pool = pool ^ bit_mask;
 
-    // Branch A: Take bit
     recursive_subset_generator(next_pool, k - 1, current_subset | bit_mask, callback);
-
-    // Branch B: Skip bit
     recursive_subset_generator(next_pool, k, current_subset, callback);
   }
 
-  // Public wrapper
   template <typename Func> void for_each_subset(uint64_t pool, int k, Func &&callback) {
     recursive_subset_generator(pool, k, 0, std::forward<Func>(callback));
   }
 
 } // namespace
 
-#include "dual.hpp"
-
 namespace sc_expansion {
 
-  template <int N_sites, typename T>
-  CumulantSolver<N_sites, T>::CumulantSolver(const Args<N_sites, T> &u, const Args<N_sites, T> &p, const HubbardSolver<N_sites, T> &s, bool infinite_U_)
-     : master_unprimed(u), master_primed(p), solver(s), infinite_U(infinite_U_) {
-
-    // Pre-calculate spin masks
-    for (size_t i = 0; i < u.ops.size(); ++i) {
-      uint8_t orbital = u.ops[i].get_orbital_index();
-      // Spin up if orbital >= N_sites
-      if (orbital >= N_sites) this->master_spin_mask_u |= (1ULL << i);
-    }
-    for (size_t i = 0; i < p.ops.size(); ++i) {
-        uint8_t orbital = p.ops[i].get_orbital_index();
-        if (orbital >= N_sites) this->master_spin_mask_p |= (1ULL << i);
-    }
-  }
-
-  template <int N_sites, typename T> T CumulantSolver<N_sites, T>::call_bare(const Args<N_sites, T> &u, const Args<N_sites, T> &p) const {
-    int n = u.order;
-    std::vector<double> taus;
-    std::vector<FermionOperator<N_sites, T>> ops;
-    taus.reserve(2 * n);
-    ops.reserve(2 * n);
-
-    for (int i = 0; i < n; ++i) {
-      // Creation (primed)
-      taus.push_back(p.taus[i]);
-      ops.push_back(p.ops[i]);
-      // Destruction (unprimed)
-      taus.push_back(u.taus[i]);
-      ops.push_back(u.ops[i]);
-    }
-
-    Args<N_sites, T> args(std::move(taus), std::move(ops));
-    return infinite_U ? solver.G0n_infinite_U(args) : solver.G0n(args);
-  }
-
-  // Recursive Distributor (Fixed Sign Logic)
-  template <int N_sites, typename T>
-  T CumulantSolver<N_sites, T>::distribute_primed(const std::vector<uint64_t> &u_partition_masks, int u_idx, uint64_t current_p_pool,
-                                                  const std::vector<int> &global_map_u, const std::vector<int> &global_map_p) {
-
-    // Base Case
-    if (u_idx == u_partition_masks.size()) { return T(1.0); }
-
-    uint64_t u_mask = u_partition_masks[u_idx];
-    int needed_k    = popcount(u_mask);
-    T sum_terms     = T(0.0);
-
-    for_each_subset(current_p_pool, needed_k, [&](uint64_t p_submask) {
-      // 1. Calculate Local Sign for this step
-      int step_sign_p = compute_extraction_sign(current_p_pool, p_submask);
-
-      // 2. Map Local -> Global
-      uint64_t global_mask_u = 0;
-      uint64_t global_mask_p = 0;
-
-      uint64_t temp_u = u_mask;
-      while (temp_u) {
-        int b = ctz(temp_u);
-        global_mask_u |= (1ULL << global_map_u[b]);
-        temp_u &= ~(1ULL << b);
-      }
-
-      uint64_t temp_p = p_submask;
-      while (temp_p) {
-        int b = ctz(temp_p);
-        global_mask_p |= (1ULL << global_map_p[b]);
-        temp_p &= ~(1ULL << b);
-      }
-
-      // 3. Compute Value
-      T term_val = this->solve(global_mask_u, global_mask_p);
-
-      // 4. Recurse (No sign passed down)
-      T remainder = distribute_primed(u_partition_masks, u_idx + 1, current_p_pool ^ p_submask, global_map_u, global_map_p);
-
-      // 5. Accumulate: Sign * Value * Rest
-      sum_terms = sum_terms + T(step_sign_p) * term_val * remainder;
-    });
-
-    return sum_terms;
-  }
-
-  template <int N_sites, typename T> T CumulantSolver<N_sites, T>::solve(uint64_t mask_u, uint64_t mask_p) {
-
-    // 1. Check Spin Conservation
-    if (popcount(mask_u & master_spin_mask_u) != popcount(mask_p & master_spin_mask_p)) return T(0.0);
-
-    // 2. Cache Check
-    CacheKey key{mask_u, mask_p};
-    if (auto it = memo.find(key); it != memo.end()) {
-      cache_hits++;
-      return it->second;
-    }
-    cache_misses++;
-
-    // 3. Map Global -> Local
-    std::vector<int> global_map_u, global_map_p;
-    uint64_t temp = mask_u;
-    while (temp) {
-      int i = ctz(temp);
-      global_map_u.push_back(i);
-      temp &= ~(1ULL << i);
-    }
-    temp = mask_p;
-    while (temp) {
-      int i = ctz(temp);
-      global_map_p.push_back(i);
-      temp &= ~(1ULL << i);
-    }
-
-    int order = global_map_u.size();
-
-    // 4. Base Case: Order 1
-    if (order == 1) {
-      Args<N_sites, T> args_u({master_unprimed.taus[global_map_u[0]]}, {master_unprimed.ops[global_map_u[0]]});
-      Args<N_sites, T> args_p({master_primed.taus[global_map_p[0]]}, {master_primed.ops[global_map_p[0]]});
-      return memo[key] = this->call_bare(args_u, args_p);
-    }
-
-    // 5. Compute G0_n
-    std::vector<double> current_taus_u, current_taus_p;
-    std::vector<FermionOperator<N_sites, T>> current_ops_u, current_ops_p;
-    current_taus_u.reserve(order);
-    current_ops_u.reserve(order);
-    current_taus_p.reserve(order);
-    current_ops_p.reserve(order);
-    for (int idx : global_map_u) {
-        current_taus_u.push_back(master_unprimed.taus[idx]);
-        current_ops_u.push_back(master_unprimed.ops[idx]);
-    }
-    for (int idx : global_map_p) {
-        current_taus_p.push_back(master_primed.taus[idx]);
-        current_ops_p.push_back(master_primed.ops[idx]);
-    }
-
-    Args<N_sites, T> current_args_u(current_taus_u, current_ops_u);
-    Args<N_sites, T> current_args_p(current_taus_p, current_ops_p);
-
-    T G0n = this->call_bare(current_args_u, current_args_p);
-
-    // 6. Subtraction Term Logic
-    T low_order_cumulants           = T(0.0);
-    const auto &unprimed_partitions = get_partitions(order);
-
-    for (const auto &partition : unprimed_partitions) {
-      if (partition.size() == 1) continue;
-
-      int sign_u      = 1;
-      uint64_t u_pool = (order == 64) ? ~0ULL : (1ULL << order) - 1;
-      std::vector<uint64_t> u_partition_masks;
-
-      // Calculate S_u (Unprimed Sign)
-      for (const auto &subset : partition) {
-        uint64_t submask = 0;
-        for (int idx : subset) submask |= (1ULL << idx);
-
-        sign_u *= compute_extraction_sign(u_pool, submask);
-        u_pool ^= submask;
-
-        u_partition_masks.push_back(submask);
-      }
-
-      // Calculate Sum of (S_p * Terms)
-      uint64_t full_local_p_mask = (order == 64) ? ~0ULL : (1ULL << order) - 1;
-
-      T term_sum = distribute_primed(u_partition_masks, 0, full_local_p_mask, global_map_u, global_map_p);
-
-      // Apply Global Sign
-      low_order_cumulants = low_order_cumulants + T(-1.0 * sign_u) * term_sum;
-    }
-
-    return memo[key] = G0n + low_order_cumulants;
-  }
-
-  template <int N_sites, typename T> T CumulantSolver<N_sites, T>::compute_cumulant_decomposition() {
-    uint64_t full_mask = (this->master_unprimed.order == 64) ? ~0ULL : (1ULL << this->master_unprimed.order) - 1;
-    return this->solve(full_mask, full_mask);
-  }
-
-  template <int N_sites, typename T>
-  T compute_cumulant_decomposition(Args<N_sites, T> const &unprimed, Args<N_sites, T> const &primed, HubbardSolver<N_sites, T> const &solver, bool infinite_U,
-                                   bool verbose) {
-    if (unprimed.order != primed.order) throw std::invalid_argument("Size mismatch in compute_cumulant_decomposition");
-    if (unprimed.order == 0) throw std::invalid_argument("Empty list in compute_cumulant_decomposition");
-
-    CumulantSolver<N_sites, T> solver_obj(unprimed, primed, solver, infinite_U);
-    T result = solver_obj.compute_cumulant_decomposition();
-
-    if (verbose) { std::cout << "CumulantSolver Cache Stats: Hits = " << solver_obj.cache_hits << ", Misses = " << solver_obj.cache_misses << "\n"; }
-    return result;
-  }
-
   // ============================================================================
-  //  Plan recording — STABLE-BASIS implementation.
-  //
-  //  The existing solve() path works in τ-sorted basis: its bitmasks index into the
-  //  τ-sorted master arrays, and compute_extraction_sign is applied to local (sorted)
-  //  positions. Those signs DEPEND ON τ (a different τ-sort puts the same stable ops
-  //  at different local positions → different sign).
-  //
-  //  For a τ-independent plan, we rerun the Möbius recursion but with everything
-  //  re-indexed in STABLE (pre-sort) positions:
-  //    - bitmasks are over stable positions
-  //    - compute_extraction_sign operates on stable-local indices (τ-invariant)
-  //    - plan leaves list ops in ascending stable order
-  //    - sub-cumulants are recursively in stable basis
-  //
-  //  The Möbius formula is basis-independent: applied consistently in stable basis
-  //  it produces the stable-basis cumulant. evaluate_plan converts back to τ-sorted
-  //  basis at the root by multiplying by master_u.permutation_sign × master_p.permutation_sign,
-  //  matching the existing convention (see vertex.cpp:59).
+  //  Plan recording
   // ============================================================================
 
-  template <int N_sites, typename T>
-  void CumulantSolver<N_sites, T>::record_distribute_primed(const std::vector<uint64_t> &u_partition_masks, int u_idx,
-                                                            uint64_t current_p_pool, int overall_sign,
-                                                            std::vector<int> &factors_so_far,
-                                                            const std::vector<int> &stable_map_u,
-                                                            const std::vector<int> &stable_map_p,
-                                                            std::vector<CumulantPlan::ProductTerm> &out,
-                                                            CumulantPlan &plan) {
+  template <typename T>
+  CumulantSolver<T>::CumulantSolver(Args<T> const &unprimed, Args<T> const &primed)
+     : master_unprimed(unprimed), master_primed(primed) {}
 
-    // All arguments are in local (stable-index ctz) space. Masks in u_partition_masks
-    // are local-bit masks over [0, order). stable_map_{u,p}[local_bit] = global stable pos.
+  template <typename T>
+  void CumulantSolver<T>::record_distribute_primed(std::vector<uint64_t> const &u_partition_masks, int u_idx, uint64_t current_p_pool,
+                                                   int overall_sign, std::vector<int> &factors_so_far, std::vector<int> const &stable_map_u,
+                                                   std::vector<int> const &stable_map_p, std::vector<CumulantPlan::ProductTerm> &out,
+                                                   CumulantPlan &plan) {
+
     if (u_idx == (int)u_partition_masks.size()) {
       CumulantPlan::ProductTerm term;
       term.sign            = overall_sign;
@@ -322,83 +100,68 @@ namespace sc_expansion {
     }
 
     uint64_t u_mask = u_partition_masks[u_idx];
-    int needed_k    = __builtin_popcountll(u_mask);
+    int needed_k    = popcount(u_mask);
 
     for_each_subset(current_p_pool, needed_k, [&](uint64_t p_submask) {
       int step_sign_p = compute_extraction_sign(current_p_pool, p_submask);
 
-      // Map local-bit masks to GLOBAL STABLE-position masks via stable_map_{u,p}
       uint64_t global_mask_u_stable = 0, global_mask_p_stable = 0;
       {
         uint64_t t = u_mask;
-        while (t) { int b = __builtin_ctzll(t); global_mask_u_stable |= (1ULL << stable_map_u[b]); t &= ~(1ULL << b); }
+        while (t) { int b = ctz(t); global_mask_u_stable |= (1ULL << stable_map_u[b]); t &= ~(1ULL << b); }
       }
       {
         uint64_t t = p_submask;
-        while (t) { int b = __builtin_ctzll(t); global_mask_p_stable |= (1ULL << stable_map_p[b]); t &= ~(1ULL << b); }
+        while (t) { int b = ctz(t); global_mask_p_stable |= (1ULL << stable_map_p[b]); t &= ~(1ULL << b); }
       }
 
       int child_id = this->solve_record(global_mask_u_stable, global_mask_p_stable, plan);
-      if (child_id < 0) return; // prune: any product term with a zero factor is zero
+      if (child_id < 0) return;
 
       factors_so_far.push_back(child_id);
-      this->record_distribute_primed(u_partition_masks, u_idx + 1, current_p_pool ^ p_submask,
-                                     overall_sign * step_sign_p, factors_so_far,
+      this->record_distribute_primed(u_partition_masks, u_idx + 1, current_p_pool ^ p_submask, overall_sign * step_sign_p, factors_so_far,
                                      stable_map_u, stable_map_p, out, plan);
       factors_so_far.pop_back();
     });
   }
 
-  template <int N_sites, typename T>
-  int CumulantSolver<N_sites, T>::solve_record(uint64_t mask_u_stable, uint64_t mask_p_stable, CumulantPlan &plan) {
+  template <typename T> int CumulantSolver<T>::solve_record(uint64_t mask_u_stable, uint64_t mask_p_stable, CumulantPlan &plan) {
 
-    // 1. Spin conservation — uses stable-basis spin masks populated in record_plan().
-    if (__builtin_popcountll(mask_u_stable & plan_spin_mask_stable_u)
-        != __builtin_popcountll(mask_p_stable & plan_spin_mask_stable_p))
-      return -1;
+    if (popcount(mask_u_stable & this->plan_spin_mask_stable_u) != popcount(mask_p_stable & this->plan_spin_mask_stable_p)) return -1;
 
-    // 2. Dedup on stable (mask_u, mask_p).
     CacheKey key{mask_u_stable, mask_p_stable};
-    if (auto it = plan_node_ids.find(key); it != plan_node_ids.end()) return it->second;
+    if (auto it = this->plan_node_ids.find(key); it != this->plan_node_ids.end()) return it->second;
 
-    // 3. Unpack stable masks into ordered stable positions (ctz = ascending stable pos).
     std::vector<int> stable_map_u, stable_map_p;
     {
       uint64_t t = mask_u_stable;
-      while (t) { int i = __builtin_ctzll(t); stable_map_u.push_back(i); t &= ~(1ULL << i); }
+      while (t) { int i = ctz(t); stable_map_u.push_back(i); t &= ~(1ULL << i); }
     }
     {
       uint64_t t = mask_p_stable;
-      while (t) { int i = __builtin_ctzll(t); stable_map_p.push_back(i); t &= ~(1ULL << i); }
+      while (t) { int i = ctz(t); stable_map_p.push_back(i); t &= ~(1ULL << i); }
     }
     int order = (int)stable_map_u.size();
 
-    // 4. Leaf: list stable positions in ascending stable order.
-    //    evaluate_plan uses this order to build the leaf Args and call G0n in stable basis.
     CumulantPlan::Node node;
     node.leaf.u_global_idx = stable_map_u;
     node.leaf.p_global_idx = stable_map_p;
 
-    // 5. Order-1: cumulant equals G0 (still in stable basis). No subtraction terms.
     if (order == 1) {
       int new_id = (int)plan.nodes.size();
       plan.nodes.push_back(std::move(node));
-      plan_node_ids.emplace(key, new_id);
+      this->plan_node_ids.emplace(key, new_id);
       return new_id;
     }
 
-    // 6. Iterate non-trivial partitions of local [0, order). Signs are computed on
-    //    local-bit masks, where local bit i corresponds to stable position stable_map_u[i].
-    //    Since stable_map_u is in ascending stable order, the local-bit ordering is
-    //    itself τ-invariant.
-    const auto &unprimed_partitions = get_partitions(order);
-    for (const auto &partition : unprimed_partitions) {
+    auto const &unprimed_partitions = get_partitions(order);
+    for (auto const &partition : unprimed_partitions) {
       if (partition.size() == 1) continue;
 
-      int sign_u                      = 1;
-      uint64_t u_pool_local           = (order == 64) ? ~0ULL : (1ULL << order) - 1;
+      int sign_u            = 1;
+      uint64_t u_pool_local = (order == 64) ? ~0ULL : (1ULL << order) - 1;
       std::vector<uint64_t> u_partition_local_masks;
-      for (const auto &subset : partition) {
+      for (auto const &subset : partition) {
         uint64_t submask_local = 0;
         for (int idx : subset) submask_local |= (1ULL << idx);
         sign_u *= compute_extraction_sign(u_pool_local, submask_local);
@@ -406,31 +169,28 @@ namespace sc_expansion {
         u_partition_local_masks.push_back(submask_local);
       }
 
-      int base_sign             = -sign_u;
+      int base_sign              = -sign_u;
       uint64_t full_local_p_mask = (order == 64) ? ~0ULL : (1ULL << order) - 1;
 
       std::vector<int> factors_scratch;
       factors_scratch.reserve(partition.size());
-      this->record_distribute_primed(u_partition_local_masks, 0, full_local_p_mask, base_sign,
-                                     factors_scratch, stable_map_u, stable_map_p,
+      this->record_distribute_primed(u_partition_local_masks, 0, full_local_p_mask, base_sign, factors_scratch, stable_map_u, stable_map_p,
                                      node.subtraction_terms, plan);
     }
 
     int new_id = (int)plan.nodes.size();
     plan.nodes.push_back(std::move(node));
-    plan_node_ids.emplace(key, new_id);
+    this->plan_node_ids.emplace(key, new_id);
     return new_id;
   }
 
-  template <int N_sites, typename T>
-  void CumulantSolver<N_sites, T>::record_plan(CumulantPlan &plan) {
+  template <typename T> void CumulantSolver<T>::record_plan(CumulantPlan &plan) {
     plan.nodes.clear();
     plan.root_id = -1;
-    plan_node_ids.clear();
+    this->plan_node_ids.clear();
 
     int order = this->master_unprimed.order;
 
-    // Precompute inv_argsort: stable_pos → sorted_pos in master.
     this->plan_inv_argsort_u.assign(order, 0);
     this->plan_inv_argsort_p.assign(order, 0);
     for (int sorted_pos = 0; sorted_pos < order; ++sorted_pos) {
@@ -438,35 +198,85 @@ namespace sc_expansion {
       this->plan_inv_argsort_p[this->master_primed.argsort[sorted_pos]]   = sorted_pos;
     }
 
-    // Precompute stable-basis spin masks: bit stable_pos = 1 iff op at stable_pos is spin up.
     this->plan_spin_mask_stable_u = 0;
     this->plan_spin_mask_stable_p = 0;
     for (int stable_pos = 0; stable_pos < order; ++stable_pos) {
       int sp_u = this->plan_inv_argsort_u[stable_pos];
       int sp_p = this->plan_inv_argsort_p[stable_pos];
-      if (this->master_unprimed.ops[sp_u].get_orbital_index() >= N_sites)
-        this->plan_spin_mask_stable_u |= (1ULL << stable_pos);
-      if (this->master_primed.ops[sp_p].get_orbital_index() >= N_sites)
-        this->plan_spin_mask_stable_p |= (1ULL << stable_pos);
+      if (this->master_unprimed.ops[sp_u].get_orbital_index() >= 1) this->plan_spin_mask_stable_u |= (1ULL << stable_pos);
+      if (this->master_primed.ops[sp_p].get_orbital_index() >= 1) this->plan_spin_mask_stable_p |= (1ULL << stable_pos);
     }
 
     uint64_t full_mask = (order == 64) ? ~0ULL : (1ULL << order) - 1;
-    int root = this->solve_record(full_mask, full_mask, plan);
-    plan.root_id = root; // -1 if identically zero by spin
+    plan.root_id       = this->solve_record(full_mask, full_mask, plan);
   }
 
-  template class CumulantSolver<1, double>;
-  template class CumulantSolver<1, Dual>;
-  template class CumulantSolver<2, double>;
-  template class CumulantSolver<2, Dual>;
+  // ============================================================================
+  //  Plan evaluation
+  // ============================================================================
 
-  template double compute_cumulant_decomposition<1, double>(Args<1, double> const &unprimed, Args<1, double> const &primed, HubbardSolver<1, double> const &solver,
-                                                            bool infinite_U, bool verbose);
-  template Dual compute_cumulant_decomposition<1, Dual>(Args<1, Dual> const &unprimed, Args<1, Dual> const &primed, HubbardSolver<1, Dual> const &solver,
-                                                        bool infinite_U, bool verbose);
-  template double compute_cumulant_decomposition<2, double>(Args<2, double> const &unprimed, Args<2, double> const &primed, HubbardSolver<2, double> const &solver,
-                                                            bool infinite_U, bool verbose);
-  template Dual compute_cumulant_decomposition<2, Dual>(Args<2, Dual> const &unprimed, Args<2, Dual> const &primed, HubbardSolver<2, Dual> const &solver,
-                                                        bool infinite_U, bool verbose);
+  namespace {
+    std::vector<int> invert_argsort(std::vector<int> const &argsort) {
+      std::vector<int> inv(argsort.size());
+      for (size_t i = 0; i < argsort.size(); ++i) inv[argsort[i]] = (int)i;
+      return inv;
+    }
+
+    template <typename T>
+    Args<T> build_leaf_args_stable(CumulantPlan::LeafOps const &leaf, Args<T> const &master_unprimed, Args<T> const &master_primed,
+                                   std::vector<int> const &inv_argsort_u, std::vector<int> const &inv_argsort_p) {
+      int n = (int)leaf.u_global_idx.size();
+      std::vector<double> taus;
+      std::vector<FermionOperator<T>> ops;
+      taus.reserve(2 * n);
+      ops.reserve(2 * n);
+      for (int i = 0; i < n; ++i) {
+        int sp = inv_argsort_p[leaf.p_global_idx[i]];
+        int su = inv_argsort_u[leaf.u_global_idx[i]];
+        taus.push_back(master_primed.taus[sp]);
+        ops.push_back(master_primed.ops[sp]);
+        taus.push_back(master_unprimed.taus[su]);
+        ops.push_back(master_unprimed.ops[su]);
+      }
+      return Args<T>(std::move(taus), std::move(ops));
+    }
+  } // namespace
+
+  template <typename T>
+  T evaluate_plan(CumulantPlan const &plan, Args<T> const &master_unprimed, Args<T> const &master_primed, HubbardSolver<T> const &solver,
+                  bool infinite_U) {
+
+    if (plan.root_id < 0) return T(0.0);
+
+    std::vector<int> inv_argsort_u = invert_argsort(master_unprimed.argsort);
+    std::vector<int> inv_argsort_p = invert_argsort(master_primed.argsort);
+
+    std::vector<T> value;
+    value.reserve(plan.nodes.size());
+
+    for (size_t i = 0; i < plan.nodes.size(); ++i) {
+      auto const &node = plan.nodes[i];
+
+      Args<T> args = build_leaf_args_stable<T>(node.leaf, master_unprimed, master_primed, inv_argsort_u, inv_argsort_p);
+      T v          = infinite_U ? solver.G0n_infinite_U(args) : solver.G0n(args);
+
+      for (auto const &term : node.subtraction_terms) {
+        T prod = T((double)term.sign);
+        for (int fid : term.factor_node_ids) prod = prod * value[fid];
+        v = v + prod;
+      }
+      value.push_back(v);
+    }
+
+    T C_stable = value[plan.root_id];
+    return C_stable * T(master_unprimed.permutation_sign) * T(master_primed.permutation_sign);
+  }
+
+  // Explicit instantiations
+  template class CumulantSolver<double>;
+  template class CumulantSolver<Dual>;
+
+  template double evaluate_plan<double>(CumulantPlan const &, Args<double> const &, Args<double> const &, HubbardSolver<double> const &, bool);
+  template Dual evaluate_plan<Dual>(CumulantPlan const &, Args<Dual> const &, Args<Dual> const &, HubbardSolver<Dual> const &, bool);
 
 } // namespace sc_expansion

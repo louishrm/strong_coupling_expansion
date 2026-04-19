@@ -17,21 +17,10 @@ namespace sc_expansion {
     T U;
     T beta;
     T mu;
-    T t            = T(0.0); // Only used for the dimer, but included here for convenience
     bool bipartite = true;
   };
 
-  template <typename T> inline T Eplus(T t, T U, T mu) {
-    using std::sqrt;
-    return T(0.5) * (U + sqrt(U * U + 16.0 * t * t)) - 2.0 * mu;
-  }
-
-  template <typename T> inline T Eminus(T t, T U, T mu) {
-    using std::sqrt;
-    return T(0.5) * (U - sqrt(U * U + 16.0 * t * t)) - 2.0 * mu;
-  }
-
-  template <int N_sites, typename T> class HubbardSolver {
+  template <typename T> class HubbardSolver {
 
     public:
     Parameters<T> const &params;
@@ -40,9 +29,9 @@ namespace sc_expansion {
     T Z;
     T Z_infinite_U;
 
-    T G0n(Args<N_sites, T> const &args) const;
-    T G0n_infinite_U(Args<N_sites, T> const &args) const;
-    T G01(Args<N_sites, T> const &args) const; // closed-form one-body propagator (atom only for now)
+    T G0n(Args<T> const &args) const;
+    T G0n_infinite_U(Args<T> const &args) const;
+    T G01(Args<T> const &args) const; // closed-form one-body propagator
 
     // Accessors for testing
     T get_Z() const { return this->Z; }
@@ -51,14 +40,13 @@ namespace sc_expansion {
     const SparseMatrix<T> &get_operator_matrix(int op_idx) const { return this->operator_matrices[op_idx]; }
 
     private:
-    constexpr static int N_STATES      = 1 << (2 * N_sites); // 4 states for atom, 16 for dimer
-    constexpr static int N_OPS         = 4 * N_sites;        // 4 ops for atom, 8 for dimer
-    constexpr static int MAX_G0N_ORDER = 16;                 // max 2*cumulant_order supported in G0n
-    static constexpr double SQRT2_INV  = 0.70710678118654752440;
+    constexpr static int N_STATES      = 4;
+    constexpr static int N_OPS         = 4;
+    constexpr static int MAX_G0N_ORDER = 16; // max 2*cumulant_order supported in G0n
 
     using ExpTable = std::array<std::array<T, N_STATES>, MAX_G0N_ORDER>;
 
-    std::array<FermionOperator<N_sites, T>, N_OPS> operators;
+    std::array<FermionOperator<T>, N_OPS> operators;
     std::array<Eigenstate<T>, N_STATES> all_eigenstates;
     std::array<std::array<TransitionList<T>, N_STATES>, N_OPS> transition_table;
     std::array<SparseMatrix<T>, N_OPS> operator_matrices;
@@ -67,7 +55,7 @@ namespace sc_expansion {
 
     void compute_eigenstates();
     void compute_transition_table();
-    void build_tau_exp_tables(Args<N_sites, T> const &args, ExpTable &fwd, ExpTable &inv) const;
+    void build_tau_exp_tables(Args<T> const &args, ExpTable &fwd, ExpTable &inv) const;
   };
 
 } // namespace sc_expansion
