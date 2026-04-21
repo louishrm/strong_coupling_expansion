@@ -58,8 +58,8 @@ static void broadcast_graphs(std::vector<sc_expansion::Graph> &graphs, mpi::comm
 // portion. Within each chunk the consecutive-transposition property is preserved,
 // so the vertex cache is kept alive across permutations for maximum reuse.
 template <typename T>
-std::pair<double, double> compute_reference_integral_mpi(sc_expansion::FreeEnergyCalculator<T> &calculator,
-                                                         sc_expansion::Parameters<T> const &params, int order, mpi::communicator &world) {
+std::pair<double, double> compute_reference_integral_mpi(sc_expansion::FreeEnergyCalculator<T> &calculator, sc_expansion::Parameters<T> const &params,
+                                                         int order, mpi::communicator &world) {
 
   uint64_t n_perms = sc_expansion::factorial(order);
   uint64_t rank    = world.rank();
@@ -131,7 +131,7 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
 
   sc_expansion::Parameters<T> params;
   if constexpr (std::is_same_v<T, Dual>) {
-    params = {Dual(U, 0.0), Dual(beta, 0.0), Dual(mu, 1.0), bipartite, Dual(delta, 0.0)};
+    params = {Dual(U, 0.0), Dual(beta, 0.0), Dual(mu - delta, 1.0), bipartite, Dual(-delta, 0.0)};
   } else {
     params = {U, beta, mu, bipartite, delta};
   }
@@ -164,9 +164,9 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
 
   // --- Phase 3: MPI-parallel infinite-U reference integral using SJT ---
   if (world.rank() == 0) { std::cout << "Computing reference integral across " << world.size() << " MPI ranks (SJT)..." << std::endl; }
-  auto t_ref_start = std::chrono::high_resolution_clock::now();
+  auto t_ref_start                                     = std::chrono::high_resolution_clock::now();
   auto [reference_integral, signed_reference_integral] = compute_reference_integral_mpi(calculator, params, order, world);
-  auto t_ref_end                   = std::chrono::high_resolution_clock::now();
+  auto t_ref_end                                       = std::chrono::high_resolution_clock::now();
   if (world.rank() == 0) {
     std::cout << "Reference integral: " << signed_reference_integral << " (abs: " << reference_integral << ")"
               << " computed in " << std::chrono::duration<double>(t_ref_end - t_ref_start).count() << " s." << std::endl;
@@ -219,8 +219,7 @@ int main(int argc, char *argv[]) {
 
   if (argc < 6) {
     if (mpi::communicator().rank() == 0) {
-      std::cerr << "Usage: " << argv[0]
-                << " order n_cycles U beta mu [bipartite] [alpha] [use_dual] [delta]" << std::endl;
+      std::cerr << "Usage: " << argv[0] << " order n_cycles U beta mu [bipartite] [alpha] [use_dual] [delta]" << std::endl;
     }
     return 1;
   }
