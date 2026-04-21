@@ -165,9 +165,7 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
   // --- Phase 3: MPI-parallel infinite-U reference integral using SJT ---
   if (world.rank() == 0) { std::cout << "Computing reference integral across " << world.size() << " MPI ranks (SJT)..." << std::endl; }
   auto t_ref_start = std::chrono::high_resolution_clock::now();
-  // auto [reference_integral, signed_reference_integral] = compute_reference_integral_mpi(calculator, params, order, world);
-  double reference_integral        = 1.0;
-  double signed_reference_integral = 1.0;
+  auto [reference_integral, signed_reference_integral] = compute_reference_integral_mpi(calculator, params, order, world);
   auto t_ref_end                   = std::chrono::high_resolution_clock::now();
   if (world.rank() == 0) {
     std::cout << "Reference integral: " << signed_reference_integral << " (abs: " << reference_integral << ")"
