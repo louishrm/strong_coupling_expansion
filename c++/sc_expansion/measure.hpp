@@ -57,8 +57,8 @@ template <typename T> struct measure {
 
     this->step_count++;
     if (this->verbosity > 0 && this->step_count % this->report_every == 0) {
-      auto now     = std::chrono::high_resolution_clock::now();
-      double dt    = std::chrono::duration<double>(now - this->last_report).count();
+      auto now             = std::chrono::high_resolution_clock::now();
+      double dt            = std::chrono::duration<double>(now - this->last_report).count();
       double steps_per_sec = this->report_every / dt;
       std::cout << "[measure] step " << this->step_count << " | " << steps_per_sec << " steps/s" << std::endl;
       this->last_report = now;

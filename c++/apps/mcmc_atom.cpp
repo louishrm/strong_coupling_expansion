@@ -207,7 +207,8 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
 
     // Save results to HDF5
     std::string filename = "./results/full_lattice_data_order_" + std::to_string(config->get_order()) + "_U_" + std::to_string(config->get_U())
-       + "_beta_" + std::to_string(config->beta) + "_mu_" + std::to_string(mu) + (config->bipartite ? "_bipartite" : "_non_bipartite") + ".h5";
+       + "_beta_" + std::to_string(config->beta) + "_delta_" + std::to_string(delta) + "_mu_" + std::to_string(mu)
+       + (config->bipartite ? "_bipartite" : "_non_bipartite") + ".h5";
     h5::file file(filename, 'w');
     h5_write(file, "mean", meas.result->mean);
     h5_write(file, "error", meas.result->error);

@@ -11,7 +11,7 @@ parser.add_argument('beta', type=float, help='Inverse temperature beta')
 parser.add_argument('bipartite', type=int, help='Whether the lattice is bipartite (1 for True, 0 for False)')
 parser.add_argument('alpha', type=float, help='Alpha parameter for mcmc')
 parser.add_argument('dual', type=int, help='Whether to use dual representation (1 for True, 0 for False)')
-parser.add_argument('--n_sites', type=int, default=1, help='Number of sites in the cluster (1 for atom, 2 for dimer)')
+parser.add_argument('delta', type=float, help='Chemical potential shift delta')
 
 args = parser.parse_args()
 
@@ -21,30 +21,25 @@ beta = args.beta
 bipartite = args.bipartite
 alpha = args.alpha
 dual = args.dual
+delta = args.delta
 
-if dual: 
-    extension = f"density_order_{order}_scan_mu_U={U}_beta={beta}_alpha={alpha}.h5"
+if dual:
+    extension = f"density_order_{order}_scan_mu_U={U}_beta={beta}_alpha={alpha}_delta={delta}.h5"
 else:
-    extension = f"Omega_order_{order}_scan_mu_U={U}_beta={beta}_alpha={alpha}.h5"
+    extension = f"Omega_order_{order}_scan_mu_U={U}_beta={beta}_alpha={alpha}_delta={delta}.h5"
 
 
-cluster_prefix = "atom" if args.n_sites == 1 else "dimer"
-
-if not bipartite and args.n_sites == 1:
-    filename = f"./results/{cluster_prefix}_triangular_lattice_"+extension
+if not bipartite:
+    filename = f"./results/atom_triangular_lattice_"+extension
 else:
-    filename = f"./results/{cluster_prefix}_square_lattice_"+extension
+    filename = f"./results/atom_square_lattice_"+extension
 
 
 # Creates the folder path if it's missing
 os.makedirs(os.path.dirname(filename), exist_ok=True)
 
 # 1. Find all the tiny files
-if args.n_sites == 1:
-    subfile_prefix = "full_lattice_data"
-else:
-    subfile_prefix = "dimer_data"
-files = glob.glob("results/{}_order_{}_U_{:.6f}_beta_{:.6f}_mu_*.h5".format(subfile_prefix, order, U, beta))
+files = glob.glob("results/full_lattice_data_order_{}_U_{:.6f}_beta_{:.6f}_delta_{:.6f}_mu_*.h5".format(order, U, beta, delta))
 files.sort()
 
 if not files:
