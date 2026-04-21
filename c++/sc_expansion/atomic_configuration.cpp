@@ -24,7 +24,6 @@ template <typename T> std::pair<double, double> AtomicConfiguration<T>::compute_
 
   T finite_U_T   = this->calculator.compute_sum_diagrams(this->state, false);
   T infinite_U_T = this->calculator.compute_sum_diagrams(this->state, true);
-  this->calculator.clear_all_caches();
 
   if constexpr (std::is_same_v<T, Dual>) {
     finite_U   = finite_U_T.derivative;

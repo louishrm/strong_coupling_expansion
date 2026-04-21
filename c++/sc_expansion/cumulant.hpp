@@ -35,9 +35,14 @@ namespace sc_expansion {
   // Records a CumulantPlan for a given (unprimed, primed) vertex leg structure.
   // The plan is independent of τ values and of infinite_U, so it can be reused across
   // all Monte Carlo steps and both finite/infinite-U evaluations.
+  //
+  // `self_loop_pairs` lists (u_stable_idx, p_stable_idx) entries that represent a
+  // single density insertion n(τ) = c†(τ)c(τ) and must therefore never be split
+  // across blocks of a factorisation. Leaving it empty recovers the pure-hopping
+  // behaviour in which every (u, p) pairing is admissible.
   template <typename T> class CumulantSolver {
     public:
-    CumulantSolver(Args<T> const &unprimed, Args<T> const &primed);
+    CumulantSolver(Args<T> const &unprimed, Args<T> const &primed, std::vector<std::pair<int, int>> self_loop_pairs = {});
 
     void record_plan(CumulantPlan &plan);
 
@@ -56,6 +61,7 @@ namespace sc_expansion {
 
     Args<T> const &master_unprimed;
     Args<T> const &master_primed;
+    std::vector<std::pair<int, int>> self_loop_pairs;
 
     std::unordered_map<CacheKey, int, KeyHasher> plan_node_ids;
     uint64_t plan_spin_mask_stable_u = 0;
@@ -68,6 +74,8 @@ namespace sc_expansion {
     void record_distribute_primed(std::vector<uint64_t> const &u_partition_masks, int u_idx, uint64_t current_p_pool, int overall_sign,
                                   std::vector<int> &factors_so_far, std::vector<int> const &stable_map_u, std::vector<int> const &stable_map_p,
                                   std::vector<CumulantPlan::ProductTerm> &out, CumulantPlan &plan);
+
+    uint64_t forced_p_bits_for(uint64_t u_mask) const;
   };
 
   template <typename T>

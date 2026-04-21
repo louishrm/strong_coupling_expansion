@@ -20,24 +20,28 @@ namespace {
 namespace sc_expansion {
 
   template <typename T>
-  FreeEnergyCalculator<T>::FreeEnergyCalculator(Parameters<T> const &params_, int order_, int override_fm_)
-     : params(params_), order(order_), solver(params_) {
-    VacuumDiagramGenerator gen(this->order, params.bipartite);
-    gen.generate();
-    const auto &unique_graphs = gen.get_unique_graphs();
-
+  void FreeEnergyCalculator<T>::init_from_graphs(std::vector<Graph> const &source_graphs, int override_fm) {
+    // Infer max cumulant order from actual vertex degrees — works for both self-loop and pure-hopping graphs.
     int max_cumulant_order = this->order / 2;
+    for (auto const &g : source_graphs) {
+      int V = g.get_V();
+      for (int v = 0; v < V; v++) {
+        int deg = 0;
+        for (int j = 0; j < V; j++) { deg += g(v, j) + g(j, v); }
+        max_cumulant_order = std::max(max_cumulant_order, deg / 2);
+      }
+    }
     for (int k = 1; k <= max_cumulant_order; k++) { this->vertex_types.emplace_back(2 * k); }
 
     std::vector<VertexType<T> *> vt_ptrs(max_cumulant_order);
     for (int k = 0; k < max_cumulant_order; k++) { vt_ptrs[k] = &this->vertex_types[k]; }
 
-    auto order_idx = sorted_graph_indices(unique_graphs);
+    auto order_idx = sorted_graph_indices(source_graphs);
     for (int i : order_idx) {
-      auto const &g = unique_graphs[i];
-      if (override_fm_ >= 0) {
-        this->graphs.emplace_back(g.get_canonical_form(), g.get_V(), g.get_automorphism_count(), (int)g.get_symmetry_factor(), override_fm_,
-                    g.get_bipartite_only());
+      auto const &g = source_graphs[i];
+      if (override_fm >= 0) {
+        this->graphs.emplace_back(g.get_canonical_form(), g.get_V(), g.get_automorphism_count(), (int)g.get_symmetry_factor(), override_fm,
+                                  g.get_bipartite_only());
       } else {
         this->graphs.emplace_back(g);
       }
@@ -46,55 +50,58 @@ namespace sc_expansion {
   }
 
   template <typename T>
-  FreeEnergyCalculator<T>::FreeEnergyCalculator(Parameters<T> const &params_, int order_,
-                                                std::vector<Graph> const &prebuilt_graphs)
+  FreeEnergyCalculator<T>::FreeEnergyCalculator(Parameters<T> const &params_, int order_, int override_fm_, bool allow_self_loops_)
      : params(params_), order(order_), solver(params_) {
-
-    int max_cumulant_order = this->order / 2;
-    for (int k = 1; k <= max_cumulant_order; k++) { this->vertex_types.emplace_back(2 * k); }
-
-    std::vector<VertexType<T> *> vt_ptrs(max_cumulant_order);
-    for (int k = 0; k < max_cumulant_order; k++) { vt_ptrs[k] = &this->vertex_types[k]; }
-
-    auto order_idx = sorted_graph_indices(prebuilt_graphs);
-    for (int i : order_idx) {
-      this->graphs.emplace_back(prebuilt_graphs[i]);
-      this->diagrams.emplace_back(this->graphs.back(), vt_ptrs);
-    }
+    VacuumDiagramGenerator gen(this->order, params.bipartite, allow_self_loops_);
+    gen.generate();
+    this->init_from_graphs(gen.get_unique_graphs(), override_fm_);
   }
 
   template <typename T>
-  T FreeEnergyCalculator<T>::compute_sum_diagrams(std::vector<double> const &taus, bool infinite_U) const {
+  FreeEnergyCalculator<T>::FreeEnergyCalculator(Parameters<T> const &params_, int order_, std::vector<Graph> const &prebuilt_graphs, int override_fm_)
+     : params(params_), order(order_), solver(params_) {
+    this->init_from_graphs(prebuilt_graphs, override_fm_);
+  }
+
+  template <typename T> T FreeEnergyCalculator<T>::compute_sum_diagrams(std::vector<double> const &taus, bool infinite_U) const {
     T sum = T(0.0);
-    for (auto &diagram : this->diagrams) { sum = sum + const_cast<Diagram<T>&>(diagram).evaluate(taus, this->solver, infinite_U); }
+    for (auto &diagram : this->diagrams) {
+      T val = const_cast<Diagram<T> &>(diagram).evaluate(taus, this->solver, infinite_U);
+
+      int k = diagram.get_graph().get_n_self_loops();
+
+      T factor = T((this->order - k) % 2 == 0 ? 1.0 : -1.0);
+      if (k > 0) {
+        for (int i = 0; i < k; i++) { factor = factor * this->params.delta; }
+      }
+      sum = sum + val * factor;
+    }
     return sum;
   }
 
-  template <typename T>
-  void FreeEnergyCalculator<T>::clear_all_caches() const {
-    for (auto &vt : this->vertex_types) { vt.clear_global_cache(); }
-  }
-
-  template <typename T>
-  void FreeEnergyCalculator<T>::mark_tau_dirty(int tau_index) {
+  template <typename T> void FreeEnergyCalculator<T>::mark_tau_dirty(int tau_index) {
     for (auto &diagram : this->diagrams) { diagram.mark_tau_dirty(tau_index); }
   }
 
-  template <typename T>
-  void FreeEnergyCalculator<T>::mark_all_dirty() {
+  template <typename T> void FreeEnergyCalculator<T>::mark_all_dirty() {
     for (auto &diagram : this->diagrams) { diagram.mark_all_dirty(); }
   }
 
-  template <typename T> std::pair<double, double> FreeEnergyCalculator<T>::compute_infinite_U_coefficient() const {
+  template <typename T> std::pair<double, double> FreeEnergyCalculator<T>::compute_infinite_U_coefficient() {
     int n = this->order;
     std::vector<double> taus(n);
-    std::iota(taus.begin(), taus.end(), 0.0);
 
+    SJT sjt(n);
     double sum_abs    = 0.0;
     double sum_signed = 0.0;
+
     do {
-      for (auto &d : this->diagrams) { const_cast<Diagram<T>&>(d).mark_all_dirty(); }
+      const auto &perm = sjt.get_permutation();
+      for (int j = 0; j < n; j++) { taus[j] = (double)(perm[j] - 1); }
+
+      this->mark_all_dirty();
       T val_T = this->compute_sum_diagrams(taus, true);
+
       double val;
       if constexpr (std::is_same_v<T, Dual>) {
         val = val_T.derivative;
@@ -103,10 +110,7 @@ namespace sc_expansion {
       }
       sum_abs += std::abs(val);
       sum_signed += val;
-    } while (std::next_permutation(taus.begin(), taus.end()));
-
-    double fact = 1.0;
-    for (int i = 1; i <= n; ++i) fact *= i;
+    } while (sjt.next_permutation());
 
     double beta_val;
     if constexpr (std::is_same_v<T, Dual>) {
@@ -115,10 +119,11 @@ namespace sc_expansion {
       beta_val = (double)this->params.beta;
     }
 
-    std::pair<double, double> result;
-    result.first  = (std::pow(beta_val, n) / fact) * sum_abs;
-    result.second = (std::pow(beta_val, n) / fact) * sum_signed;
-    return result;
+    double fact = 1.0;
+    for (int i = 1; i <= n; ++i) fact *= i;
+    double prefactor = std::pow(beta_val, n) / fact;
+
+    return {prefactor * sum_abs, prefactor * sum_signed};
   }
 
   template class FreeEnergyCalculator<double>;

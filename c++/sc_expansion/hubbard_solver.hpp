@@ -18,6 +18,11 @@ namespace sc_expansion {
     T beta;
     T mu;
     bool bipartite = true;
+    // Shift absorbed into the perturbation: H_pert = -t sum c^dag c + delta sum n.
+    // HubbardSolver still diagonalises H_0 with the `mu` stored here; the caller
+    // is responsible for passing the already-shifted chemical potential (mu - delta)
+    // if they want the atomic reference to match the variational choice.
+    T delta = T(0.0);
   };
 
   template <typename T> class HubbardSolver {

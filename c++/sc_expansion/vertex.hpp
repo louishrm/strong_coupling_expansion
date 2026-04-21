@@ -1,55 +1,26 @@
 #pragma once
 
 #include <vector>
-#include <unordered_map>
 #include "args.hpp"
 #include "cumulant.hpp"
 #include "dual.hpp"
 
 namespace sc_expansion {
 
-  // The key for global memoization. Uses the CANONICAL (time-sorted) operator and time arrays.
-  template <typename T> struct CanonicalVertexKey {
-    std::vector<double> taus_u;
-    std::vector<double> taus_p;
-    std::vector<uint8_t> ops_u;
-    std::vector<uint8_t> ops_p;
-    bool infinite_U;
-
-    bool operator==(const CanonicalVertexKey &other) const {
-      return infinite_U == other.infinite_U && taus_u == other.taus_u && taus_p == other.taus_p && ops_u == other.ops_u && ops_p == other.ops_p;
-    }
-  };
-
-  template <typename T> struct CanonicalVertexHasher {
-    std::size_t operator()(const CanonicalVertexKey<T> &k) const {
-      std::size_t h = 0;
-      auto combine  = [&](auto const &v) {
-        for (auto const &x : v) h ^= std::hash<std::decay_t<decltype(x)>>{}(x) + 0x9e3779b9 + (h << 6) + (h >> 2);
-      };
-      combine(k.taus_u);
-      combine(k.taus_p);
-      combine(k.ops_u);
-      combine(k.ops_p);
-      h ^= std::hash<bool>{}(k.infinite_U) + 0x9e3779b9 + (h << 6) + (h >> 2);
-      return h;
-    }
-  };
-
-  // VertexType acts as the "Instruction Manual" and the "Shared Spreadsheet"
+  // VertexType acts as the "Instruction Manual" shared by all VertexInstances of a given leg count.
   template <typename T> class VertexType {
     public:
     explicit VertexType(int n_legs);
 
-    std::pair<long, long> get_cache_stats() const { return {this->cache_hits, this->cache_misses}; }
-    size_t get_cache_size() const { return this->global_cache.size(); }
-    void clear_global_cache() const { this->global_cache.clear(); }
+    std::pair<long, long> get_local_cache_stats() const { return {this->local_cache_hits, this->local_cache_misses}; }
+
+    void record_local_hit() const { ++this->local_cache_hits; }
+    void record_local_miss() const { ++this->local_cache_misses; }
 
     private:
     int n_legs;
-    mutable std::unordered_map<CanonicalVertexKey<T>, T, CanonicalVertexHasher<T>> global_cache;
-    mutable long cache_hits   = 0;
-    mutable long cache_misses = 0;
+    mutable long local_cache_hits   = 0;
+    mutable long local_cache_misses = 0;
   };
 
   // VertexInstance is the specific "LEGO brick" in a Diagram

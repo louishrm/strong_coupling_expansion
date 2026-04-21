@@ -13,6 +13,11 @@ namespace sc_expansion {
     this->order = 0;
     for (auto val : this->adjacency_matrix) { this->order += val; }
 
+    // Count self-loops (diagonal entries). Each diagonal entry represents
+    // a single density insertion c^dagger_i c_i at vertex i.
+    this->n_self_loops = 0;
+    for (int i = 0; i < this->V; i++) { this->n_self_loops += this->adjacency_matrix[i * this->V + i]; }
+
     // Pre-calculate Degrees
     this->degrees.resize(this->V, 0);
     for (int i = 0; i < this->V; i++) { this->degrees[i] = this->get_degree_of_vertex(i); }
@@ -46,6 +51,11 @@ namespace sc_expansion {
     // Calculate Order (Total number of lines)
     this->order = 0;
     for (auto val : this->adjacency_matrix) { this->order += val; }
+
+    // Count self-loops (diagonal entries) — recomputed from the stored matrix
+    // so cached/broadcast graphs stay consistent without an extra serialised field.
+    this->n_self_loops = 0;
+    for (int i = 0; i < this->V; i++) { this->n_self_loops += this->adjacency_matrix[i * this->V + i]; }
 
     // Pre-calculate Degrees
     this->degrees.resize(this->V, 0);
@@ -96,6 +106,10 @@ namespace sc_expansion {
   bool Graph::check_bipartite_dfs(int vertex, std::vector<int> &colors) const {
 
     for (int neighbor = 0; neighbor < this->V; neighbor++) {
+
+      // Self-loops are on-site density insertions — they don't break the
+      // lattice-bipartite property, so ignore diagonal entries here.
+      if (neighbor == vertex) continue;
 
       bool is_connected = ((*this)(vertex, neighbor) > 0) || (this->adjacency_matrix[neighbor * this->V + vertex] > 0);
 

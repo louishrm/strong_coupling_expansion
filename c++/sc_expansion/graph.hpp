@@ -24,6 +24,7 @@ namespace sc_expansion {
     bool get_bipartite() const { return this->bipartite; }
     bool get_bipartite_only() const { return this->bipartite_only; }
     int get_automorphism_count() const { return this->automorphism_count; }
+    int get_n_self_loops() const { return this->n_self_loops; }
 
     private:
     std::vector<uint8_t> adjacency_matrix;
@@ -37,6 +38,7 @@ namespace sc_expansion {
     int automorphism_count;
     int symmetry_factor;
     int free_multiplicity;
+    int n_self_loops;
 
     int get_degree_of_vertex(int vertex) const;
     void check_connectivity();

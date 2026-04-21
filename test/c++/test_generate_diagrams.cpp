@@ -6,6 +6,7 @@
 
 using namespace sc_expansion;
 
+/*----- N-cycle adjmat------*/
 TEST(GenerateDiagramsTest, NCycleAdjacencyMatrix) {
   // Test for n=2
   std::vector<uint8_t> adjmat2   = generate_n_cycle_adjacency_matrix(2);
@@ -33,6 +34,7 @@ TEST(GenerateDiagramsTest, NCycleAdjacencyMatrix) {
   EXPECT_EQ(g5.get_canonical_form(), adjmat5);
 }
 
+/*----- N-cycle free multiplicity------*/
 TEST(GenerateDiagramsTest, NCycleFreeMultiplicityIsCorrect) {
 
   //n=2
@@ -54,6 +56,7 @@ TEST(GenerateDiagramsTest, NCycleFreeMultiplicityIsCorrect) {
   EXPECT_EQ(fm4_non_bipartite, 90);
 }
 
+/*----- Order 2 Diagrams ------*/
 TEST(GenerateDiagramsTest, Order2Diagrams) {
   VacuumDiagramGenerator gen(2);
   gen.generate();
@@ -67,6 +70,7 @@ TEST(GenerateDiagramsTest, Order2Diagrams) {
   EXPECT_EQ(graphs[0].get_free_multiplicity(), nCn2 * nCn2);
 }
 
+/*----- Order 3 Diagrams ------*/
 TEST(GenerateDiagramsTest, Order3DiagramsNonBipartite) {
   VacuumDiagramGenerator gen(3, false); // Allow non-bipartite diagrams
   gen.generate();
@@ -75,6 +79,7 @@ TEST(GenerateDiagramsTest, Order3DiagramsNonBipartite) {
   EXPECT_EQ(graphs.size(), 1);
 }
 
+/*----- Order 4 Diagrams ------*/
 TEST(GenerateDiagramsTest, Order4DiagramsNonBipartite) {
   VacuumDiagramGenerator gen(4, false); // Allow non-bipartite diagrams
   gen.generate();
@@ -114,6 +119,7 @@ TEST(GenerateDiagramsTest, Order4DiagramsNonBipartite) {
   EXPECT_TRUE(found_n_cycle);
 }
 
+/*----- Order 5 Diagrams ------*/
 TEST(GenerateDiagramsTest, Order5DiagramsNonBipartite) {
 
   VacuumDiagramGenerator gen(5, false); // Allow non-bipartite diagrams
@@ -173,6 +179,49 @@ TEST(GenerateDiagramsTest, Order6DiagramsNoNBipartite) {
 
   const auto &graphs = gen.get_unique_graphs();
   EXPECT_EQ(graphs.size(), 12);
+}
+
+// Generator-only tests: confirm the enumerator picks up the right set of
+// adjacency matrices with self-insertions enabled. Per-graph properties
+// (symmetry factor, free multiplicity, n_self_loops, ...) are tested in
+// test_graph.cpp.
+
+TEST(GenerateDiagramsTest, Order1WithSelfLoops) {
+  // Flag off: no order-1 vacuum diagram exists.
+  VacuumDiagramGenerator gen_off(1, true, false);
+  gen_off.generate();
+  EXPECT_EQ(gen_off.get_unique_graphs().size(), 0);
+
+  // Flag on: exactly one graph with canonical form {1}.
+  VacuumDiagramGenerator gen_on(1, true, true);
+  gen_on.generate();
+  const auto &graphs = gen_on.get_unique_graphs();
+  ASSERT_EQ(graphs.size(), 1);
+  EXPECT_EQ(graphs[0].get_canonical_form(), std::vector<uint8_t>({1}));
+}
+
+TEST(GenerateDiagramsTest, Order2WithSelfLoopsBipartite) {
+  // Flag off: baseline matches the pre-existing Order2Diagrams — just the digon.
+  VacuumDiagramGenerator gen_off(2, true, false);
+  gen_off.generate();
+  const auto &graphs_off = gen_off.get_unique_graphs();
+  ASSERT_EQ(graphs_off.size(), 1);
+  EXPECT_EQ(graphs_off[0].get_canonical_form(), std::vector<uint8_t>({0, 1, 1, 0}));
+
+  // Flag on: digon {0,1,1,0} plus one-vertex graph with two density insertions {2}.
+  VacuumDiagramGenerator gen_on(2, true, true);
+  gen_on.generate();
+  const auto &graphs_on = gen_on.get_unique_graphs();
+  ASSERT_EQ(graphs_on.size(), 2);
+
+  auto has_canonical = [&](const std::vector<uint8_t> &canonical) {
+    for (const auto &g : graphs_on) {
+      if (g.get_canonical_form() == canonical) return true;
+    }
+    return false;
+  };
+  EXPECT_TRUE(has_canonical({0, 1, 1, 0}));
+  EXPECT_TRUE(has_canonical({2}));
 }
 
 TEST(GenerateDiagramsTest, Order8DiagramsBipartite) {

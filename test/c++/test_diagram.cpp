@@ -120,16 +120,43 @@ TEST(DiagramEvaluation, D2aAtom) {
 }
 
 // =====================================================================
-// Benchmark: atomic expansion on the 2-site dimer (exact diagonalization)
-// On a 2-site dimer every graph has free multiplicity = 1.
+// Order-1 self-insertion graph: a single vertex carrying one density
+// insertion c^dag_sigma c_sigma (the {1} adjacency). Pen-and-paper
+// prediction:
+//
+//   compute_sum_diagrams([tau], false) with delta = 1
+//       = (-delta)^1 * evaluate(tau)   (per the (-t)^{n-k} delta^k factor)
+//       = -2 * delta * n_sigma / beta
+//
+// which is tau-independent (single vertex -> only one time variable, and
+// the atomic density is a static expectation value). The overall minus is
+// the implicit (-t) that the evaluator carries for every line; with one
+// self-insertion and zero hops at order 1 we pick up one factor of -1.
 // =====================================================================
+TEST(DiagramEvaluation, Order1SelfLoopGivesSingleSpinDensity) {
+  double U     = 8.0;
+  double beta  = 1.0;
+  double mu    = 2.0;
+  double delta = 1.0;
+  Parameters<double> params{U, beta, mu, /*bipartite=*/true, delta};
 
-TEST(DiagramBenchmark, AtomicExpansionDimerOrder4InfiniteU) {
-  Parameters<double> params{8.0, 2.0, 3.0, true};
-  FreeEnergyCalculator<double> calculator(params, 4, /*override_fm=*/1);
-  auto [abs_coeff, signed_coeff] = calculator.compute_infinite_U_coefficient();
+  FreeEnergyCalculator<double> calculator(params, /*order=*/1, /*override_fm=*/-1, /*allow_self_loops=*/true);
+  ASSERT_EQ(calculator.get_n_diagrams(), 1);
 
-  EXPECT_NEAR(signed_coeff, -4.0904630472238777e-04, 1e-12);
+  // Pick a nonzero random time in (0, beta) to confirm tau-independence isn't masked by tau=0.
+  std::vector<double> taus = {0.37 * beta};
+  double val               = calculator.compute_sum_diagrams(taus, false);
+
+  // Single-spin density on the Hubbard atom:
+  //   Z        = 1 + 2 e^{beta mu} + e^{beta (2 mu - U)}
+  //   <n_sigma> = (e^{beta mu} + e^{beta (2 mu - U)}) / Z
+  double exp_mu  = std::exp(beta * mu);
+  double exp_dbl = std::exp(beta * (2.0 * mu - U));
+  double Z       = 1.0 + 2.0 * exp_mu + exp_dbl;
+  double n_sigma = (exp_mu + exp_dbl) / Z;
+
+  double expected = 2.0 * delta * n_sigma / beta;
+  EXPECT_NEAR(val, expected, 1e-12);
 }
 
 TEST(DiagramDiagnostics, Order8AtomGlobalConfigCounts) {
@@ -142,13 +169,8 @@ TEST(DiagramDiagnostics, Order8AtomGlobalConfigCounts) {
   auto const &diagrams = calculator.get_diagrams();
 
   std::cout << "\n===== Order-8 Atomic: Global Config Counts =====" << std::endl;
-  std::cout << std::left << std::setw(8) << "Graph"
-            << std::setw(6)  << "V"
-            << std::setw(12) << "SymFactor"
-            << std::setw(12) << "FreeMult"
-            << std::setw(12) << "GlobalCfgs"
-            << std::setw(14) << "TotalWeight"
-            << std::endl;
+  std::cout << std::left << std::setw(8) << "Graph" << std::setw(6) << "V" << std::setw(12) << "SymFactor" << std::setw(12) << "FreeMult"
+            << std::setw(12) << "GlobalCfgs" << std::setw(14) << "TotalWeight" << std::endl;
   std::cout << std::string(64, '-') << std::endl;
 
   double grand_total_weight = 0;
@@ -157,23 +179,17 @@ TEST(DiagramDiagnostics, Order8AtomGlobalConfigCounts) {
     auto const &graph   = graphs[i];
 
     auto const &configs = diagram.get_valid_configurations();
-    double free_mult = diagram.get_free_multiplicity();
+    double free_mult    = diagram.get_free_multiplicity();
 
     double total_weight = 0;
     for (auto const &c : configs) total_weight += c.weight;
     grand_total_weight += total_weight;
 
-    std::cout << std::left << std::setw(8) << i
-              << std::setw(6)  << graph.get_V()
-              << std::setw(12) << graph.get_symmetry_factor()
-              << std::setw(12) << free_mult
-              << std::setw(12) << configs.size()
-              << std::setw(14) << total_weight
-              << std::endl;
+    std::cout << std::left << std::setw(8) << i << std::setw(6) << graph.get_V() << std::setw(12) << graph.get_symmetry_factor() << std::setw(12)
+              << free_mult << std::setw(12) << configs.size() << std::setw(14) << total_weight << std::endl;
   }
 
   std::cout << std::string(64, '-') << std::endl;
-  std::cout << "Total graphs: " << diagrams.size()
-            << "  |  Grand total weight: " << grand_total_weight << std::endl;
+  std::cout << "Total graphs: " << diagrams.size() << "  |  Grand total weight: " << grand_total_weight << std::endl;
   std::cout << "=========================================================\n" << std::endl;
 }

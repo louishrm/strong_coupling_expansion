@@ -1,6 +1,41 @@
 #include "vertex.hpp"
+#include <unordered_map>
 
 namespace sc_expansion {
+
+  // Identify which (u_stable, p_stable) index pairs come from the same hopping
+  // line (i.e. a self-loop: source and destination both at this vertex). The
+  // cumulant plan uses this to keep the (c, c†) of a density insertion inside
+  // the same partition block, so the vertex evaluates the density-density
+  // cumulant instead of the 4-operator cumulant that would otherwise over-
+  // subtract an "atomic propagator" off-diagonal term. Pre-sort positions in
+  // the split unprimed/primed arrays coincide with stable indices, so walking
+  // op_ids in input order is enough.
+  template <typename T>
+  static std::vector<std::pair<int, int>>
+  compute_self_loop_pairs(std::vector<int> const &tau_indices, std::vector<uint8_t> const &op_ids) {
+    std::unordered_map<int, int> line_count;
+    for (int lidx : tau_indices) line_count[lidx]++;
+
+    std::unordered_map<int, std::pair<int, int>> line_to_positions;
+    int u_pos = 0;
+    int p_pos = 0;
+    for (size_t i = 0; i < op_ids.size(); ++i) {
+      FermionOperator<T> f(op_ids[i]);
+      auto &entry = line_to_positions[tau_indices[i]];
+      if (f.get_action() == 0) {
+        entry.first = u_pos++;
+      } else {
+        entry.second = p_pos++;
+      }
+    }
+
+    std::vector<std::pair<int, int>> pairs;
+    for (auto const &[lidx, cnt] : line_count) {
+      if (cnt == 2) pairs.push_back(line_to_positions[lidx]);
+    }
+    return pairs;
+  }
 
   template <typename T> VertexType<T>::VertexType(int n_legs_) : n_legs(n_legs_) {}
 
@@ -13,7 +48,11 @@ namespace sc_expansion {
     bool &dirty = infinite_U ? this->is_dirty_infinite : this->is_dirty_finite;
     T &cache    = infinite_U ? this->local_cache_infinite : this->local_cache_finite;
 
-    if (!dirty) return cache;
+    if (!dirty) {
+      this->type->record_local_hit();
+      return cache;
+    }
+    this->type->record_local_miss();
 
     std::vector<double> local_taus;
     for (int idx : this->tau_indices) local_taus.push_back(global_taus[idx]);
@@ -23,7 +62,8 @@ namespace sc_expansion {
     if (!this->plan_built) {
       std::vector<double> dummy_taus(this->op_ids.size(), 0.5);
       auto [u0, p0] = Args<T>::split_from_raw(dummy_taus, this->op_ids);
-      CumulantSolver<T> builder(u0, p0);
+      auto self_loop_pairs = compute_self_loop_pairs<T>(this->tau_indices, this->op_ids);
+      CumulantSolver<T> builder(u0, p0, std::move(self_loop_pairs));
       builder.record_plan(this->plan);
       this->plan_built = true;
     }

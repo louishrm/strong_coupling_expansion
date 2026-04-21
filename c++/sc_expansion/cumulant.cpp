@@ -82,8 +82,16 @@ namespace sc_expansion {
   // ============================================================================
 
   template <typename T>
-  CumulantSolver<T>::CumulantSolver(Args<T> const &unprimed, Args<T> const &primed)
-     : master_unprimed(unprimed), master_primed(primed) {}
+  CumulantSolver<T>::CumulantSolver(Args<T> const &unprimed, Args<T> const &primed, std::vector<std::pair<int, int>> self_loop_pairs_)
+     : master_unprimed(unprimed), master_primed(primed), self_loop_pairs(std::move(self_loop_pairs_)) {}
+
+  template <typename T> uint64_t CumulantSolver<T>::forced_p_bits_for(uint64_t u_mask) const {
+    uint64_t forced = 0;
+    for (auto const &pair : this->self_loop_pairs) {
+      if (u_mask & (1ULL << pair.first)) forced |= (1ULL << pair.second);
+    }
+    return forced;
+  }
 
   template <typename T>
   void CumulantSolver<T>::record_distribute_primed(std::vector<uint64_t> const &u_partition_masks, int u_idx, uint64_t current_p_pool,
@@ -102,7 +110,20 @@ namespace sc_expansion {
     uint64_t u_mask = u_partition_masks[u_idx];
     int needed_k    = popcount(u_mask);
 
-    for_each_subset(current_p_pool, needed_k, [&](uint64_t p_submask) {
+    // Self-loop pairs must never be split across partition blocks: whenever a
+    // u-bit belonging to a self-loop sits in `u_mask`, the matched p-bit is
+    // forced into the p-submask. This gives the density-density semantics at
+    // vertices that carry self-loops; at vertices without self-loops
+    // `forced_p_bits` is zero and we fall back to the unrestricted enumeration.
+    uint64_t forced_p_bits = this->forced_p_bits_for(u_mask);
+    if ((forced_p_bits & current_p_pool) != forced_p_bits) return;
+    int forced_k = popcount(forced_p_bits);
+    if (forced_k > needed_k) return;
+    uint64_t free_pool = current_p_pool & ~forced_p_bits;
+    int free_k         = needed_k - forced_k;
+
+    for_each_subset(free_pool, free_k, [&](uint64_t free_submask) {
+      uint64_t p_submask = forced_p_bits | free_submask;
       int step_sign_p = compute_extraction_sign(current_p_pool, p_submask);
 
       uint64_t global_mask_u_stable = 0, global_mask_p_stable = 0;

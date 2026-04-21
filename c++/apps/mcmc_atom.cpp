@@ -1,7 +1,6 @@
 #include "sc_expansion/atomic_configuration.hpp"
 #include "sc_expansion/free_energy_calculator.hpp"
 #include "sc_expansion/generate_diagrams.hpp"
-#include "sc_expansion/graph_serialization.hpp"
 #include "sc_expansion/combinatorics.hpp"
 #include "sc_expansion/move.hpp"
 #include "sc_expansion/measure.hpp"
@@ -106,9 +105,6 @@ std::pair<double, double> compute_reference_integral_mpi(sc_expansion::FreeEnerg
     if (i + 1 < my_count) { sjt.next_permutation(); }
   }
 
-  // Done with reference integral — flush the vertex cache
-  calculator.clear_all_caches();
-
   // Reduce across all ranks
   double global_sum_abs    = 0.0;
   double global_sum_signed = 0.0;
@@ -131,13 +127,13 @@ std::pair<double, double> compute_reference_integral_mpi(sc_expansion::FreeEnerg
 
 template <typename T>
 void run(mpi::communicator &world, int order, int n_cycles, double U, double beta, double mu, bool bipartite, double alpha, int n_warmup_cycles,
-         int length_cycle, std::string random_name, int random_seed, int verbosity) {
+         int length_cycle, std::string random_name, int random_seed, int verbosity, double delta, bool allow_self_loops) {
 
   sc_expansion::Parameters<T> params;
   if constexpr (std::is_same_v<T, Dual>) {
-    params = {Dual(U, 0.0), Dual(beta, 0.0), Dual(mu, 1.0), bipartite};
+    params = {Dual(U, 0.0), Dual(beta, 0.0), Dual(mu, 1.0), bipartite, Dual(delta, 0.0)};
   } else {
-    params = {U, beta, mu, bipartite};
+    params = {U, beta, mu, bipartite, delta};
   }
 
   // --- Phase 1: Rank 0 generates all vacuum diagrams, then broadcasts to all ranks ---
@@ -145,8 +141,8 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
   if (world.rank() == 0) {
     bool loaded = false;
     if (params.bipartite) {
-      auto path = sc_expansion::bipartite_diagrams_path(order);
-      if (sc_expansion::load_bipartite_graphs(order, graphs)) {
+      auto path = sc_expansion::bipartite_diagrams_path(order, allow_self_loops);
+      if (sc_expansion::load_bipartite_graphs(order, graphs, allow_self_loops)) {
         std::cout << "Loaded " << graphs.size() << " cached diagrams from " << path << std::endl;
         loaded = true;
       }
@@ -154,7 +150,7 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
     if (!loaded) {
       std::cout << "Generating vacuum diagrams on rank 0..." << std::endl;
       auto t0 = std::chrono::high_resolution_clock::now();
-      sc_expansion::VacuumDiagramGenerator gen(order, params.bipartite);
+      sc_expansion::VacuumDiagramGenerator gen(order, params.bipartite, allow_self_loops);
       gen.generate();
       graphs  = gen.get_unique_graphs();
       auto t1 = std::chrono::high_resolution_clock::now();
@@ -224,7 +220,8 @@ int main(int argc, char *argv[]) {
 
   if (argc < 6) {
     if (mpi::communicator().rank() == 0) {
-      std::cerr << "Usage: " << argv[0] << " order n_cycles U beta mu [bipartite] [alpha] [use_dual]" << std::endl;
+      std::cerr << "Usage: " << argv[0]
+                << " order n_cycles U beta mu [bipartite] [alpha] [use_dual] [delta]" << std::endl;
     }
     return 1;
   }
@@ -237,6 +234,13 @@ int main(int argc, char *argv[]) {
   bool bipartite = (argc > 6 ? std::stoi(argv[6]) != 0 : true);
   double alpha   = (argc > 7 ? std::stod(argv[7]) : 0.5);
   bool use_dual  = (argc > 8 ? std::stoi(argv[8]) != 0 : false);
+  // Chemical-potential shift absorbed as a perturbation. `mu` above should
+  // already be the shifted value used by the atomic solver; `delta` is the
+  // coefficient multiplying the self-loop insertions in the expansion.
+  // Self-loop diagrams are only generated when delta != 0 — they contribute
+  // zero to the answer otherwise, so there's no reason to enumerate them.
+  double delta          = (argc > 9 ? std::stod(argv[9]) : 0.0);
+  bool allow_self_loops = (delta != 0.0);
 
   mpi::environment env(argc, argv);
   mpi::communicator world;
@@ -244,7 +248,8 @@ int main(int argc, char *argv[]) {
   if (world.rank() == 0) {
     std::cout << "=== Strong Coupling MC (Atomic) ===" << std::endl;
     std::cout << "MPI ranks: " << world.size() << std::endl;
-    std::cout << "Order=" << order << " U=" << U << " beta=" << beta << " mu=" << mu << " bipartite=" << bipartite << " alpha=" << alpha << std::endl;
+    std::cout << "Order=" << order << " U=" << U << " beta=" << beta << " mu=" << mu << " bipartite=" << bipartite << " alpha=" << alpha
+              << " delta=" << delta << " self_loops=" << allow_self_loops << std::endl;
   }
 
   int length_cycle        = 1;
@@ -254,9 +259,11 @@ int main(int argc, char *argv[]) {
   int verbosity           = (world.rank() == 0 ? 2 : 0);
 
   if (use_dual) {
-    run<Dual>(world, order, n_cycles, U, beta, mu, bipartite, alpha, n_warmup_cycles, length_cycle, random_name, random_seed, verbosity);
+    run<Dual>(world, order, n_cycles, U, beta, mu, bipartite, alpha, n_warmup_cycles, length_cycle, random_name, random_seed, verbosity, delta,
+              allow_self_loops);
   } else {
-    run<double>(world, order, n_cycles, U, beta, mu, bipartite, alpha, n_warmup_cycles, length_cycle, random_name, random_seed, verbosity);
+    run<double>(world, order, n_cycles, U, beta, mu, bipartite, alpha, n_warmup_cycles, length_cycle, random_name, random_seed, verbosity, delta,
+                allow_self_loops);
   }
 
   return 0;

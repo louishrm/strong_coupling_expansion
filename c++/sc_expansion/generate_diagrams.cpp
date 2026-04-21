@@ -1,6 +1,85 @@
 #include "generate_diagrams.hpp"
+#include <cstdint>
+#include <filesystem>
+#include <fstream>
+#include <stdexcept>
 
 namespace sc_expansion {
+
+  // Binary layout:
+  //   int32 n_graphs
+  //   per graph:
+  //     int32 V
+  //     int32 automorphism_count
+  //     int32 symmetry_factor
+  //     int32 free_multiplicity
+  //     uint8 bipartite_only
+  //     uint8[V*V] adjacency (canonical form)
+  // SC_EXPANSION_PROJECT_ROOT is injected at configure time (see CMakeLists.txt)
+  // so the cache lives at <project>/diagrams/ regardless of the executable's CWD.
+  static const std::string DIAGRAMS_DIR = std::string(SC_EXPANSION_PROJECT_ROOT) + "/diagrams";
+
+  std::string bipartite_diagrams_path(int order, bool allow_self_loops) {
+    // Self-loop caches live at a distinct filename so the two regimes never mix.
+    return DIAGRAMS_DIR + "/bipartite_order_" + std::to_string(order) + (allow_self_loops ? "_sl" : "");
+  }
+
+  void save_bipartite_graphs(int order, const std::vector<Graph> &graphs, bool allow_self_loops) {
+    std::filesystem::create_directories(DIAGRAMS_DIR);
+    std::ofstream out(bipartite_diagrams_path(order, allow_self_loops), std::ios::binary);
+    if (!out) { throw std::runtime_error("Failed to open " + bipartite_diagrams_path(order, allow_self_loops) + " for writing"); }
+
+    int32_t n = static_cast<int32_t>(graphs.size());
+    out.write(reinterpret_cast<const char *>(&n), sizeof(n));
+
+    for (auto const &g : graphs) {
+      int32_t V     = g.get_V();
+      int32_t aut   = g.get_automorphism_count();
+      int32_t sym   = static_cast<int32_t>(g.get_symmetry_factor());
+      int32_t fm    = static_cast<int32_t>(g.get_free_multiplicity());
+      uint8_t bonly = g.get_bipartite_only() ? 1 : 0;
+      auto adj      = g.get_canonical_form();
+
+      out.write(reinterpret_cast<const char *>(&V), sizeof(V));
+      out.write(reinterpret_cast<const char *>(&aut), sizeof(aut));
+      out.write(reinterpret_cast<const char *>(&sym), sizeof(sym));
+      out.write(reinterpret_cast<const char *>(&fm), sizeof(fm));
+      out.write(reinterpret_cast<const char *>(&bonly), sizeof(bonly));
+      out.write(reinterpret_cast<const char *>(adj.data()), static_cast<std::streamsize>(adj.size()));
+    }
+  }
+
+  bool load_bipartite_graphs(int order, std::vector<Graph> &out_graphs, bool allow_self_loops) {
+    std::string path = bipartite_diagrams_path(order, allow_self_loops);
+    if (!std::filesystem::exists(path)) return false;
+
+    std::ifstream in(path, std::ios::binary);
+    if (!in) return false;
+
+    int32_t n = 0;
+    in.read(reinterpret_cast<char *>(&n), sizeof(n));
+    if (!in) throw std::runtime_error("Corrupt diagram cache: " + path);
+
+    out_graphs.clear();
+    out_graphs.reserve(n);
+
+    for (int32_t i = 0; i < n; i++) {
+      int32_t V, aut, sym, fm;
+      uint8_t bonly;
+      in.read(reinterpret_cast<char *>(&V), sizeof(V));
+      in.read(reinterpret_cast<char *>(&aut), sizeof(aut));
+      in.read(reinterpret_cast<char *>(&sym), sizeof(sym));
+      in.read(reinterpret_cast<char *>(&fm), sizeof(fm));
+      in.read(reinterpret_cast<char *>(&bonly), sizeof(bonly));
+
+      std::vector<uint8_t> adj(static_cast<size_t>(V) * V);
+      in.read(reinterpret_cast<char *>(adj.data()), static_cast<std::streamsize>(adj.size()));
+      if (!in) throw std::runtime_error("Corrupt diagram cache: " + path);
+
+      out_graphs.emplace_back(adj, V, aut, sym, fm, bonly != 0);
+    }
+    return true;
+  }
 
   std::vector<uint8_t> generate_n_cycle_adjacency_matrix(int n) {
     if (n <= 1) {
@@ -74,12 +153,31 @@ namespace sc_expansion {
     }
   }
 
-  VacuumDiagramGenerator::VacuumDiagramGenerator(int order_, bool bipartite_only_)
-     : order(order_), bipartite_only(bipartite_only_), partitions(order_, order_ / 2) {};
+  VacuumDiagramGenerator::VacuumDiagramGenerator(int order_, bool bipartite_only_, bool allow_self_loops_)
+     : order(order_),
+       bipartite_only(bipartite_only_),
+       allow_self_loops(allow_self_loops_),
+       // With self-loops a single vertex can absorb all `order` lines, so lift
+       // the per-partition cap from order/2 to order when the flag is on.
+       partitions(order_, allow_self_loops_ ? order_ : order_ / 2) {};
 
   //manually fill the n-cycle by hand to save time (implies n!n! redundant checks)
 
   void VacuumDiagramGenerator::generate() {
+
+    // Order 1 is degenerate: no valid vacuum diagram exists without self-loops.
+    // With self-loops enabled, the unique graph is a single vertex carrying one
+    // density insertion c^dagger c — adjacency matrix {1}. Handle it explicitly
+    // so we never feed order=1 through the n-cycle shortcut or partition loop.
+    if (this->order == 1) {
+      if (this->allow_self_loops) {
+        std::vector<uint8_t> adj = {1};
+        this->unique_adjmats.insert(adj);
+        this->graphs.emplace_back(adj, 1, this->bipartite_only);
+      }
+      return;
+    }
+
     //manually fill the n-cycle by hand to save time (implies n!n! redundant checks)
     // Only add n-cycle if it matches the bipartite criteria
     if (!this->bipartite_only || this->order % 2 == 0) {
@@ -134,15 +232,17 @@ namespace sc_expansion {
     std::vector<int> target = source;
 
     do {
-      bool valid_connections = true;
-      for (size_t i = 0; i < this->order; ++i) {
-        if (source[i] == target[i]) {
-          valid_connections = false; //no self-connections allowed
-          break;
+      if (!this->allow_self_loops) {
+        bool valid_connections = true;
+        for (size_t i = 0; i < this->order; ++i) {
+          if (source[i] == target[i]) {
+            valid_connections = false; //no self-connections allowed
+            break;
+          }
         }
+        if (!valid_connections) continue;
       }
 
-      if (!valid_connections) continue;
       std::vector<uint8_t> adjmat = this->fill_matrix(source, target, V);
       Graph graph(adjmat, V, this->bipartite_only);
       this->process_graph(graph);

@@ -4,7 +4,6 @@
 //   generate_bipartite_diagrams <order>
 
 #include "sc_expansion/generate_diagrams.hpp"
-#include "sc_expansion/graph_serialization.hpp"
 #include <cstdlib>
 #include <iomanip>
 #include <iostream>

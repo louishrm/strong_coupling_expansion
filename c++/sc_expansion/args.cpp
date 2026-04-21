@@ -61,12 +61,19 @@ namespace sc_expansion {
     if (!this->operator_sequence_is_valid()) return false;
 
     // Start states: |0>, |down>, |up> (bit representation: 00, 01, 10)
-    // Double occupancy (state 11 = 3) is forbidden
+    // Double occupancy (state 11 = 3) is forbidden.
+    // Iterate ops from smallest tau (ops[n-1]) to largest tau (ops[0]) so the
+    // check matches the physical matrix product <s| O_1 ... O_n |s> (rightmost
+    // factor applied first). The forward order happens to agree with the
+    // reverse order when every tau is distinct, but breaks for self-loops where
+    // a (c, c^dag) pair sits at the same tau: forward admits mixed-spin start
+    // states that are physically blocked, giving a spurious e^{beta*mu}/Z_inf.
     for (int start_state : {0, 1, 2}) {
       int current_state = start_state;
       bool path_valid  = true;
 
-      for (auto const &f_op : ops) {
+      for (int i = (int)this->ops.size() - 1; i >= 0; --i) {
+        auto const &f_op = this->ops[i];
         int orbital = f_op.get_orbital_index();
         int action  = f_op.get_action();
 
