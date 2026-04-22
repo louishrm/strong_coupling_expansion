@@ -133,7 +133,7 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
   if constexpr (std::is_same_v<T, Dual>) {
     params = {Dual(U, 0.0), Dual(beta, 0.0), Dual(mu - delta, 1.0), bipartite, Dual(-delta, 0.0)};
   } else {
-    params = {U, beta, mu, bipartite, delta};
+    params = {U, beta, mu - delta, bipartite, -delta};
   }
 
   // --- Phase 1: Rank 0 generates all vacuum diagrams, then broadcasts to all ranks ---
@@ -185,7 +185,7 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
   int n_bins            = std::max(50, n_cycles / target_block_size);
   int block_size        = (n_cycles / n_bins) + 1;
 
-  measure<T> meas(config.get(), reference_integral, signed_reference_integral, n_bins, block_size, mu, verbosity);
+  measure<T> meas(config.get(), reference_integral, signed_reference_integral, n_bins, block_size, mu - delta, verbosity);
   mc.add_move(move<T>(config.get(), mc.get_rng()), "time_swap");
   mc.add_measure(meas, "defensive_measure");
 
