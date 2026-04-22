@@ -28,8 +28,14 @@ namespace sc_expansion {
 
     int get_n_diagrams() const { return (int)this->diagrams.size(); }
 
+    // Self-loop diagram (V=1, n self-loops = order): tau-independent, precomputed exactly.
+    bool has_self_loop_diagram() const { return this->self_loop_present; }
+    T get_self_loop_contribution_finite() const;
+    T get_self_loop_contribution_infinite() const;
+
     private:
     void init_from_graphs(std::vector<Graph> const &source_graphs, int override_fm);
+    void precompute_self_loop_diagram();
 
     Parameters<T> const &params;
     int order;
@@ -37,6 +43,10 @@ namespace sc_expansion {
     std::deque<Diagram<T>> diagrams;
     std::deque<VertexType<T>> vertex_types; // One per cumulant order (index = cumulant_order - 1)
     HubbardSolver<T> solver;
+
+    bool self_loop_present     = false;
+    T    self_loop_val_finite  = T(0.0);
+    T    self_loop_val_infinite = T(0.0);
   };
 
 } // namespace sc_expansion

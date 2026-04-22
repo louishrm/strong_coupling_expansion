@@ -47,6 +47,35 @@ namespace sc_expansion {
       }
       this->diagrams.emplace_back(this->graphs.back(), vt_ptrs);
     }
+
+    this->precompute_self_loop_diagram();
+  }
+
+  template <typename T> void FreeEnergyCalculator<T>::precompute_self_loop_diagram() {
+    std::vector<double> dummy_taus(this->order, 0.0);
+    for (auto &d : this->diagrams) {
+      auto const &g = d.get_graph();
+      if (g.get_V() == 1 && g.get_n_self_loops() == this->order) {
+        this->self_loop_val_finite   = d.evaluate(dummy_taus, this->solver, false);
+        this->self_loop_val_infinite = d.evaluate(dummy_taus, this->solver, true);
+        this->self_loop_present      = true;
+        break;
+      }
+    }
+  }
+
+  template <typename T> T FreeEnergyCalculator<T>::get_self_loop_contribution_finite() const {
+    T contrib = this->self_loop_val_finite;
+    for (int i = 0; i < this->order; i++) contrib = contrib * this->params.delta;
+    for (int i = 0; i < this->order; i++) contrib = contrib * this->params.beta;
+    return contrib;
+  }
+
+  template <typename T> T FreeEnergyCalculator<T>::get_self_loop_contribution_infinite() const {
+    T contrib = this->self_loop_val_infinite;
+    for (int i = 0; i < this->order; i++) contrib = contrib * this->params.delta;
+    for (int i = 0; i < this->order; i++) contrib = contrib * this->params.beta;
+    return contrib;
   }
 
   template <typename T>
@@ -66,9 +95,15 @@ namespace sc_expansion {
   template <typename T> T FreeEnergyCalculator<T>::compute_sum_diagrams(std::vector<double> const &taus, bool infinite_U) const {
     T sum = T(0.0);
     for (auto &diagram : this->diagrams) {
-      T val = const_cast<Diagram<T> &>(diagram).evaluate(taus, this->solver, infinite_U);
-
       int k = diagram.get_graph().get_n_self_loops();
+
+      T val;
+      if (this->self_loop_present && k == this->order && diagram.get_graph().get_V() == 1) {
+        // Use precomputed constant — cumulant of number operators is tau-independent.
+        val = infinite_U ? this->self_loop_val_infinite : this->self_loop_val_finite;
+      } else {
+        val = const_cast<Diagram<T> &>(diagram).evaluate(taus, this->solver, infinite_U);
+      }
 
       T factor = T((this->order - k) % 2 == 0 ? 1.0 : -1.0);
       if (k > 0) {
