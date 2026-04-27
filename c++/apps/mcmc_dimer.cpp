@@ -16,11 +16,13 @@
 #include "sc_expansion/generate_diagrams.hpp"
 #include "sc_expansion/move.hpp"
 #include "sc_expansion/dual.hpp"
+#include "sc_expansion/csv_append.hpp"
 #include <triqs/mc_tools/mc_generic.hpp>
 #include <triqs/utility/callbacks.hpp>
-#include <h5/h5.hpp>
 #include <filesystem>
 #include <iostream>
+#include <iomanip>
+#include <sstream>
 #include <chrono>
 #include <memory>
 
@@ -118,21 +120,14 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
     std::cout << "Time per step (s): " << total_time / total_steps << std::endl;
     std::cout << "Order-" << order << " staggered dimer coefficient: " << meas.result->coeff << " ± " << meas.result->error << std::endl;
 
-    std::string filename = "./results/dimer_staggered_order_" + std::to_string(config->get_order()) + "_U_" + std::to_string(config->get_U())
-       + "_beta_" + std::to_string(config->beta) + "_mu_" + std::to_string(mu) + "_t_" + std::to_string(t_hop) + ".h5";
-    h5::file file(filename, 'w');
-    h5_write(file, "coeff", meas.result->coeff);
-    h5_write(file, "error", meas.result->error);
-    h5_write(file, "mean_sign", meas.result->mean_sign);
-    h5_write(file, "sign_error", meas.result->sign_error);
-    h5_write(file, "mean_abs", meas.result->mean_abs);
-    h5_write(file, "abs_error", meas.result->abs_error);
-    h5_write(file, "order", order);
-    h5_write(file, "U", U);
-    h5_write(file, "beta", beta);
-    h5_write(file, "mu", mu);
-    h5_write(file, "t", t_hop);
-    h5_write(file, "alpha", alpha);
+    std::string observable = std::is_same_v<T, Dual> ? "density" : "Omega";
+    std::string filename   = "./results/dimer_square_lattice_" + observable + ".csv";
+
+    std::ostringstream row;
+    row << std::setprecision(17);
+    row << U << ',' << beta << ',' << mu << ',' << t_hop << ',' << order << ',' << alpha << ',' << meas.result->coeff << ',' << meas.result->error;
+
+    sc_expansion::append_csv_row(filename, "U,beta,mu,t,order,alpha,coeff,error", row.str());
   }
 }
 

@@ -5,11 +5,13 @@
 #include "sc_expansion/move.hpp"
 #include "sc_expansion/measure.hpp"
 #include "sc_expansion/dual.hpp"
+#include "sc_expansion/csv_append.hpp"
 #include <triqs/mc_tools/mc_generic.hpp>
 #include <triqs/utility/callbacks.hpp>
-#include <h5/h5.hpp>
 #include <filesystem>
 #include <iostream>
+#include <iomanip>
+#include <sstream>
 #include <chrono>
 #include <memory>
 
@@ -192,14 +194,16 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
     std::cout << "Time per step (s): " << total_time / total_steps << std::endl;
     std::cout << "Exact infinite-U coefficient (order " << order << "): " << signed_reference_integral << std::endl;
 
-    std::string filename = "./results/full_lattice_data_order_" + std::to_string(config->get_order()) + "_U_" + std::to_string(config->get_U())
-       + "_beta_" + std::to_string(config->beta) + "_mu_" + std::to_string(mu)
-       + (config->bipartite ? "_bipartite" : "_non_bipartite") + ".h5";
-    h5::file file(filename, 'w');
-    h5_write(file, "mean", meas.result->mean);
-    h5_write(file, "error", meas.result->error);
-    h5_write(file, "mu", mu);
-    h5_write(file, "reference_integral", reference_integral);
+    std::string lattice    = bipartite ? "square" : "triangular";
+    std::string observable = std::is_same_v<T, Dual> ? "density" : "Omega";
+    std::string filename   = "./results/atom_" + lattice + "_lattice_" + observable + ".csv";
+
+    std::ostringstream row;
+    row << std::setprecision(17);
+    row << U << ',' << beta << ',' << mu << ',' << order << ',' << alpha << ',' << meas.result->mean << ',' << meas.result->error << ','
+        << reference_integral;
+
+    sc_expansion::append_csv_row(filename, "U,beta,mu,order,alpha,coeff,error,reference_integral", row.str());
   }
 }
 
