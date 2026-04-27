@@ -19,15 +19,14 @@ namespace sc_expansion {
   // so the cache lives at <project>/diagrams/ regardless of the executable's CWD.
   static const std::string DIAGRAMS_DIR = std::string(SC_EXPANSION_PROJECT_ROOT) + "/diagrams";
 
-  std::string bipartite_diagrams_path(int order, bool allow_self_loops) {
-    // Self-loop caches live at a distinct filename so the two regimes never mix.
-    return DIAGRAMS_DIR + "/bipartite_order_" + std::to_string(order) + (allow_self_loops ? "_sl" : "");
+  std::string bipartite_diagrams_path(int order) {
+    return DIAGRAMS_DIR + "/bipartite_order_" + std::to_string(order);
   }
 
-  void save_bipartite_graphs(int order, const std::vector<Graph> &graphs, bool allow_self_loops) {
+  void save_bipartite_graphs(int order, const std::vector<Graph> &graphs) {
     std::filesystem::create_directories(DIAGRAMS_DIR);
-    std::ofstream out(bipartite_diagrams_path(order, allow_self_loops), std::ios::binary);
-    if (!out) { throw std::runtime_error("Failed to open " + bipartite_diagrams_path(order, allow_self_loops) + " for writing"); }
+    std::ofstream out(bipartite_diagrams_path(order), std::ios::binary);
+    if (!out) { throw std::runtime_error("Failed to open " + bipartite_diagrams_path(order) + " for writing"); }
 
     int32_t n = static_cast<int32_t>(graphs.size());
     out.write(reinterpret_cast<const char *>(&n), sizeof(n));
@@ -49,8 +48,8 @@ namespace sc_expansion {
     }
   }
 
-  bool load_bipartite_graphs(int order, std::vector<Graph> &out_graphs, bool allow_self_loops) {
-    std::string path = bipartite_diagrams_path(order, allow_self_loops);
+  bool load_bipartite_graphs(int order, std::vector<Graph> &out_graphs) {
+    std::string path = bipartite_diagrams_path(order);
     if (!std::filesystem::exists(path)) return false;
 
     std::ifstream in(path, std::ios::binary);
@@ -153,30 +152,15 @@ namespace sc_expansion {
     }
   }
 
-  VacuumDiagramGenerator::VacuumDiagramGenerator(int order_, bool bipartite_only_, bool allow_self_loops_)
-     : order(order_),
-       bipartite_only(bipartite_only_),
-       allow_self_loops(allow_self_loops_),
-       // With self-loops a single vertex can absorb all `order` lines, so lift
-       // the per-partition cap from order/2 to order when the flag is on.
-       partitions(order_, allow_self_loops_ ? order_ : order_ / 2) {};
+  VacuumDiagramGenerator::VacuumDiagramGenerator(int order_, bool bipartite_only_)
+     : order(order_), bipartite_only(bipartite_only_), partitions(order_, order_ / 2) {};
 
   //manually fill the n-cycle by hand to save time (implies n!n! redundant checks)
 
   void VacuumDiagramGenerator::generate() {
 
-    // Order 1 is degenerate: no valid vacuum diagram exists without self-loops.
-    // With self-loops enabled, the unique graph is a single vertex carrying one
-    // density insertion c^dagger c — adjacency matrix {1}. Handle it explicitly
-    // so we never feed order=1 through the n-cycle shortcut or partition loop.
-    if (this->order == 1) {
-      if (this->allow_self_loops) {
-        std::vector<uint8_t> adj = {1};
-        this->unique_adjmats.insert(adj);
-        this->graphs.emplace_back(adj, 1, this->bipartite_only);
-      }
-      return;
-    }
+    // Order 1 has no valid vacuum diagram without self-loops.
+    if (this->order == 1) return;
 
     //manually fill the n-cycle by hand to save time (implies n!n! redundant checks)
     // Only add n-cycle if it matches the bipartite criteria
@@ -232,16 +216,14 @@ namespace sc_expansion {
     std::vector<int> target = source;
 
     do {
-      if (!this->allow_self_loops) {
-        bool valid_connections = true;
-        for (size_t i = 0; i < this->order; ++i) {
-          if (source[i] == target[i]) {
-            valid_connections = false; //no self-connections allowed
-            break;
-          }
+      bool valid_connections = true;
+      for (size_t i = 0; i < (size_t)this->order; ++i) {
+        if (source[i] == target[i]) {
+          valid_connections = false; //no self-connections allowed
+          break;
         }
-        if (!valid_connections) continue;
       }
+      if (!valid_connections) continue;
 
       std::vector<uint8_t> adjmat = this->fill_matrix(source, target, V);
       Graph graph(adjmat, V, this->bipartite_only);

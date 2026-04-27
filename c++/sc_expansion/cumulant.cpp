@@ -81,20 +81,23 @@ namespace sc_expansion {
   //  Plan recording
   // ============================================================================
 
-  template <typename T>
-  CumulantSolver<T>::CumulantSolver(Args<T> const &unprimed, Args<T> const &primed, std::vector<std::pair<int, int>> self_loop_pairs_)
-     : master_unprimed(unprimed), master_primed(primed), self_loop_pairs(std::move(self_loop_pairs_)) {}
+  template <int N_sites, typename T>
+  CumulantSolver<N_sites, T>::CumulantSolver(Args<N_sites, T> const &unprimed, Args<N_sites, T> const &primed)
+     : master_unprimed(unprimed), master_primed(primed) {}
 
-  template <typename T> uint64_t CumulantSolver<T>::forced_p_bits_for(uint64_t u_mask) const {
-    uint64_t forced = 0;
-    for (auto const &pair : this->self_loop_pairs) {
-      if (u_mask & (1ULL << pair.first)) forced |= (1ULL << pair.second);
-    }
-    return forced;
+  template <int N_sites, typename T>
+  CumulantSolver<N_sites, T>::CumulantSolver(Args<N_sites, T> const &unprimed, Args<N_sites, T> const &primed,
+                                              HubbardSolver<N_sites, T> const &solver, bool infinite_U_)
+     : master_unprimed(unprimed), master_primed(primed), solver_ptr(&solver), infinite_U(infinite_U_) {}
+
+  template <int N_sites, typename T> T CumulantSolver<N_sites, T>::compute_cumulant_decomposition() {
+    CumulantPlan plan;
+    this->record_plan(plan);
+    return evaluate_plan(plan, this->master_unprimed, this->master_primed, *this->solver_ptr, this->infinite_U);
   }
 
-  template <typename T>
-  void CumulantSolver<T>::record_distribute_primed(std::vector<uint64_t> const &u_partition_masks, int u_idx, uint64_t current_p_pool,
+  template <int N_sites, typename T>
+  void CumulantSolver<N_sites, T>::record_distribute_primed(std::vector<uint64_t> const &u_partition_masks, int u_idx, uint64_t current_p_pool,
                                                    int overall_sign, std::vector<int> &factors_so_far, std::vector<int> const &stable_map_u,
                                                    std::vector<int> const &stable_map_p, std::vector<CumulantPlan::ProductTerm> &out,
                                                    CumulantPlan &plan) {
@@ -110,20 +113,7 @@ namespace sc_expansion {
     uint64_t u_mask = u_partition_masks[u_idx];
     int needed_k    = popcount(u_mask);
 
-    // Self-loop pairs must never be split across partition blocks: whenever a
-    // u-bit belonging to a self-loop sits in `u_mask`, the matched p-bit is
-    // forced into the p-submask. This gives the density-density semantics at
-    // vertices that carry self-loops; at vertices without self-loops
-    // `forced_p_bits` is zero and we fall back to the unrestricted enumeration.
-    uint64_t forced_p_bits = this->forced_p_bits_for(u_mask);
-    if ((forced_p_bits & current_p_pool) != forced_p_bits) return;
-    int forced_k = popcount(forced_p_bits);
-    if (forced_k > needed_k) return;
-    uint64_t free_pool = current_p_pool & ~forced_p_bits;
-    int free_k         = needed_k - forced_k;
-
-    for_each_subset(free_pool, free_k, [&](uint64_t free_submask) {
-      uint64_t p_submask = forced_p_bits | free_submask;
+    for_each_subset(current_p_pool, needed_k, [&](uint64_t p_submask) {
       int step_sign_p = compute_extraction_sign(current_p_pool, p_submask);
 
       uint64_t global_mask_u_stable = 0, global_mask_p_stable = 0;
@@ -146,7 +136,7 @@ namespace sc_expansion {
     });
   }
 
-  template <typename T> int CumulantSolver<T>::solve_record(uint64_t mask_u_stable, uint64_t mask_p_stable, CumulantPlan &plan) {
+  template <int N_sites, typename T> int CumulantSolver<N_sites, T>::solve_record(uint64_t mask_u_stable, uint64_t mask_p_stable, CumulantPlan &plan) {
 
     if (popcount(mask_u_stable & this->plan_spin_mask_stable_u) != popcount(mask_p_stable & this->plan_spin_mask_stable_p)) return -1;
 
@@ -205,7 +195,7 @@ namespace sc_expansion {
     return new_id;
   }
 
-  template <typename T> void CumulantSolver<T>::record_plan(CumulantPlan &plan) {
+  template <int N_sites, typename T> void CumulantSolver<N_sites, T>::record_plan(CumulantPlan &plan) {
     plan.nodes.clear();
     plan.root_id = -1;
     this->plan_node_ids.clear();
@@ -224,8 +214,8 @@ namespace sc_expansion {
     for (int stable_pos = 0; stable_pos < order; ++stable_pos) {
       int sp_u = this->plan_inv_argsort_u[stable_pos];
       int sp_p = this->plan_inv_argsort_p[stable_pos];
-      if (this->master_unprimed.ops[sp_u].get_orbital_index() >= 1) this->plan_spin_mask_stable_u |= (1ULL << stable_pos);
-      if (this->master_primed.ops[sp_p].get_orbital_index() >= 1) this->plan_spin_mask_stable_p |= (1ULL << stable_pos);
+      if (this->master_unprimed.ops[sp_u].get_orbital_index() >= N_sites) this->plan_spin_mask_stable_u |= (1ULL << stable_pos);
+      if (this->master_primed.ops[sp_p].get_orbital_index() >= N_sites) this->plan_spin_mask_stable_p |= (1ULL << stable_pos);
     }
 
     uint64_t full_mask = (order == 64) ? ~0ULL : (1ULL << order) - 1;
@@ -243,12 +233,13 @@ namespace sc_expansion {
       return inv;
     }
 
-    template <typename T>
-    Args<T> build_leaf_args_stable(CumulantPlan::LeafOps const &leaf, Args<T> const &master_unprimed, Args<T> const &master_primed,
-                                   std::vector<int> const &inv_argsort_u, std::vector<int> const &inv_argsort_p) {
+    template <int N_sites, typename T>
+    Args<N_sites, T> build_leaf_args_stable(CumulantPlan::LeafOps const &leaf, Args<N_sites, T> const &master_unprimed,
+                                            Args<N_sites, T> const &master_primed, std::vector<int> const &inv_argsort_u,
+                                            std::vector<int> const &inv_argsort_p) {
       int n = (int)leaf.u_global_idx.size();
       std::vector<double> taus;
-      std::vector<FermionOperator<T>> ops;
+      std::vector<FermionOperator<N_sites, T>> ops;
       taus.reserve(2 * n);
       ops.reserve(2 * n);
       for (int i = 0; i < n; ++i) {
@@ -259,13 +250,13 @@ namespace sc_expansion {
         taus.push_back(master_unprimed.taus[su]);
         ops.push_back(master_unprimed.ops[su]);
       }
-      return Args<T>(std::move(taus), std::move(ops));
+      return Args<N_sites, T>(std::move(taus), std::move(ops));
     }
   } // namespace
 
-  template <typename T>
-  T evaluate_plan(CumulantPlan const &plan, Args<T> const &master_unprimed, Args<T> const &master_primed, HubbardSolver<T> const &solver,
-                  bool infinite_U) {
+  template <int N_sites, typename T>
+  T evaluate_plan(CumulantPlan const &plan, Args<N_sites, T> const &master_unprimed, Args<N_sites, T> const &master_primed,
+                  HubbardSolver<N_sites, T> const &solver, bool infinite_U) {
 
     if (plan.root_id < 0) return T(0.0);
 
@@ -278,8 +269,9 @@ namespace sc_expansion {
     for (size_t i = 0; i < plan.nodes.size(); ++i) {
       auto const &node = plan.nodes[i];
 
-      Args<T> args = build_leaf_args_stable<T>(node.leaf, master_unprimed, master_primed, inv_argsort_u, inv_argsort_p);
-      T v          = infinite_U ? solver.G0n_infinite_U(args) : solver.G0n(args);
+      Args<N_sites, T> args =
+         build_leaf_args_stable<N_sites, T>(node.leaf, master_unprimed, master_primed, inv_argsort_u, inv_argsort_p);
+      T v = infinite_U ? solver.G0n_infinite_U(args) : solver.G0n(args);
 
       for (auto const &term : node.subtraction_terms) {
         T prod = T((double)term.sign);
@@ -294,10 +286,18 @@ namespace sc_expansion {
   }
 
   // Explicit instantiations
-  template class CumulantSolver<double>;
-  template class CumulantSolver<Dual>;
+  template class CumulantSolver<1, double>;
+  template class CumulantSolver<1, Dual>;
+  template class CumulantSolver<2, double>;
+  template class CumulantSolver<2, Dual>;
 
-  template double evaluate_plan<double>(CumulantPlan const &, Args<double> const &, Args<double> const &, HubbardSolver<double> const &, bool);
-  template Dual evaluate_plan<Dual>(CumulantPlan const &, Args<Dual> const &, Args<Dual> const &, HubbardSolver<Dual> const &, bool);
+  template double evaluate_plan<1, double>(CumulantPlan const &, Args<1, double> const &, Args<1, double> const &,
+                                           HubbardSolver<1, double> const &, bool);
+  template Dual evaluate_plan<1, Dual>(CumulantPlan const &, Args<1, Dual> const &, Args<1, Dual> const &,
+                                       HubbardSolver<1, Dual> const &, bool);
+  template double evaluate_plan<2, double>(CumulantPlan const &, Args<2, double> const &, Args<2, double> const &,
+                                           HubbardSolver<2, double> const &, bool);
+  template Dual evaluate_plan<2, Dual>(CumulantPlan const &, Args<2, Dual> const &, Args<2, Dual> const &,
+                                       HubbardSolver<2, Dual> const &, bool);
 
 } // namespace sc_expansion

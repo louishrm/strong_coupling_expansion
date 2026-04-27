@@ -1,5 +1,5 @@
-#include "sc_expansion/atomic_configuration.hpp"
-#include "sc_expansion/free_energy_calculator.hpp"
+#include "sc_expansion/atomic/configuration.hpp"
+#include "sc_expansion/atomic/free_energy_calculator.hpp"
 #include "sc_expansion/generate_diagrams.hpp"
 #include "sc_expansion/combinatorics.hpp"
 #include "sc_expansion/move.hpp"
@@ -58,39 +58,32 @@ static void broadcast_graphs(std::vector<sc_expansion::Graph> &graphs, mpi::comm
 // portion. Within each chunk the consecutive-transposition property is preserved,
 // so the vertex cache is kept alive across permutations for maximum reuse.
 template <typename T>
-std::pair<double, double> compute_reference_integral_mpi(sc_expansion::FreeEnergyCalculator<T> &calculator, sc_expansion::Parameters<T> const &params,
-                                                         int order, mpi::communicator &world) {
+std::pair<double, double> compute_reference_integral_mpi(sc_expansion::atomic::FreeEnergyCalculator<T> &calculator,
+                                                         sc_expansion::Parameters<T> const &params, int order, mpi::communicator &world) {
 
   uint64_t n_perms = sc_expansion::factorial(order);
   uint64_t rank    = world.rank();
   uint64_t size    = world.size();
 
-  // Divide n! permutations into contiguous chunks
   uint64_t chunk_size = n_perms / size;
   uint64_t remainder  = n_perms % size;
 
-  // Ranks 0..remainder-1 get one extra permutation
   uint64_t my_start = rank * chunk_size + std::min(rank, remainder);
   uint64_t my_count = chunk_size + (rank < remainder ? 1 : 0);
 
-  // SJT generator: produces permutations via consecutive transpositions
   sc_expansion::SJT sjt(order);
 
-  // Fast-forward to this rank's starting permutation (SJT steps are O(n), negligible)
   for (uint64_t i = 0; i < my_start; i++) { sjt.next_permutation(); }
 
-  // Evaluate this rank's chunk, keeping vertex cache alive across consecutive permutations
   double local_sum_abs    = 0.0;
   double local_sum_signed = 0.0;
 
-  // Convert SJT permutation (1-indexed) to 0-indexed taus for diagram evaluation
   std::vector<double> taus(order);
 
   for (uint64_t i = 0; i < my_count; i++) {
-    const auto &perm = sjt.get_permutation();
+    auto const &perm = sjt.get_permutation();
     for (int j = 0; j < order; j++) { taus[j] = (double)(perm[j] - 1); }
 
-    // All taus change between permutations — mark every VertexInstance dirty
     calculator.mark_all_dirty();
     T val_T = calculator.compute_sum_diagrams(taus, true);
     double val;
@@ -105,13 +98,11 @@ std::pair<double, double> compute_reference_integral_mpi(sc_expansion::FreeEnerg
     if (i + 1 < my_count) { sjt.next_permutation(); }
   }
 
-  // Reduce across all ranks
   double global_sum_abs    = 0.0;
   double global_sum_signed = 0.0;
   MPI_Allreduce(&local_sum_abs, &global_sum_abs, 1, MPI_DOUBLE, MPI_SUM, world.get());
   MPI_Allreduce(&local_sum_signed, &global_sum_signed, 1, MPI_DOUBLE, MPI_SUM, world.get());
 
-  // Normalise: beta^n / n!
   double beta_val;
   if constexpr (std::is_same_v<T, Dual>) {
     beta_val = params.beta.value;
@@ -127,13 +118,13 @@ std::pair<double, double> compute_reference_integral_mpi(sc_expansion::FreeEnerg
 
 template <typename T>
 void run(mpi::communicator &world, int order, int n_cycles, double U, double beta, double mu, bool bipartite, double alpha, int n_warmup_cycles,
-         int length_cycle, std::string random_name, int random_seed, int verbosity, double delta, bool allow_self_loops) {
+         int length_cycle, std::string random_name, int random_seed, int verbosity) {
 
   sc_expansion::Parameters<T> params;
   if constexpr (std::is_same_v<T, Dual>) {
-    params = {Dual(U, 0.0), Dual(beta, 0.0), Dual(mu - delta, 1.0), bipartite, Dual(-delta, 0.0)};
+    params = {Dual(U, 0.0), Dual(beta, 0.0), Dual(mu, 1.0), Dual(0.0, 0.0), bipartite, Dual(0.0, 0.0)};
   } else {
-    params = {U, beta, mu - delta, bipartite, -delta};
+    params = {U, beta, mu, 0.0, bipartite, 0.0};
   }
 
   // --- Phase 1: Rank 0 generates all vacuum diagrams, then broadcasts to all ranks ---
@@ -141,8 +132,8 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
   if (world.rank() == 0) {
     bool loaded = false;
     if (params.bipartite) {
-      auto path = sc_expansion::bipartite_diagrams_path(order, allow_self_loops);
-      if (sc_expansion::load_bipartite_graphs(order, graphs, allow_self_loops)) {
+      auto path = sc_expansion::bipartite_diagrams_path(order);
+      if (sc_expansion::load_bipartite_graphs(order, graphs)) {
         std::cout << "Loaded " << graphs.size() << " cached diagrams from " << path << std::endl;
         loaded = true;
       }
@@ -150,7 +141,7 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
     if (!loaded) {
       std::cout << "Generating vacuum diagrams on rank 0..." << std::endl;
       auto t0 = std::chrono::high_resolution_clock::now();
-      sc_expansion::VacuumDiagramGenerator gen(order, params.bipartite, allow_self_loops);
+      sc_expansion::VacuumDiagramGenerator gen(order, params.bipartite);
       gen.generate();
       graphs  = gen.get_unique_graphs();
       auto t1 = std::chrono::high_resolution_clock::now();
@@ -160,7 +151,7 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
   broadcast_graphs(graphs, world);
 
   // --- Phase 2: All ranks construct the calculator from pre-built graphs ---
-  sc_expansion::FreeEnergyCalculator<T> calculator(params, order, graphs);
+  sc_expansion::atomic::FreeEnergyCalculator<T> calculator(params, order, graphs);
 
   // --- Phase 3: MPI-parallel infinite-U reference integral using SJT ---
   if (world.rank() == 0) { std::cout << "Computing reference integral across " << world.size() << " MPI ranks (SJT)..." << std::endl; }
@@ -173,19 +164,17 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
   }
 
   // --- Phase 4: MC sampling (reuses the same calculator — no second diagram generation) ---
-  auto config = std::make_unique<AtomicConfiguration<T>>(params, order, alpha, calculator);
+  auto config = std::make_unique<sc_expansion::atomic::Configuration<T>>(params, order, alpha, calculator);
 
-  // Ensure results directory exists
   if (world.rank() == 0) { std::filesystem::create_directory("./results"); }
 
-  // Construct MC loop
   triqs::mc_tools::mc_generic<double> mc(random_name, random_seed, verbosity);
 
   int target_block_size = 2000;
   int n_bins            = std::max(50, n_cycles / target_block_size);
   int block_size        = (n_cycles / n_bins) + 1;
 
-  measure<T> meas(config.get(), reference_integral, signed_reference_integral, n_bins, block_size, mu - delta, verbosity);
+  measure<T> meas(config.get(), reference_integral, signed_reference_integral, n_bins, block_size, mu, verbosity);
   mc.add_move(move<T>(config.get(), mc.get_rng()), "time_swap");
   mc.add_measure(meas, "defensive_measure");
 
@@ -203,9 +192,8 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
     std::cout << "Time per step (s): " << total_time / total_steps << std::endl;
     std::cout << "Exact infinite-U coefficient (order " << order << "): " << signed_reference_integral << std::endl;
 
-    // Save results to HDF5
     std::string filename = "./results/full_lattice_data_order_" + std::to_string(config->get_order()) + "_U_" + std::to_string(config->get_U())
-       + "_beta_" + std::to_string(config->beta) + "_delta_" + std::to_string(delta) + "_mu_" + std::to_string(mu)
+       + "_beta_" + std::to_string(config->beta) + "_mu_" + std::to_string(mu)
        + (config->bipartite ? "_bipartite" : "_non_bipartite") + ".h5";
     h5::file file(filename, 'w');
     h5_write(file, "mean", meas.result->mean);
@@ -219,7 +207,7 @@ int main(int argc, char *argv[]) {
 
   if (argc < 6) {
     if (mpi::communicator().rank() == 0) {
-      std::cerr << "Usage: " << argv[0] << " order n_cycles U beta mu [bipartite] [alpha] [use_dual] [delta]" << std::endl;
+      std::cerr << "Usage: " << argv[0] << " order n_cycles U beta mu [bipartite] [alpha] [use_dual]" << std::endl;
     }
     return 1;
   }
@@ -232,13 +220,6 @@ int main(int argc, char *argv[]) {
   bool bipartite = (argc > 6 ? std::stoi(argv[6]) != 0 : true);
   double alpha   = (argc > 7 ? std::stod(argv[7]) : 0.5);
   bool use_dual  = (argc > 8 ? std::stoi(argv[8]) != 0 : false);
-  // Chemical-potential shift absorbed as a perturbation. `mu` above should
-  // already be the shifted value used by the atomic solver; `delta` is the
-  // coefficient multiplying the self-loop insertions in the expansion.
-  // Self-loop diagrams are only generated when delta != 0 — they contribute
-  // zero to the answer otherwise, so there's no reason to enumerate them.
-  double delta          = (argc > 9 ? std::stod(argv[9]) : 0.0);
-  bool allow_self_loops = (delta != 0.0);
 
   mpi::environment env(argc, argv);
   mpi::communicator world;
@@ -247,7 +228,7 @@ int main(int argc, char *argv[]) {
     std::cout << "=== Strong Coupling MC (Atomic) ===" << std::endl;
     std::cout << "MPI ranks: " << world.size() << std::endl;
     std::cout << "Order=" << order << " U=" << U << " beta=" << beta << " mu=" << mu << " bipartite=" << bipartite << " alpha=" << alpha
-              << " delta=" << delta << " self_loops=" << allow_self_loops << std::endl;
+              << std::endl;
   }
 
   int length_cycle        = 1;
@@ -257,11 +238,9 @@ int main(int argc, char *argv[]) {
   int verbosity           = (world.rank() == 0 ? 2 : 0);
 
   if (use_dual) {
-    run<Dual>(world, order, n_cycles, U, beta, mu, bipartite, alpha, n_warmup_cycles, length_cycle, random_name, random_seed, verbosity, delta,
-              allow_self_loops);
+    run<Dual>(world, order, n_cycles, U, beta, mu, bipartite, alpha, n_warmup_cycles, length_cycle, random_name, random_seed, verbosity);
   } else {
-    run<double>(world, order, n_cycles, U, beta, mu, bipartite, alpha, n_warmup_cycles, length_cycle, random_name, random_seed, verbosity, delta,
-                allow_self_loops);
+    run<double>(world, order, n_cycles, U, beta, mu, bipartite, alpha, n_warmup_cycles, length_cycle, random_name, random_seed, verbosity);
   }
 
   return 0;

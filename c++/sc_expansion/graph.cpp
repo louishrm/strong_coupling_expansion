@@ -13,11 +13,6 @@ namespace sc_expansion {
     this->order = 0;
     for (auto val : this->adjacency_matrix) { this->order += val; }
 
-    // Count self-loops (diagonal entries). Each diagonal entry represents
-    // a single density insertion c^dagger_i c_i at vertex i.
-    this->n_self_loops = 0;
-    for (int i = 0; i < this->V; i++) { this->n_self_loops += this->adjacency_matrix[i * this->V + i]; }
-
     // Pre-calculate Degrees
     this->degrees.resize(this->V, 0);
     for (int i = 0; i < this->V; i++) { this->degrees[i] = this->get_degree_of_vertex(i); }
@@ -51,11 +46,6 @@ namespace sc_expansion {
     // Calculate Order (Total number of lines)
     this->order = 0;
     for (auto val : this->adjacency_matrix) { this->order += val; }
-
-    // Count self-loops (diagonal entries) — recomputed from the stored matrix
-    // so cached/broadcast graphs stay consistent without an extra serialised field.
-    this->n_self_loops = 0;
-    for (int i = 0; i < this->V; i++) { this->n_self_loops += this->adjacency_matrix[i * this->V + i]; }
 
     // Pre-calculate Degrees
     this->degrees.resize(this->V, 0);

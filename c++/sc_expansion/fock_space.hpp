@@ -7,8 +7,10 @@
 
 namespace sc_expansion {
 
-  struct FockState {
-    int state; // bit 0: spin down, bit 1: spin up
+  // FockState<N_sites>: bit layout is [low N_sites bits = spin down, next N_sites bits = spin up].
+  // For N_sites=1 this matches the legacy single-site convention (bit 0 = down, bit 1 = up).
+  template <int N_sites> struct FockState {
+    int state;
     FockState(int state_);
     bool is_occupied(uint8_t orbital_index) const;
   };
@@ -20,12 +22,11 @@ namespace sc_expansion {
   };
 
   template <typename T> struct Eigenstate {
-    std::vector<std::pair<int, T>> coefficients; // List of (basis state index, coefficient) pairs
+    std::vector<std::pair<int, T>> coefficients;
     T energy;
   };
 
   template <typename T> struct TransitionList {
-    // transition list
     std::vector<Transition<T>> transitions;
   };
 
@@ -38,21 +39,29 @@ namespace sc_expansion {
     std::vector<Entry> entries;
   };
 
-  template <typename T> struct FermionOperator {
+  // FermionOperator<N_sites, T>: encodes (action, orbital_index) in `op` byte.
+  //   ACTION_BIT   = 1 << N_sites (bit set => create)
+  //   ORBITAL_MASK = ACTION_BIT - 1  (low bits hold the orbital index 0..2*N_sites-1)
+  //   N_STATES     = 4^N_sites      (Hilbert dimension)
+  // Note: ACTION_BIT == 1<<N_sites gives N_sites bits for the orbital, which is enough
+  // for 2*N_sites orbitals iff 2*N_sites <= 2^N_sites — true for N_sites >= 1.
+  template <int N_sites, typename T> struct FermionOperator {
 
     public:
-    uint8_t op; // Bit 1 is the 'action' bit: 0 = destroy, 1 = create
+    uint8_t op;
     FermionOperator() = default;
     FermionOperator(uint8_t op_);
     uint8_t get_action() const;
     uint8_t get_orbital_index() const;
-    Transition<T> act_on_state(FockState const &fock_state) const;
+    Transition<T> act_on_state(FockState<N_sites> const &fock_state) const;
     T compute_matrix_element(Eigenstate<T> const &bra, Eigenstate<T> const &ket) const;
 
-    FermionOperator<T> apply_spin_flip() const;
+    FermionOperator<N_sites, T> apply_spin_flip() const;
+    // Site-swap reflection. No-op for N_sites=1; swaps site 0 <-> site 1 for N_sites=2.
+    FermionOperator<N_sites, T> apply_reflection() const;
 
-    static constexpr uint8_t N_STATES     = 4;
-    static constexpr uint8_t ACTION_BIT   = 2;
+    static constexpr uint8_t N_STATES     = 1 << (2 * N_sites);
+    static constexpr uint8_t ACTION_BIT   = 1 << N_sites;
     static constexpr uint8_t ORBITAL_MASK = ACTION_BIT - 1;
 
     SparseMatrix<T> compute_sparse_matrix(std::array<Eigenstate<T>, N_STATES> const &all_eigenstates) const;

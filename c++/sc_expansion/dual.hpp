@@ -45,3 +45,13 @@ inline Dual sqrt(const Dual &xi) {
   double der      = 0.5 * xi.derivative / sqrt_val;
   return Dual(sqrt_val, der);
 }
+
+// Extract the scalar (real) value from a scalar or dual number.
+// Use this in code paths that need to branch on a numeric magnitude (e.g. t==0
+// limits in dimer ED) without coupling the call site to Dual's layout.
+inline double dual_value(double x) { return x; }
+inline double dual_value(const Dual &x) { return x.value; }
+
+// Generic near-zero test that works for both double and Dual.
+inline bool is_zero(double v) { return std::abs(v) < 1e-15; }
+inline bool is_zero(const Dual &v) { return std::abs(v.value) < 1e-15; }
