@@ -654,7 +654,11 @@ namespace sc_expansion::dimer {
     this->phase1_seconds += std::chrono::duration<double>(t_p2 - t_p1).count();
     this->phase2_seconds += std::chrono::duration<double>(t_end - t_p2).count();
 
-    T prefactor = (T(-1.0) / solver.params.beta) * T(this->diagram_sign);
+    // Absorb the (-t)^n factor that each hopping line contributes, so the
+    // returned coefficient is the n-th order term in a series in t (not -t).
+    int n_lines    = (int)this->hopping_lines.lines.size();
+    double t_sign  = (n_lines % 2 == 0) ? 1.0 : -1.0;
+    T prefactor    = (T(-1.0) / solver.params.beta) * T(this->diagram_sign * (int)t_sign);
     return prefactor * sum;
   }
 
@@ -677,7 +681,11 @@ namespace sc_expansion::dimer {
       sum = sum + T(this->valid_configurations[gc_idx].weight) * product;
     }
 
-    T prefactor = (T(-1.0) / solver.params.beta) * T(this->diagram_sign);
+    // Absorb the (-t)^n factor that each hopping line contributes, so the
+    // returned coefficient is the n-th order term in a series in t (not -t).
+    int n_lines    = (int)this->hopping_lines.lines.size();
+    double t_sign  = (n_lines % 2 == 0) ? 1.0 : -1.0;
+    T prefactor    = (T(-1.0) / solver.params.beta) * T(this->diagram_sign * (int)t_sign);
     return prefactor * sum;
   }
 

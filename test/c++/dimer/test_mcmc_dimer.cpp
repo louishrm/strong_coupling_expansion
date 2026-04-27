@@ -83,8 +83,7 @@ TEST(McmcDimerCluster, Order2Coefficient) {
 }
 
 TEST(McmcDimerCluster, Order3Coefficient) {
-  // (-t)^n series: odd orders pick up a -1 relative to a reference computed without the (-1)^n factor.
-  run_mcmc_dimer_check(/*order=*/3, /*exact_coeff=*/-0.001298542799, /*rel_tol=*/0.15, /*n_cycles=*/300000);
+  run_mcmc_dimer_check(/*order=*/3, /*exact_coeff=*/0.001298542799, /*rel_tol=*/0.15, /*n_cycles=*/300000);
 }
 
 int main(int argc, char **argv) {
