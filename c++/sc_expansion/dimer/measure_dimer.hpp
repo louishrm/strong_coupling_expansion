@@ -8,12 +8,13 @@
 #include <cmath>
 
 struct DimerMeasureResult {
-  double coeff      = 0.0;
-  double error      = 0.0;
-  double mean_sign  = 0.0;
-  double sign_error = 0.0;
-  double mean_abs   = 0.0;
-  double abs_error  = 0.0;
+  double coeff          = 0.0;
+  double error          = 0.0;
+  double mean_sign      = 0.0;
+  double sign_error     = 0.0;
+  double mean_abs       = 0.0;
+  double abs_error      = 0.0;
+  double mean_omega_abs = 0.0; // <|Omega|/W>, used for alpha auto-tuning
 };
 
 template <typename T> struct measure_dimer {
@@ -26,6 +27,7 @@ template <typename T> struct measure_dimer {
   // where W = |Omega + alpha| is the Metropolis weight.
   triqs::stat::accumulator<double> acc_integrand;
   triqs::stat::accumulator<double> acc_reference;
+  triqs::stat::accumulator<double> acc_abs_integrand;
 
   double alpha;
   double mu;
@@ -43,6 +45,7 @@ template <typename T> struct measure_dimer {
      : config(config_),
        acc_integrand(0.0, 0, n_bins, block_size + 100),
        acc_reference(0.0, 0, n_bins, block_size + 100),
+       acc_abs_integrand(0.0, 0, n_bins, block_size + 100),
        alpha(config_->get_alpha()),
        mu(mu_),
        result(std::make_shared<DimerMeasureResult>()),
@@ -53,8 +56,10 @@ template <typename T> struct measure_dimer {
     double W = config->metropolis_weight;
 
     if (W > 0.0) {
-      acc_integrand << (config->get_integrand() / W);
+      double omega = config->get_integrand();
+      acc_integrand << (omega / W);
       acc_reference << (this->alpha / W);
+      acc_abs_integrand << (std::abs(omega) / W);
     }
 
     this->step_count++;
@@ -92,6 +97,9 @@ template <typename T> struct measure_dimer {
     this->result->sign_error = std::get<1>(int_jk);
     this->result->mean_abs   = std::get<0>(ref_jk);
     this->result->abs_error  = std::get<1>(ref_jk);
+
+    auto abs_jk                  = triqs::stat::local::jackknife_mpi(c, pick_first, acc_abs_integrand, acc_reference);
+    this->result->mean_omega_abs = std::get<0>(abs_jk);
 
     if (c.rank() == 0) {
       std::cout << "--- Measurement Results (Dimer, defensive ratio estimator) ---" << std::endl;

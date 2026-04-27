@@ -90,11 +90,48 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
   }
   broadcast_graphs(graphs, world);
 
-  // --- Phase 2: dimer calculator + configuration ---
+  // --- Phase 2: dimer calculator (alpha-independent, reused across pilot + production) ---
   sc_expansion::dimer::FreeEnergyCalculator<T> calculator(params, order, graphs);
-  auto config = std::make_unique<sc_expansion::dimer::Configuration<T>>(params, order, calculator, alpha);
 
   if (world.rank() == 0) { std::filesystem::create_directory("./results"); }
+
+  // --- Phase 3: alpha auto-tuning pilot ---
+  // Run a short MC with the user-supplied alpha as initial guess, then rescale via
+  //   alpha_new = alpha_0 * <|Omega|/W> / <alpha/W>
+  // which equates alpha to typical|Omega|, the variance-minimising choice for the
+  // ratio estimator coeff = alpha * beta^n * <Omega/W> / <alpha/W>.
+  {
+    int pilot_warmup    = 1000;
+    int pilot_cycles    = 5000;
+    int pilot_block     = 200;
+    int pilot_n_bins    = std::max(20, pilot_cycles / pilot_block);
+    int pilot_blk_size  = (pilot_cycles / pilot_n_bins) + 1;
+
+    auto pilot_config = std::make_unique<sc_expansion::dimer::Configuration<T>>(params, order, calculator, alpha);
+    triqs::mc_tools::mc_generic<double> pilot_mc(random_name, random_seed, 0);
+    measure_dimer<T> pilot_meas(pilot_config.get(), pilot_n_bins, pilot_blk_size, mu, 0);
+    pilot_mc.add_move(move<T>(pilot_config.get(), pilot_mc.get_rng()), "time_swap");
+    pilot_mc.add_measure(pilot_meas, "alpha_pilot");
+
+    if (world.rank() == 0) { std::cout << "Pilot run for alpha tuning (initial alpha = " << alpha << ")..." << std::endl; }
+    pilot_mc.warmup_and_accumulate(pilot_warmup, pilot_cycles, length_cycle, triqs::utility::clock_callback(-1));
+    pilot_mc.collect_results(world);
+
+    double new_alpha = alpha;
+    if (world.rank() == 0) {
+      double mean_abs_omega = pilot_meas.result->mean_omega_abs; // <|Omega|/W>
+      double mean_alpha_W   = pilot_meas.result->mean_abs;       // <alpha/W>
+      if (mean_alpha_W > 1e-18 && mean_abs_omega > 0.0) {
+        new_alpha = alpha * mean_abs_omega / mean_alpha_W;
+      }
+      std::cout << "Pilot estimated typical|Omega| = " << new_alpha << "  (was alpha = " << alpha << ")" << std::endl;
+    }
+    MPI_Bcast(&new_alpha, 1, MPI_DOUBLE, 0, world.get());
+    alpha = new_alpha;
+  }
+
+  // --- Phase 4: production MC with tuned alpha ---
+  auto config = std::make_unique<sc_expansion::dimer::Configuration<T>>(params, order, calculator, alpha);
 
   triqs::mc_tools::mc_generic<double> mc(random_name, random_seed, verbosity);
 
