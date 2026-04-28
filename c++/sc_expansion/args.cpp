@@ -37,11 +37,19 @@ namespace sc_expansion {
   }
 
   template <int N_sites, typename T> bool Args<N_sites, T>::operator_sequence_is_valid() const {
+    // Both checks below — Pauli adjacency and even-touch trace closure — assume H_0
+    // is diagonal in the (site×spin) orbital basis, so c†_orbital commutes with
+    // exp(τ H_0). That holds only for atomic (N_sites=1). For clusters with
+    // intra-cluster hopping (N_sites>=2), the time-ordered product
+    // c†(τ_2) exp((τ_2−τ_1)H_0) c†(τ_1) is generically non-zero because H_0 mixes
+    // orbitals between the two operator applications. In that regime, defer to
+    // G0n's amplitude propagation, which is exact.
+    if constexpr (N_sites != 1) { return true; }
+
     int last_action[N_ORBITALS];
     std::fill(std::begin(last_action), std::end(last_action), -1);
     int ops_count[N_ORBITALS] = {0};
 
-    // 1. ensure Pauli exclusion is respected
     for (auto const &f_op : ops) {
       int orbital_index = f_op.get_orbital_index();
       int action        = f_op.get_action();
@@ -50,15 +58,8 @@ namespace sc_expansion {
       ops_count[orbital_index]++;
     }
 
-    // 2. trace loop closes: each orbital must be touched an even number of times.
-    // This holds only when H_0 is diagonal in the (site×spin) orbital basis —
-    // i.e. atomic (N_sites=1). For N_sites>=2 with intra-cluster hopping,
-    // off-diagonal G's are non-zero; defer to G0n, which returns 0 correctly
-    // for genuinely spin-non-conserving ops via amplitude propagation.
-    if constexpr (N_sites == 1) {
-      for (int i = 0; i < N_ORBITALS; ++i) {
-        if (ops_count[i] % 2 != 0) { return false; }
-      }
+    for (int i = 0; i < N_ORBITALS; ++i) {
+      if (ops_count[i] % 2 != 0) { return false; }
     }
     return true;
   }

@@ -86,6 +86,10 @@ TEST(McmcDimerCluster, Order3Coefficient) {
   run_mcmc_dimer_check(/*order=*/3, /*exact_coeff=*/0.001298542799, /*rel_tol=*/0.15, /*n_cycles=*/300000);
 }
 
+TEST(McmcDimerCluster, Order4Coefficient) {
+  run_mcmc_dimer_check(/*order=*/4, /*exact_coeff=*/-0.037479608143, /*rel_tol=*/0.15, /*n_cycles=*/500000);
+}
+
 int main(int argc, char **argv) {
   mpi::environment env(argc, argv);
   ::testing::InitGoogleTest(&argc, argv);
