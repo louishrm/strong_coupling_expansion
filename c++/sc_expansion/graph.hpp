@@ -25,6 +25,13 @@ namespace sc_expansion {
     bool get_bipartite_only() const { return this->bipartite_only; }
     int get_automorphism_count() const { return this->automorphism_count; }
 
+    // Compute and store the lattice embedding count for this graph. The
+    // constructor leaves free_multiplicity = 0 by default because embedding
+    // is the most expensive per-graph step; callers (e.g. the diagram
+    // generator) should defer it until after deduplication so it runs once
+    // per unique canonical form rather than once per candidate.
+    void compute_free_multiplicity();
+
     private:
     std::vector<uint8_t> adjacency_matrix;
     int V; //number of vertices
@@ -43,6 +50,11 @@ namespace sc_expansion {
     bool check_bipartite_dfs(int vertex, std::vector<int> &colors) const;
     void check_if_bipartite();
     void compute_canonical_form();
-    void compute_free_multiplicity();
   };
+
+  // Profiling: cumulative time spent inside compute_lattice_free_multiplicity
+  // across all Graph constructions on the current thread. Reset before the
+  // workload of interest, read after.
+  void reset_embedding_timer();
+  double get_embedding_time_seconds();
 } // namespace sc_expansion

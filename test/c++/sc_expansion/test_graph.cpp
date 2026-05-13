@@ -81,12 +81,15 @@ TEST_F(GraphTest, Order4) {
   }
 
   // Canonical-form witness on the V=3 order-4 graph.
+  // Note: bliss's canonical labeling is a different representative of the
+  // isomorphism class than the previous lex-min implementation; we only
+  // check invariants (order, |Aut|, symmetry factor) here.
   {
     std::vector<uint8_t> adj = {0, 1, 1, 1, 0, 0, 1, 0, 0};
     Graph g(adj, 3);
     EXPECT_EQ(g.get_order(), 4);
     EXPECT_EQ(g.get_symmetry_factor(), 2);
-    EXPECT_EQ(g.get_canonical_form(), std::vector<uint8_t>({0, 0, 1, 0, 0, 1, 1, 1, 0}));
+    EXPECT_EQ(g.get_automorphism_count(), 2);
   }
 }
 

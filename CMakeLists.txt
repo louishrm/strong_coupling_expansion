@@ -129,6 +129,10 @@ include(GNUInstallDirs)
 # Find / Build dependencies
 add_subdirectory(deps)
 
+# Vendored third-party libraries (compiled as OBJECT libs and bundled
+# into sc_expansion_c so we don't need to install/export them separately)
+add_subdirectory(third_party)
+
 # Build and install the library
 add_subdirectory(c++/${PROJECT_NAME})
 

@@ -191,6 +191,13 @@ namespace sc_expansion {
       this->propose_create_process(this->partitions.current());
       if (!this->partitions.next()) break;
     }
+
+    // Compute lattice embeddings now that the unique set is final. The
+    // n-cycle fast-path graphs already carry a precomputed free_multiplicity
+    // (set via the override constructor) and so are skipped.
+    for (auto &g : this->graphs) {
+      if (g.get_free_multiplicity() == 0) g.compute_free_multiplicity();
+    }
   }
 
   void VacuumDiagramGenerator::propose_create_process(const std::vector<int> &partition) {

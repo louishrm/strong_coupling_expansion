@@ -1,9 +1,15 @@
 file(GLOB_RECURSE sources *.cpp)
-add_library(${PROJECT_NAME}_c ${sources})
+add_library(${PROJECT_NAME}_c ${sources} $<TARGET_OBJECTS:bliss_obj>)
 add_library(${PROJECT_NAME}::${PROJECT_NAME}_c ALIAS ${PROJECT_NAME}_c)
 
 # Link against triqs and enable warnings
 target_link_libraries(${PROJECT_NAME}_c PUBLIC triqs PRIVATE $<BUILD_INTERFACE:${PROJECT_NAME}_warnings>)
+
+# Vendored bliss is compiled as an OBJECT library and its objects are
+# baked into sc_expansion_c above ($<TARGET_OBJECTS:bliss_obj>). We just
+# need its headers on the include path for our own .cpp files.
+target_include_directories(${PROJECT_NAME}_c PRIVATE
+  $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/third_party/bliss/src>)
 
 # Configure target and compilation
 set_target_properties(${PROJECT_NAME}_c PROPERTIES

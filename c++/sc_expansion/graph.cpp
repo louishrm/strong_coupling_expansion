@@ -1,8 +1,7 @@
 #include "graph.hpp"
-#include <numeric>
-#include <cmath>
-#include <algorithm>
-#include <iostream>
+#include "canonicalize.hpp"
+#include <chrono>
+#include <queue>
 
 namespace sc_expansion {
 
@@ -21,12 +20,15 @@ namespace sc_expansion {
 
     this->check_if_bipartite();
 
+    // Embedding (free_multiplicity) is deliberately NOT computed here — it
+    // is the most expensive per-graph operation, so we defer it to after the
+    // generator has deduplicated candidates. Callers must invoke
+    // compute_free_multiplicity() explicitly on the unique graphs.
+    this->free_multiplicity = 0;
     if ((this->connected) && (!this->bipartite_only || this->bipartite)) {
       this->compute_canonical_form();
-      this->compute_free_multiplicity();
     } else {
       this->symmetry_factor    = 0;
-      this->free_multiplicity  = 0;
       this->automorphism_count = 0;
     }
   }
@@ -131,67 +133,40 @@ namespace sc_expansion {
     this->bipartite = true;
   }
 
-  // --- 2. Canonicalization (Min-Lex + Symmetry) ---
+  // --- 2. Canonicalization (bliss) ---
   void Graph::compute_canonical_form() {
+    // Uncolored canonicalization: all vertices share color 0.
+    std::vector<int> color(this->V, 0);
+    auto result              = canonicalize(this->adjacency_matrix, this->V, color);
+    this->canonical_matrix   = std::move(result.canonical_matrix);
+    this->automorphism_count = static_cast<int>(result.automorphism_count);
 
-    // 1. Establish a canonical starting labeling by sorting vertices by degree (non-decreasing)
-    std::vector<int> p_sort(this->V);
-    std::iota(p_sort.begin(), p_sort.end(), 0);
-    std::stable_sort(p_sort.begin(), p_sort.end(), [this](int a, int b) { return this->degrees[a] < this->degrees[b]; });
-
-    std::vector<uint8_t> sorted_matrix(this->V * this->V);
-    std::vector<int> sorted_degrees(this->V);
-    for (int i = 0; i < this->V; i++) {
-      sorted_degrees[i] = this->degrees[p_sort[i]];
-      for (int j = 0; j < this->V; j++) { sorted_matrix[i * this->V + j] = (*this)(p_sort[i], p_sort[j]); }
-    }
-
-    this->canonical_matrix = sorted_matrix;
-    int auto_count         = 0;
-
-    std::vector<int> p(this->V);
-    std::iota(p.begin(), p.end(), 0);
-
-    std::vector<uint8_t> candidate(this->V * this->V);
-
-    do {
-      // 2. Only apply permutations that preserve the sorted degree profile
-      bool can_swap = true;
-      for (int i = 0; i < this->V; i++) {
-        if (sorted_degrees[p[i]] != sorted_degrees[i]) {
-          can_swap = false;
-          break;
-        }
-      }
-      if (!can_swap) continue;
-
-      for (int i = 0; i < this->V; i++) {
-        for (int j = 0; j < this->V; j++) { candidate[i * this->V + j] = sorted_matrix[p[i] * this->V + p[j]]; }
-      }
-
-      // Min-Lex Comparison
-      if (candidate < this->canonical_matrix) {
-        this->canonical_matrix = candidate;
-        auto_count             = 1;
-      } else if (candidate == this->canonical_matrix) {
-        auto_count++;
-      }
-    } while (std::next_permutation(p.begin(), p.end()));
-
-    this->automorphism_count = auto_count;
-
-    // Compute total symmetry factor g(D)
+    // Multi-edge correction to the symmetry factor: each (i,j) entry with
+    // multiplicity m > 1 contributes m! permutations of parallel lines that
+    // bliss does NOT count (it sees only the multiset of edges).
     int factorial_product = 1;
     for (const auto &entry : this->adjacency_matrix) {
       if (entry > 1) factorial_product *= sc_expansion::factorial(entry);
     }
 
-    this->symmetry_factor = auto_count * factorial_product;
+    this->symmetry_factor = this->automorphism_count * factorial_product;
   }
 
   // Forward declaration — implementation lives in diagram.cpp
   int compute_lattice_free_multiplicity(Graph const &graph);
 
-  void Graph::compute_free_multiplicity() { this->free_multiplicity = compute_lattice_free_multiplicity(*this); }
+  namespace {
+    int64_t embedding_total_ns = 0;
+  }
+
+  void reset_embedding_timer() { embedding_total_ns = 0; }
+  double get_embedding_time_seconds() { return static_cast<double>(embedding_total_ns) * 1e-9; }
+
+  void Graph::compute_free_multiplicity() {
+    auto t0                 = std::chrono::steady_clock::now();
+    this->free_multiplicity = compute_lattice_free_multiplicity(*this);
+    auto t1                 = std::chrono::steady_clock::now();
+    embedding_total_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count();
+  }
 
 } // namespace sc_expansion

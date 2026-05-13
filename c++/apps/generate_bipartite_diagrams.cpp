@@ -4,6 +4,8 @@
 //   generate_bipartite_diagrams <order>
 
 #include "sc_expansion/generate_diagrams.hpp"
+#include "sc_expansion/graph.hpp"
+#include <chrono>
 #include <cstdlib>
 #include <iomanip>
 #include <iostream>
@@ -12,22 +14,17 @@ using namespace sc_expansion;
 
 static void print_bipartite_diagrams(int order) {
   VacuumDiagramGenerator gen(order, true);
+  reset_embedding_timer();
+  auto t0 = std::chrono::steady_clock::now();
   gen.generate();
+  auto t1 = std::chrono::steady_clock::now();
+  double gen_seconds = std::chrono::duration<double>(t1 - t0).count();
+  double embed_seconds = get_embedding_time_seconds();
   auto const &graphs = gen.get_unique_graphs();
-
-  for (size_t d = 0; d < graphs.size(); d++) {
-    auto const &g = graphs[d];
-    int V         = g.get_V();
-    auto adj      = g.get_canonical_form();
-    std::cout << "# diagram " << d << "  V=" << V << "  aut=" << g.get_automorphism_count()
-              << "  free_mult=" << g.get_free_multiplicity() << std::endl;
-    for (int i = 0; i < V; i++) {
-      for (int j = 0; j < V; j++) { std::cout << std::setw(3) << (int)adj[i * V + j]; }
-      std::cout << std::endl;
-    }
-    std::cout << std::endl;
-  }
   std::cout << "Total bipartite diagrams at order " << order << ": " << graphs.size() << std::endl;
+  std::cout << "Generation time: " << std::fixed << std::setprecision(3) << gen_seconds << " s"
+            << "  (embedding: " << embed_seconds << " s"
+            << ", rest: " << (gen_seconds - embed_seconds) << " s)" << std::endl;
 
   save_bipartite_graphs(order, graphs);
   std::cout << "Saved to " << bipartite_diagrams_path(order) << std::endl;
