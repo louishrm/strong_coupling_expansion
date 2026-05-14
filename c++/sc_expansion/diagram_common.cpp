@@ -1,6 +1,7 @@
 #include "diagram_common.hpp"
 #include <cmath>
 #include <cstdlib>
+#include <map>
 
 namespace sc_expansion {
 
@@ -8,6 +9,12 @@ namespace sc_expansion {
   // Lattice embedding count (single-site convention).
   // Bipartite graphs embed on the square lattice (4 NN); non-bipartite on the
   // triangular lattice (6 NN).
+  //
+  // The recursive body is shared between vacuum (single-site) and rooted
+  // (marked-vertex) embeddings via an optional "track_vertex"/histogram pair:
+  //   - vacuum: histogram == nullptr, returns total count.
+  //   - rooted 2-mark: track_vertex = canonical index of mark[1], histogram
+  //     accumulates d^2 = Δx²+Δy² of mark[1] relative to the anchored mark[0].
   // ---------------------------------------------------------------------------
 
   namespace {
@@ -17,8 +24,14 @@ namespace sc_expansion {
     };
 
     long solve_embedding_recursive(Graph const &graph, bool bipartite_only, int V, int placed_count, std::vector<bool> &placed,
-                                   std::vector<Point> &coords) {
-      if (placed_count == V) return 1;
+                                   std::vector<Point> &coords, int track_vertex, std::map<int, int> *histogram) {
+      if (placed_count == V) {
+        if (histogram) {
+          Point p = coords[track_vertex];
+          (*histogram)[p.x * p.x + p.y * p.y]++;
+        }
+        return 1;
+      }
 
       int anchor = -1, target_node = -1;
       for (int candidate = 0; candidate < V; ++candidate) {
@@ -79,7 +92,7 @@ namespace sc_expansion {
         if (valid) {
           coords[target_node] = candidate_pos;
           placed[target_node] = true;
-          count += solve_embedding_recursive(graph, bipartite_only, V, placed_count + 1, placed, coords);
+          count += solve_embedding_recursive(graph, bipartite_only, V, placed_count + 1, placed, coords, track_vertex, histogram);
           placed[target_node] = false;
         }
       }
@@ -96,7 +109,27 @@ namespace sc_expansion {
     placed[0] = true;
 
     bool bipartite_only = graph.get_bipartite_only();
-    return (int)solve_embedding_recursive(graph, bipartite_only, V, 1, placed, coords);
+    return (int)solve_embedding_recursive(graph, bipartite_only, V, 1, placed, coords, /*track*/ -1, /*hist*/ nullptr);
+  }
+
+  // Rooted embeddings: anchor mark0_vertex at the origin and recurse. If
+  // mark1_vertex >= 0, the returned map buckets final positions of mark1 by
+  // squared distance d² = Δx² + Δy²; sum(values) == total embedding count.
+  // For the single-mark case (mark1_vertex < 0), the map has one entry at
+  // d² = 0 equal to the total count.
+  std::map<int, int> compute_rooted_shell_multiplicity(Graph const &graph, int mark0_vertex, int mark1_vertex) {
+    int V = graph.get_V();
+    std::vector<Point> coords(V, {0, 0});
+    std::vector<bool> placed(V, false);
+    coords[mark0_vertex] = {0, 0};
+    placed[mark0_vertex] = true;
+
+    std::map<int, int> histogram;
+    bool bipartite_only = graph.get_bipartite_only();
+    long total          = solve_embedding_recursive(graph, bipartite_only, V, 1, placed, coords, mark1_vertex,
+                                           mark1_vertex >= 0 ? &histogram : nullptr);
+    if (mark1_vertex < 0) histogram[0] = static_cast<int>(total);
+    return histogram;
   }
 
   // ---------------------------------------------------------------------------

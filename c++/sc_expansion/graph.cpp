@@ -1,11 +1,14 @@
 #include "graph.hpp"
 #include "canonicalize.hpp"
+#include "diagram_common.hpp"
+#include <algorithm>
 #include <chrono>
 #include <queue>
+#include <stdexcept>
 
 namespace sc_expansion {
 
-  Graph::Graph(std::vector<uint8_t> adjacency_matrix_, int V_, bool bipartite_only_)
+  Graph::Graph(std::vector<uint8_t> adjacency_matrix_, int V_, bool bipartite_only_, bool defer_embedding)
      : adjacency_matrix(adjacency_matrix_), V(V_), canonical_matrix(adjacency_matrix_), bipartite_only(bipartite_only_) {
 
     // Calculate Order (Total number of lines)
@@ -20,13 +23,14 @@ namespace sc_expansion {
 
     this->check_if_bipartite();
 
-    // Embedding (free_multiplicity) is deliberately NOT computed here — it
-    // is the most expensive per-graph operation, so we defer it to after the
-    // generator has deduplicated candidates. Callers must invoke
-    // compute_free_multiplicity() explicitly on the unique graphs.
     this->free_multiplicity = 0;
     if ((this->connected) && (!this->bipartite_only || this->bipartite)) {
       this->compute_canonical_form();
+      // Embedding is the most expensive per-graph step. Generators that
+      // produce many candidates per unique graph should pass
+      // defer_embedding=true and call compute_free_multiplicity() once per
+      // unique graph after deduplication.
+      if (!defer_embedding) this->compute_free_multiplicity();
     } else {
       this->symmetry_factor    = 0;
       this->automorphism_count = 0;
@@ -166,6 +170,64 @@ namespace sc_expansion {
     auto t0                 = std::chrono::steady_clock::now();
     this->free_multiplicity = compute_lattice_free_multiplicity(*this);
     auto t1                 = std::chrono::steady_clock::now();
+    embedding_total_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count();
+  }
+
+  // ---------------------------------------------------------------------------
+  // RootedGraph
+  // ---------------------------------------------------------------------------
+
+  RootedGraph::RootedGraph(Graph const &parent, std::vector<int> marks_in, bool defer_embedding)
+     : V(parent.get_V()), order(parent.get_order()), bipartite_only(parent.get_bipartite_only()) {
+
+    if (marks_in.empty() || marks_in.size() > 2)
+      throw std::invalid_argument("RootedGraph: marks must have size 1 or 2");
+    for (int m : marks_in) {
+      if (m < 0 || m >= this->V) throw std::invalid_argument("RootedGraph: mark index out of range");
+    }
+
+    // Colored canonicalization: marks share color 1, unmarked share color 0.
+    // The two marks are interchangeable (same color), so bliss's automorphism
+    // count is exactly |Stab_{Aut(G)}({m0, m1})| as an unordered set.
+    std::vector<int> color(this->V, 0);
+    for (int m : marks_in) color[m] = 1;
+    auto adj    = parent.get_adjacency_matrix();
+    auto result = canonicalize(adj, this->V, color);
+
+    this->canonical_matrix = result.canonical_matrix;
+    this->adjacency_matrix = result.canonical_matrix;
+
+    // Map marks into canonical labeling and sort so the pair is order-free.
+    this->marks.reserve(marks_in.size());
+    for (int m : marks_in) this->marks.push_back(static_cast<int>(result.canonical_permutation[m]));
+    std::sort(this->marks.begin(), this->marks.end());
+
+    this->rooted_automorphism_count = static_cast<int>(result.automorphism_count);
+
+    // Multi-edge correction to the rooted symmetry factor: parallel edges
+    // between fixed vertex pairs can still be permuted, and that factor is
+    // not seen by bliss (each parallel edge already lives on its own aux
+    // vertex in the encoded graph; aux permutations are divided out inside
+    // canonicalize). Apply the m! correction once per (i,j) entry.
+    int factorial_product = 1;
+    for (auto e : this->adjacency_matrix)
+      if (e > 1) factorial_product *= sc_expansion::factorial(e);
+    this->rooted_symmetry_factor = this->rooted_automorphism_count * factorial_product;
+
+    if (!defer_embedding) this->compute_shell_multiplicity();
+  }
+
+  void RootedGraph::compute_shell_multiplicity() {
+    // Wrap the (already canonical) adjacency as a Graph so we can reuse the
+    // embedding recursion. The override constructor below skips the connect-
+    // ivity / bipartite / canonicalize work that we don't need to redo.
+    Graph wrapper(this->adjacency_matrix, this->V, /*aut*/ 0, /*sym*/ 0, /*fm*/ 0, this->bipartite_only);
+    int m0 = this->marks[0];
+    int m1 = this->marks.size() == 2 ? this->marks[1] : -1;
+
+    auto t0                  = std::chrono::steady_clock::now();
+    this->shell_multiplicity = compute_rooted_shell_multiplicity(wrapper, m0, m1);
+    auto t1                  = std::chrono::steady_clock::now();
     embedding_total_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count();
   }
 

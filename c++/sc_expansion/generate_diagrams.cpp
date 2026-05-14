@@ -1,4 +1,5 @@
 #include "generate_diagrams.hpp"
+#include "canonicalize.hpp"
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -166,22 +167,15 @@ namespace sc_expansion {
     // Only add n-cycle if it matches the bipartite criteria
     if (!this->bipartite_only || this->order % 2 == 0) {
       std::vector<uint8_t> n_cycle = generate_n_cycle_adjacency_matrix(this->order);
+      // Canonicalize so the stored canonical_matrix matches what the standard
+      // pipeline would produce; the override constructor below stores its
+      // input as both adjacency_matrix and canonical_matrix verbatim.
+      auto canon = canonicalize(n_cycle, this->order, std::vector<int>(this->order, 0));
 
-      if (this->bipartite_only && this->order % 2 == 0) {
-        // Optimization: Override constructor for n-cycle on square lattice: symmetry factor is n, free multiplicity is [nC(n/2)]^2
-        int fm = calculate_n_cycle_free_multiplicity(this->order, true);
-        // The specialized constructor bypasses canonicalization and sets canonical_matrix = n_cycle
-        if (fm > 0) {
-          this->unique_adjmats.insert(n_cycle);
-          this->graphs.emplace_back(sc_expansion::Graph(n_cycle, this->order, this->order, this->order, fm, this->bipartite_only));
-        }
-      } else {
-        // Non-bipartite or other cases: use standard constructor to compute FM accurately on the target lattice
-        int fm = calculate_n_cycle_free_multiplicity(this->order, false);
-        if (fm > 0) {
-          this->unique_adjmats.insert(n_cycle);
-          this->graphs.push_back(sc_expansion::Graph(n_cycle, this->order, this->order, this->order, fm, this->bipartite_only));
-        }
+      int fm = calculate_n_cycle_free_multiplicity(this->order, this->bipartite_only && this->order % 2 == 0);
+      if (fm > 0) {
+        this->unique_adjmats.insert(canon.canonical_matrix);
+        this->graphs.emplace_back(sc_expansion::Graph(canon.canonical_matrix, this->order, this->order, this->order, fm, this->bipartite_only));
       }
     }
 
@@ -233,7 +227,7 @@ namespace sc_expansion {
       if (!valid_connections) continue;
 
       std::vector<uint8_t> adjmat = this->fill_matrix(source, target, V);
-      Graph graph(adjmat, V, this->bipartite_only);
+      Graph graph(adjmat, V, this->bipartite_only, /*defer_embedding=*/true);
       this->process_graph(graph);
     } while (std::next_permutation(target.begin(), target.end()));
   }
@@ -259,4 +253,45 @@ namespace sc_expansion {
       this->graphs.push_back(graph);
     }
   }
+
+  // ---------------------------------------------------------------------------
+  // RootedDiagramGenerator
+  // ---------------------------------------------------------------------------
+
+  RootedDiagramGenerator::RootedDiagramGenerator(int order_, int n_marks_, bool bipartite_only_)
+     : order(order_), n_marks(n_marks_), bipartite_only(bipartite_only_) {
+    if (n_marks_ != 1 && n_marks_ != 2) throw std::invalid_argument("RootedDiagramGenerator: n_marks must be 1 or 2");
+  }
+
+  void RootedDiagramGenerator::generate() {
+    // Obtain the vacuum catalog: prefer the on-disk cache; otherwise generate
+    // fresh. Only the canonical adjacency and V matter for rooting — the
+    // vacuum symmetry / multiplicity fields are not consumed here.
+    std::vector<Graph> vacuum;
+    if (!(this->bipartite_only && load_bipartite_graphs(this->order, vacuum))) {
+      VacuumDiagramGenerator gen(this->order, this->bipartite_only);
+      gen.generate();
+      vacuum = gen.get_unique_graphs();
+    }
+
+    for (auto const &G : vacuum) {
+      int V = G.get_V();
+      if (this->n_marks == 1) {
+        for (int v = 0; v < V; ++v) this->try_emit(G, {v});
+      } else {
+        for (int i = 0; i < V; ++i)
+          for (int j = i + 1; j < V; ++j) this->try_emit(G, {i, j});
+      }
+    }
+
+    // Embed only the unique rooted forms.
+    for (auto &rg : this->rooted_graphs) rg.compute_shell_multiplicity();
+  }
+
+  void RootedDiagramGenerator::try_emit(Graph const &G, std::vector<int> marks) {
+    RootedGraph rg(G, marks, /*defer_embedding=*/true);
+    RootedKey key{rg.get_canonical_form(), rg.get_marks()};
+    if (this->unique_keys.insert(key).second) this->rooted_graphs.push_back(std::move(rg));
+  }
+
 } // namespace sc_expansion

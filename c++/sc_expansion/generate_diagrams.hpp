@@ -49,4 +49,47 @@ namespace sc_expansion {
 
     std::vector<uint8_t> fill_matrix(const std::vector<int> &source, const std::vector<int> &target, int V) const;
   };
+
+  // Rooted diagram generator. Consumes the vacuum catalog at the given order
+  // (loads from disk if present, otherwise runs VacuumDiagramGenerator) and
+  // for each vacuum graph G enumerates ways to place n_marks marks on its
+  // vertices, dedupes by colored canonical form, and finally computes the
+  // shell-indexed embedding count for each unique rooted graph.
+  //
+  // n_marks must be 1 or 2. The two marks are interchangeable (same color)
+  // so the unordered pair {i, j} is canonicalized once.
+  class RootedDiagramGenerator {
+
+    public:
+    RootedDiagramGenerator(int order, int n_marks, bool bipartite_only = true);
+
+    void generate();
+    std::vector<RootedGraph> const &get_unique_rooted_graphs() const { return rooted_graphs; }
+
+    private:
+    int order;
+    int n_marks;
+    bool bipartite_only;
+
+    // Dedup key: (canonical adjacency, canonical marks).
+    struct RootedKey {
+      std::vector<uint8_t> canonical_adj;
+      std::vector<int> canonical_marks;
+      bool operator==(RootedKey const &o) const {
+        return this->canonical_adj == o.canonical_adj && this->canonical_marks == o.canonical_marks;
+      }
+    };
+    struct RootedKeyHasher {
+      size_t operator()(RootedKey const &k) const {
+        size_t seed = VectorHasher{}(k.canonical_adj);
+        for (int m : k.canonical_marks) seed ^= std::hash<int>{}(m) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+        return seed;
+      }
+    };
+
+    std::unordered_set<RootedKey, RootedKeyHasher> unique_keys;
+    std::vector<RootedGraph> rooted_graphs;
+
+    void try_emit(Graph const &G, std::vector<int> marks);
+  };
 } // namespace sc_expansion

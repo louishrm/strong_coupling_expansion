@@ -1,5 +1,6 @@
 #pragma once
 
+#include <map>
 #include <vector>
 #include <algorithm>
 #include "graph.hpp"
@@ -81,6 +82,13 @@ namespace sc_expansion {
   // count for the single-site case. Lives here rather than on Graph because
   // it presupposes a *lattice*, which is a diagram-level concept.
   int compute_lattice_free_multiplicity(Graph const &graph);
+
+  // Shell-indexed embedding count for rooted graphs. Anchors mark0_vertex at
+  // the origin and recurses over the lattice; the returned map buckets final
+  // positions of mark1_vertex by squared distance d² = Δx²+Δy². Pass
+  // mark1_vertex = -1 for the single-mark case; the returned map then has a
+  // single entry at d² = 0 holding the total embedding count.
+  std::map<int, int> compute_rooted_shell_multiplicity(Graph const &graph, int mark0_vertex, int mark1_vertex);
 
   // Enumerate directed hopping lines from the adjacency matrix.
   Lines compute_hopping_lines(Graph const &graph);
