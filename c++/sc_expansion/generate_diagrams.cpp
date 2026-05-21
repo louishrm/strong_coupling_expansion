@@ -1,8 +1,10 @@
 #include "generate_diagrams.hpp"
 #include "canonicalize.hpp"
 #include <cstdint>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <queue>
 #include <stdexcept>
 
 namespace sc_expansion {
@@ -20,9 +22,7 @@ namespace sc_expansion {
   // so the cache lives at <project>/diagrams/ regardless of the executable's CWD.
   static const std::string DIAGRAMS_DIR = std::string(SC_EXPANSION_PROJECT_ROOT) + "/diagrams";
 
-  std::string bipartite_diagrams_path(int order) {
-    return DIAGRAMS_DIR + "/bipartite_order_" + std::to_string(order);
-  }
+  std::string bipartite_diagrams_path(int order) { return DIAGRAMS_DIR + "/bipartite_order_" + std::to_string(order); }
 
   void save_bipartite_graphs(int order, const std::vector<Graph> &graphs) {
     std::filesystem::create_directories(DIAGRAMS_DIR);
@@ -158,26 +158,31 @@ namespace sc_expansion {
 
   //manually fill the n-cycle by hand to save time (implies n!n! redundant checks)
 
+  void VacuumDiagramGenerator::emit_n_cycle() {
+    //manually fill the n-cycle by hand to save time (implies n!n! redundant checks)
+    // Only add n-cycle if it matches the bipartite criteria
+    if (this->bipartite_only && this->order % 2 != 0) return;
+
+    std::vector<uint8_t> n_cycle = generate_n_cycle_adjacency_matrix(this->order);
+    // Canonicalize so the stored canonical_matrix matches what the standard
+    // pipeline would produce; the override constructor below stores its
+    // input as both adjacency_matrix and canonical_matrix verbatim.
+    auto canon = canonicalize(n_cycle, this->order, std::vector<int>(this->order, 0));
+
+    int fm = calculate_n_cycle_free_multiplicity(this->order, this->bipartite_only && this->order % 2 == 0);
+    if (fm > 0) {
+      this->unique_adjmats.insert(canon.canonical_matrix);
+      this->graphs.emplace_back(
+         sc_expansion::Graph(canon.canonical_matrix, this->order, this->order, this->order, fm, this->bipartite_only));
+    }
+  }
+
   void VacuumDiagramGenerator::generate() {
 
     // Order 1 has no valid vacuum diagram without self-loops.
     if (this->order == 1) return;
 
-    //manually fill the n-cycle by hand to save time (implies n!n! redundant checks)
-    // Only add n-cycle if it matches the bipartite criteria
-    if (!this->bipartite_only || this->order % 2 == 0) {
-      std::vector<uint8_t> n_cycle = generate_n_cycle_adjacency_matrix(this->order);
-      // Canonicalize so the stored canonical_matrix matches what the standard
-      // pipeline would produce; the override constructor below stores its
-      // input as both adjacency_matrix and canonical_matrix verbatim.
-      auto canon = canonicalize(n_cycle, this->order, std::vector<int>(this->order, 0));
-
-      int fm = calculate_n_cycle_free_multiplicity(this->order, this->bipartite_only && this->order % 2 == 0);
-      if (fm > 0) {
-        this->unique_adjmats.insert(canon.canonical_matrix);
-        this->graphs.emplace_back(sc_expansion::Graph(canon.canonical_matrix, this->order, this->order, this->order, fm, this->bipartite_only));
-      }
-    }
+    this->emit_n_cycle();
 
     this->partitions.reset();
 
@@ -191,6 +196,39 @@ namespace sc_expansion {
     // (set via the override constructor) and so are skipped.
     for (auto &g : this->graphs) {
       if (g.get_free_multiplicity() == 0) g.compute_free_multiplicity();
+    }
+  }
+
+  void VacuumDiagramGenerator::generate_at_vertex_count(int V) {
+    // Clear any previous results — this entry point is designed to be called
+    // multiple times (once per V) by DistanceRootedDiagramGenerator.
+    this->graphs.clear();
+    this->unique_adjmats.clear();
+
+    if (V <= 0 || V > this->order) return;
+    if (this->order == 1) return; // no valid vacuum diagram at order 1
+
+    // V == order fast path: the only connected vacuum topology with every
+    // vertex at degree exactly 2 is the n-cycle. Skip the proposal sweep and
+    // the (most-expensive) canonicalization of the densely-symmetric n-cycle.
+    if (V == this->order) {
+      this->emit_n_cycle();
+      return;
+    }
+
+    // Generic case: sweep partitions of `order` whose length is exactly V.
+    // PartitionGenerator yields all partitions of `order` with parts <= order/2;
+    // we filter by length here.
+    //
+    // Vacuum free_multiplicity is intentionally NOT computed here: this entry
+    // point exists for the distance-rooted pipeline, which consumes only the
+    // adjacency / V of each vacuum graph. Callers that need vacuum embeddings
+    // should use generate() instead.
+    this->partitions.reset();
+    while (this->partitions.is_valid()) {
+      auto const &p = this->partitions.current();
+      if (static_cast<int>(p.size()) == V) this->propose_create_process(p);
+      if (!this->partitions.next()) break;
     }
   }
 
@@ -279,8 +317,12 @@ namespace sc_expansion {
       if (this->n_marks == 1) {
         for (int v = 0; v < V; ++v) this->try_emit(G, {v});
       } else {
+        // Include same-vertex pairs (i == j): both density operators on one
+        // hopping vertex. These contribute to the connected correlator with
+        // the unordered-pair convention; bliss colors handle dedup (a vertex
+        // with two marks gets color 2, distinct from single-mark color 1).
         for (int i = 0; i < V; ++i)
-          for (int j = i + 1; j < V; ++j) this->try_emit(G, {i, j});
+          for (int j = i; j < V; ++j) this->try_emit(G, {i, j});
       }
     }
 
@@ -292,6 +334,100 @@ namespace sc_expansion {
     RootedGraph rg(G, marks, /*defer_embedding=*/true);
     RootedKey key{rg.get_canonical_form(), rg.get_marks()};
     if (this->unique_keys.insert(key).second) this->rooted_graphs.push_back(std::move(rg));
+  }
+
+  // ---------------------------------------------------------------------------
+  // DistanceRootedDiagramGenerator
+  // ---------------------------------------------------------------------------
+
+  DistanceRootedDiagramGenerator::DistanceRootedDiagramGenerator(std::vector<int> r_, int n_, bool bipartite_only_)
+     : r(std::move(r_)), n(n_), bipartite_only(bipartite_only_) {
+    int dd = 0;
+    for (int c : this->r) dd += std::abs(c);
+    this->d = dd;
+    if (this->n < 2 * this->d) {
+      throw std::invalid_argument("DistanceRootedDiagramGenerator: n (" + std::to_string(this->n)
+                                  + ") must be >= 2 * |r|_1 (" + std::to_string(2 * this->d) + ")");
+    }
+  }
+
+  std::vector<int> DistanceRootedDiagramGenerator::bfs_all_pairs(Graph const &G) {
+    int V = G.get_V();
+    std::vector<int> dist(static_cast<size_t>(V) * V, -1);
+    for (int src = 0; src < V; ++src) {
+      int *row = dist.data() + src * V;
+      row[src] = 0;
+      std::queue<int> q;
+      q.push(src);
+      while (!q.empty()) {
+        int u = q.front();
+        q.pop();
+        for (int v = 0; v < V; ++v) {
+          if (v == u) continue;
+          // Treat the multigraph as a simple graph for shortest-path purposes:
+          // any nonzero adjacency entry is a unit edge.
+          if ((G(u, v) != 0 || G(v, u) != 0) && row[v] < 0) {
+            row[v] = row[u] + 1;
+            q.push(v);
+          }
+        }
+      }
+    }
+    return dist;
+  }
+
+  void DistanceRootedDiagramGenerator::try_emit(Graph const &G, std::vector<int> marks, int V,
+                                                std::unordered_set<RootedKey, RootedKeyHasher> &unique_keys) {
+    RootedGraph rg(G, std::move(marks), /*defer_embedding=*/true);
+    RootedKey key{rg.get_canonical_form(), rg.get_marks()};
+    if (unique_keys.insert(key).second) this->rooted_graphs_by_V[V].push_back(std::move(rg));
+  }
+
+  void DistanceRootedDiagramGenerator::generate() {
+    VacuumDiagramGenerator gen(this->n, this->bipartite_only);
+
+    for (int V = this->d + 1; V <= this->n; ++V) {
+      gen.generate_at_vertex_count(V);
+
+      // Per-V dedup set: different V's never collide (canonical adjacency
+      // size differs), so scoping to V keeps the set small and avoids cross-V
+      // bookkeeping.
+      std::unordered_set<RootedKey, RootedKeyHasher> unique_keys;
+
+      for (auto const &G : gen.get_unique_graphs()) {
+        std::vector<int> dist_G = bfs_all_pairs(G);
+
+        // Required diameter prune: V >= 2d is necessary but not sufficient
+        // for diameter >= d (e.g. a 2d-cycle with an extra chord shortens
+        // diameter below d). One BFS pass already done — just scan dist_G.
+        int diameter = 0;
+        for (int v : dist_G) diameter = std::max(diameter, v);
+        if (diameter < this->d) continue;
+
+        // Parity filter: when both the lattice AND the abstract graph G are
+        // bipartite, every walk from i to j on the lattice has length parity
+        // matching graph-distance(i, j) parity; the lattice's bipartite
+        // coloring then forces Manhattan(phi(i), phi(j)) to share that
+        // parity. If G has an odd cycle, walks of either parity exist
+        // between some vertex pairs, so the filter would be unsound — we
+        // drop it for those graphs. Non-bipartite lattices also drop it.
+        bool use_parity_filter = this->bipartite_only && G.get_bipartite();
+
+        // Enumerate unordered mark pairs {i, j} (i < j) whose graph-distance
+        // matches the target Manhattan distance up to parity. The n-cycle
+        // (V == n) contributes multiple distance classes here; canonical
+        // dedup collapses pairs equivalent under Aut(G), so e.g. the n-cycle
+        // surfaces one rooted topology per distinct graph-distance >= d.
+        for (int i = 0; i < V; ++i) {
+          for (int j = i + 1; j < V; ++j) {
+            int dij = dist_G[i * V + j];
+            if (dij < this->d) continue;
+            if (use_parity_filter && ((dij - this->d) % 2 != 0)) continue;
+            this->try_emit(G, {i, j}, V, unique_keys);
+          }
+        }
+      }
+    }
   }
 
 } // namespace sc_expansion
