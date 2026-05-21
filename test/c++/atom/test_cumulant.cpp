@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include <cmath>
+#include <array>
 #include <random>
 #include <vector>
 #include <memory>
@@ -13,126 +13,221 @@ namespace {
   constexpr double kTol = 1e-12;
 
   // Build FermionOperator with N_sites-aware creation/destruction bit.
-  template <int N_sites, typename T> FermionOperator<N_sites, T> make_op(int orbital, bool creation) {
+  template <int N_sites, typename T>
+  FermionOperator<N_sites, T> make_op(int orbital, bool creation) {
     uint8_t id = (uint8_t)orbital;
     if (creation) id |= FermionOperator<N_sites, T>::ACTION_BIT;
     return FermionOperator<N_sites, T>(id);
   }
 
   // Build (unprimed = destructions, primed = creations) Args for a given
-  // list of (τ, orbital) pairs. The convention matches CumulantSolver:
-  //   unprimed[i] is a destruction c_{orb_u[i]} at τ_u[i]
-  //   primed[i]   is a creation  c†_{orb_p[i]} at τ_p[i]
+  // list of (τ, orbital) pairs.
   template <int N_sites, typename T>
-  std::pair<Args<N_sites, T>, Args<N_sites, T>> make_args(std::vector<double> const &taus_u, std::vector<int> const &orbs_u,
-                                                          std::vector<double> const &taus_p, std::vector<int> const &orbs_p) {
+  std::pair<Args<N_sites, T>, Args<N_sites, T>>
+  make_args(std::vector<double> const &taus_u, std::vector<int> const &orbs_u,
+            std::vector<double> const &taus_p, std::vector<int> const &orbs_p) {
     std::vector<FermionOperator<N_sites, T>> ops_u, ops_p;
     ops_u.reserve(orbs_u.size());
     ops_p.reserve(orbs_p.size());
     for (int o : orbs_u) ops_u.push_back(make_op<N_sites, T>(o, /*creation=*/false));
     for (int o : orbs_p) ops_p.push_back(make_op<N_sites, T>(o, /*creation=*/true));
-    return {Args<N_sites, T>(taus_u, std::move(ops_u)), Args<N_sites, T>(taus_p, std::move(ops_p))};
+    return {Args<N_sites, T>(taus_u, std::move(ops_u)),
+            Args<N_sites, T>(taus_p, std::move(ops_p))};
   }
 
-  // Compare CumulantSolver::compute_cumulant_decomposition against evaluate_plan
-  // for a single (unprimed, primed) configuration. Plan is built from this same
-  // configuration. Returns (reference, plan_value).
+  // Cumulant value via CumulantSolver (the unit under test).
   template <int N_sites>
-  std::pair<double, double> both_paths(HubbardSolver<N_sites, double> const &solver, Args<N_sites, double> const &unprimed,
-                                       Args<N_sites, double> const &primed, bool infinite_U) {
-    CumulantSolver<N_sites, double> ref_solver(unprimed, primed, solver, infinite_U);
-    double ref = ref_solver.compute_cumulant_decomposition();
-
-    CumulantSolver<N_sites, double> rec_solver(unprimed, primed, solver, infinite_U);
-    CumulantPlan plan;
-    rec_solver.record_plan(plan);
-    double from_plan = evaluate_plan(plan, unprimed, primed, solver, infinite_U);
-
-    return {ref, from_plan};
+  double cumulant_value(HubbardSolver<N_sites, double> const &solver,
+                        Args<N_sites, double> const &u, Args<N_sites, double> const &p,
+                        bool infinite_U = false) {
+    CumulantSolver<N_sites, double> cs(u, p, solver, infinite_U);
+    return cs.compute_cumulant_decomposition();
   }
 
-  // Parity across many random τ draws.
-  // orbs_u / orbs_p fix the operator structure; τ values are resampled each draw.
+  // Build a combined Args for solver.G0n() with interleaved (c†_p[i], c_u[i]) pairs.
   template <int N_sites>
-  void parity_sweep(HubbardSolver<N_sites, double> const &solver, std::vector<int> const &orbs_u, std::vector<int> const &orbs_p, bool infinite_U,
-                    double beta, int n_draws, uint64_t seed) {
-    std::mt19937_64 rng(seed);
-    std::uniform_real_distribution<double> U01(0.0, 1.0);
-
-    for (int s = 0; s < n_draws; ++s) {
-      std::vector<double> tu(orbs_u.size()), tp(orbs_p.size());
-      for (auto &x : tu) x = beta * U01(rng);
-      for (auto &x : tp) x = beta * U01(rng);
-
-      auto [u, p]          = make_args<N_sites, double>(tu, orbs_u, tp, orbs_p);
-      auto [ref, via_plan] = both_paths<N_sites>(solver, u, p, infinite_U);
-
-      EXPECT_NEAR(ref, via_plan, kTol) << "N_sites=" << N_sites << " order=" << orbs_u.size() << " infU=" << infinite_U << " draw=" << s
-                                       << " ref=" << ref << " plan=" << via_plan << " diff=" << (ref - via_plan);
+  Args<N_sites, double>
+  combined_for_g0n(std::vector<std::pair<double, int>> const &creations,
+                   std::vector<std::pair<double, int>> const &destructions) {
+    int n = (int)creations.size();
+    std::vector<double> taus;
+    std::vector<FermionOperator<N_sites, double>> ops;
+    taus.reserve(2 * n);
+    ops.reserve(2 * n);
+    for (int i = 0; i < n; ++i) {
+      taus.push_back(creations[i].first);
+      ops.push_back(make_op<N_sites, double>(creations[i].second, /*creation=*/true));
+      taus.push_back(destructions[i].first);
+      ops.push_back(make_op<N_sites, double>(destructions[i].second, /*creation=*/false));
     }
+    return Args<N_sites, double>(std::move(taus), std::move(ops));
   }
 
-  // Plan reuse: build plan at τ₁, evaluate with τ₂, compare to a fresh solver at τ₂.
-  // This is the real proof that CumulantPlan is τ-independent.
+  // Single-particle Green's function G(u | p) = G0n on a 2-operator combined Args.
   template <int N_sites>
-  void plan_reuse_check(HubbardSolver<N_sites, double> const &solver, std::vector<int> const &orbs_u, std::vector<int> const &orbs_p, bool infinite_U,
-                        double beta, int n_pairs, uint64_t seed) {
-    std::mt19937_64 rng(seed);
-    std::uniform_real_distribution<double> U01(0.0, 1.0);
-
-    auto draw_taus = [&](int n) {
-      std::vector<double> t(n);
-      for (auto &x : t) x = beta * U01(rng);
-      return t;
-    };
-
-    for (int s = 0; s < n_pairs; ++s) {
-      // Build plan from τ₁
-      auto tu1      = draw_taus((int)orbs_u.size());
-      auto tp1      = draw_taus((int)orbs_p.size());
-      auto [u1, p1] = make_args<N_sites, double>(tu1, orbs_u, tp1, orbs_p);
-      CumulantSolver<N_sites, double> builder(u1, p1, solver, infinite_U);
-      CumulantPlan plan;
-      builder.record_plan(plan);
-
-      // Evaluate plan at τ₂ (different values, same operators)
-      auto tu2        = draw_taus((int)orbs_u.size());
-      auto tp2        = draw_taus((int)orbs_p.size());
-      auto [u2, p2]   = make_args<N_sites, double>(tu2, orbs_u, tp2, orbs_p);
-      double via_plan = evaluate_plan(plan, u2, p2, solver, infinite_U);
-
-      // Reference: fresh CumulantSolver at τ₂
-      CumulantSolver<N_sites, double> ref_solver(u2, p2, solver, infinite_U);
-      double ref = ref_solver.compute_cumulant_decomposition();
-
-      EXPECT_NEAR(ref, via_plan, kTol) << "[plan-reuse] N_sites=" << N_sites << " order=" << orbs_u.size() << " infU=" << infinite_U << " pair=" << s
-                                       << " ref=" << ref << " plan=" << via_plan;
-    }
+  double Gpair(HubbardSolver<N_sites, double> const &solver,
+               double tu, int orb_u, double tp, int orb_p) {
+    return solver.G0n(combined_for_g0n<N_sites>({{tp, orb_p}}, {{tu, orb_u}}));
   }
 
 } // namespace
 
 // ============================================================================
-//  Atom (N_sites = 1)
+//  Cumulant identity tests (N_sites = 1, atom): verify the connected-cumulant
+//  decomposition matches its analytic combinatorial definition in terms of
+//  solver.G0n calls.
 // ============================================================================
 
-class AtomCumulantPlanTest : public ::testing::Test {
+class AtomCumulantTest : public ::testing::Test {
   protected:
+  // orbital encoding (N_sites=1): 0 = down, 1 = up
   Parameters<double> params{4.0, 1.5, 2.0, 0.0, true};
   std::unique_ptr<HubbardSolver<1, double>> solver;
   void SetUp() override { solver = std::make_unique<HubbardSolver<1, double>>(params); }
 };
 
-TEST_F(AtomCumulantPlanTest, Order1_FiniteU) {
-  // orbital 0 = down, 1 = up. One-particle spin-up cumulant.
-  parity_sweep<1>(*solver, {1}, {1}, false, params.beta, 64, 0xA1u);
+TEST_F(AtomCumulantTest, Order1_EqualsG0n) {
+  // C₁(u | p) = G(u | p) — order 1 has no lower-order subtractions.
+  std::mt19937_64 rng(0x1010u);
+  std::uniform_real_distribution<double> U01(0.0, 1.0);
+  for (int draw = 0; draw < 64; ++draw) {
+    double tu = params.beta * U01(rng);
+    double tp = params.beta * U01(rng);
+    int ou    = draw % 2;
+    int op    = (draw / 2) % 2;
+
+    auto [u, p] = make_args<1, double>({tu}, {ou}, {tp}, {op});
+    double c1   = cumulant_value<1>(*solver, u, p);
+    double g1   = Gpair<1>(*solver, tu, ou, tp, op);
+    EXPECT_NEAR(c1, g1, kTol)
+        << "draw=" << draw << " ou=" << ou << " op=" << op
+        << " τu=" << tu << " τp=" << tp << " c1=" << c1 << " g1=" << g1;
+  }
 }
-TEST_F(AtomCumulantPlanTest, Order2_FiniteU_SameSpin) { parity_sweep<1>(*solver, {1, 1}, {1, 1}, false, params.beta, 64, 0xA2u); }
-TEST_F(AtomCumulantPlanTest, Order2_FiniteU_OpposingSpin) { parity_sweep<1>(*solver, {0, 1}, {0, 1}, false, params.beta, 64, 0xA3u); }
-TEST_F(AtomCumulantPlanTest, Order3_FiniteU) { parity_sweep<1>(*solver, {0, 1, 1}, {0, 1, 1}, false, params.beta, 48, 0xA4u); }
-TEST_F(AtomCumulantPlanTest, Order4_FiniteU) { parity_sweep<1>(*solver, {0, 0, 1, 1}, {0, 0, 1, 1}, false, params.beta, 32, 0xA5u); }
-TEST_F(AtomCumulantPlanTest, Order2_InfiniteU) { parity_sweep<1>(*solver, {0, 1}, {0, 1}, true, params.beta, 48, 0xA6u); }
-TEST_F(AtomCumulantPlanTest, Order3_InfiniteU) { parity_sweep<1>(*solver, {0, 1, 1}, {0, 1, 1}, true, params.beta, 32, 0xA7u); }
-TEST_F(AtomCumulantPlanTest, PlanIsTauIndependent_Order2) { plan_reuse_check<1>(*solver, {0, 1}, {0, 1}, false, params.beta, 48, 0xA80u); }
-TEST_F(AtomCumulantPlanTest, PlanIsTauIndependent_Order3) { plan_reuse_check<1>(*solver, {0, 1, 1}, {0, 1, 1}, false, params.beta, 32, 0xA8u); }
-TEST_F(AtomCumulantPlanTest, PlanIsTauIndependent_Order4) { plan_reuse_check<1>(*solver, {0, 0, 1, 1}, {0, 0, 1, 1}, false, params.beta, 16, 0xA9u); }
+
+TEST_F(AtomCumulantTest, Order2_EqualsG02MinusDisconnected) {
+  // C₂(1,2 | 1',2') = G02(1,2 | 1',2') − G(1|1') G(2|2') + G(1|2') G(2|1').
+  std::mt19937_64 rng(0x2020u);
+  std::uniform_real_distribution<double> U01(0.0, 1.0);
+  std::vector<std::array<int, 4>> orb_combos = {
+      {1, 1, 1, 1}, {0, 0, 0, 0}, {0, 1, 0, 1}, {1, 0, 1, 0}, {0, 1, 1, 0},
+  };
+  for (auto const &orbs : orb_combos) {
+    int ou0 = orbs[0], ou1 = orbs[1], op0 = orbs[2], op1 = orbs[3];
+    for (int draw = 0; draw < 16; ++draw) {
+      double tu0 = params.beta * U01(rng), tu1 = params.beta * U01(rng);
+      double tp0 = params.beta * U01(rng), tp1 = params.beta * U01(rng);
+
+      auto [u, p] = make_args<1, double>({tu0, tu1}, {ou0, ou1}, {tp0, tp1}, {op0, op1});
+      double c2   = cumulant_value<1>(*solver, u, p);
+
+      auto g02_args = combined_for_g0n<1>({{tp0, op0}, {tp1, op1}}, {{tu0, ou0}, {tu1, ou1}});
+      double G02    = solver->G0n(g02_args);
+
+      double g_00 = Gpair<1>(*solver, tu0, ou0, tp0, op0);
+      double g_11 = Gpair<1>(*solver, tu1, ou1, tp1, op1);
+      double g_01 = Gpair<1>(*solver, tu0, ou0, tp1, op1);
+      double g_10 = Gpair<1>(*solver, tu1, ou1, tp0, op0);
+
+      double sign        = u.permutation_sign * p.permutation_sign;
+      double c2_expected = sign * (G02 - g_00 * g_11 + g_01 * g_10);
+      EXPECT_NEAR(c2, c2_expected, kTol)
+          << "orbs=(" << ou0 << "," << ou1 << "|" << op0 << "," << op1 << ")"
+          << " draw=" << draw << " c2=" << c2 << " expected=" << c2_expected;
+    }
+  }
+}
+
+TEST_F(AtomCumulantTest, Order3_MatchesAnalyticDecomposition) {
+  // C₃ = G03 + (C₂·G₁ partitions) + (G₁·G₁·G₁ partitions), with the signs
+  // dictated by fermionic Wick combinatorics.
+  std::mt19937_64 rng(0x3030u);
+  std::uniform_real_distribution<double> U01(0.0, 1.0);
+  std::vector<std::array<int, 6>> orb_combos = {
+      {0, 1, 1, 0, 1, 1},
+      {1, 1, 0, 1, 1, 0},
+      {0, 1, 0, 1, 0, 1},
+  };
+  for (auto const &orbs : orb_combos) {
+    std::array<int, 3> ou = {orbs[0], orbs[1], orbs[2]};
+    std::array<int, 3> op = {orbs[3], orbs[4], orbs[5]};
+    for (int draw = 0; draw < 8; ++draw) {
+      std::array<double, 3> tu = {params.beta * U01(rng), params.beta * U01(rng), params.beta * U01(rng)};
+      std::array<double, 3> tp = {params.beta * U01(rng), params.beta * U01(rng), params.beta * U01(rng)};
+
+      auto [u, p] = make_args<1, double>({tu[0], tu[1], tu[2]}, {ou[0], ou[1], ou[2]},
+                                          {tp[0], tp[1], tp[2]}, {op[0], op[1], op[2]});
+      double c3   = cumulant_value<1>(*solver, u, p);
+
+      auto g03_args = combined_for_g0n<1>(
+          {{tp[0], op[0]}, {tp[1], op[1]}, {tp[2], op[2]}},
+          {{tu[0], ou[0]}, {tu[1], ou[1]}, {tu[2], ou[2]}});
+      double G03 = solver->G0n(g03_args);
+
+      auto G1 = [&](int i, int k) { return Gpair<1>(*solver, tu[i], ou[i], tp[k], op[k]); };
+      auto C2 = [&](int i, int j, int k, int l) {
+        auto [uu, pp] = make_args<1, double>({tu[i], tu[j]}, {ou[i], ou[j]},
+                                              {tp[k], tp[l]}, {op[k], op[l]});
+        return cumulant_value<1>(*solver, uu, pp) * uu.permutation_sign * pp.permutation_sign;
+      };
+
+      double C12_12_C33 = -C2(0, 1, 0, 1) * G1(2, 2);
+      double C12_13_C32 =  C2(0, 1, 0, 2) * G1(2, 1);
+      double C12_23_C31 = -C2(0, 1, 1, 2) * G1(2, 0);
+
+      double C13_12_C32 =  C2(0, 2, 0, 1) * G1(1, 2);
+      double C13_23_C21 =  C2(0, 2, 1, 2) * G1(1, 0);
+      double C13_13_C22 = -C2(0, 2, 0, 2) * G1(1, 1);
+
+      double C23_12_C13 = -C2(1, 2, 0, 1) * G1(0, 2);
+      double C23_23_C11 = -C2(1, 2, 1, 2) * G1(0, 0);
+      double C23_13_C12 =  C2(1, 2, 0, 2) * G1(0, 1);
+
+      double C02C01_terms = C12_12_C33 + C12_13_C32 + C12_23_C31
+                          + C13_12_C32 + C13_23_C21 + C13_13_C22
+                          + C23_12_C13 + C23_23_C11 + C23_13_C12;
+
+      double C11_C22_C33 = -G1(0, 0) * G1(1, 1) * G1(2, 2);
+      double C11_C23_C32 =  G1(0, 0) * G1(1, 2) * G1(2, 1);
+      double C12_C21_C33 =  G1(0, 1) * G1(1, 0) * G1(2, 2);
+      double C12_C23_C31 = -G1(0, 1) * G1(1, 2) * G1(2, 0);
+      double C13_C22_C31 =  G1(0, 2) * G1(1, 1) * G1(2, 0);
+      double C13_C21_C32 = -G1(0, 2) * G1(1, 0) * G1(2, 1);
+
+      double G1G1G1_terms = C11_C22_C33 + C11_C23_C32 + C12_C21_C33
+                          + C12_C23_C31 + C13_C22_C31 + C13_C21_C32;
+
+      double sign        = u.permutation_sign * p.permutation_sign;
+      double c3_expected = sign * (G03 + C02C01_terms + G1G1G1_terms);
+      EXPECT_NEAR(c3, c3_expected, kTol)
+          << "orbs=(" << ou[0] << "," << ou[1] << "," << ou[2] << "|"
+          << op[0] << "," << op[1] << "," << op[2] << ")"
+          << " draw=" << draw << " c3=" << c3 << " expected=" << c3_expected;
+    }
+  }
+}
+
+TEST(AtomCumulantNonInteracting, Order2_VanishesAtUEqualsZero) {
+  // U = 0 ⇒ Wick's theorem ⇒ G02 factorizes into G₁ × G₁ exactly,
+  // so the connected order-2 cumulant must vanish identically.
+  Parameters<double> p0{/*U=*/0.0, /*beta=*/2.0, /*mu=*/0.5, /*t=*/0.0, /*bipartite=*/true};
+  HubbardSolver<1, double> solver0(p0);
+
+  std::mt19937_64 rng(0x4040u);
+  std::uniform_real_distribution<double> U01(0.0, 1.0);
+  std::vector<std::array<int, 4>> orb_combos = {
+      {1, 1, 1, 1}, {0, 0, 0, 0}, {0, 1, 0, 1}, {1, 0, 1, 0}, {0, 1, 1, 0},
+  };
+  for (auto const &orbs : orb_combos) {
+    int ou0 = orbs[0], ou1 = orbs[1], op0 = orbs[2], op1 = orbs[3];
+    for (int draw = 0; draw < 16; ++draw) {
+      double tu0 = p0.beta * U01(rng), tu1 = p0.beta * U01(rng);
+      double tp0 = p0.beta * U01(rng), tp1 = p0.beta * U01(rng);
+      auto [u, p] = make_args<1, double>({tu0, tu1}, {ou0, ou1}, {tp0, tp1}, {op0, op1});
+      double c2   = cumulant_value<1>(solver0, u, p);
+      EXPECT_NEAR(c2, 0.0, kTol)
+          << "orbs=(" << ou0 << "," << ou1 << "|" << op0 << "," << op1 << ")"
+          << " draw=" << draw << " c2=" << c2;
+    }
+  }
+}
