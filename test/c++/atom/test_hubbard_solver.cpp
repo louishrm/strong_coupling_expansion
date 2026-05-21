@@ -214,6 +214,84 @@ TEST_F(HubbardSolverTest, AtomG04InfiniteUForbidden) {
   EXPECT_DOUBLE_EQ(solver->G0n_infinite_U(args2), 0.0);
 }
 
+// ============================================================================
+// G0n_with_densities tests (Step 1 of static density-density correlator)
+// ============================================================================
+
+// Atomic basis convention: orbital 0 = down, orbital 1 = up.
+// State indexing: bit 0 = down occupancy, bit 1 = up occupancy.
+
+TEST_F(HubbardSolverTest, DensityDecoratedSingleNoArgs) {
+  // <n_sigma> via G0n_with_densities({}, {sigma}) must match compute_n_sigma.
+  Args<1, double> empty_args({}, {});
+  for (int sigma : {0, 1}) {
+    double via_dec = solver->G0n_with_densities(empty_args, {sigma});
+    double via_ref = solver->compute_n_sigma(sigma);
+    EXPECT_NEAR(via_dec, via_ref, 1e-12) << "sigma = " << sigma;
+  }
+}
+
+TEST_F(HubbardSolverTest, DensityDecoratedSameSpinIdempotent) {
+  // <n_sigma n_sigma> = <n_sigma> since n_sigma^2 = n_sigma on {0,1}.
+  Args<1, double> empty_args({}, {});
+  for (int sigma : {0, 1}) {
+    double squared = solver->G0n_with_densities(empty_args, {sigma, sigma});
+    double single  = solver->compute_n_sigma(sigma);
+    EXPECT_NEAR(squared, single, 1e-12) << "sigma = " << sigma;
+  }
+}
+
+TEST_F(HubbardSolverTest, DensityDecoratedDoubleOccupancy) {
+  // <n_up n_down> = D, closed-form for the atomic case: only state |up,down>
+  // (energy U - 2 mu) contributes.
+  Args<1, double> empty_args({}, {});
+  double D            = solver->G0n_with_densities(empty_args, {0, 1});
+  double Z_exact      = 1.0 + 2.0 * std::exp(beta * mu) + std::exp(beta * (2.0 * mu - U));
+  double D_exact      = std::exp(beta * (2.0 * mu - U)) / Z_exact;
+  EXPECT_NEAR(D, D_exact, 1e-12);
+}
+
+TEST_F(HubbardSolverTest, DensityDecoratedEmptyOrbitalsMatchesG0n) {
+  // density_orbitals = {} must recover plain G0n exactly, for representative args.
+  double tau                                  = 0.5;
+  std::vector<double> taus                    = {0.0, tau};
+  std::vector<FermionOperator<1, double>> ops = {FermionOperator<1, double>(3), FermionOperator<1, double>(1)};
+  Args<1, double> args(taus, ops);
+
+  double plain     = solver->G0n(args);
+  double decorated = solver->G0n_with_densities(args, {});
+  EXPECT_NEAR(plain, decorated, 1e-12);
+}
+
+TEST_F(HubbardSolverTest, DensityDecoratedSingleInfiniteU) {
+  // Infinite-U: <n_sigma> projected to {|0>, |up>, |down>}.
+  // Closed form: <n_sigma>_{U=inf} = exp(beta mu) / (1 + 2 exp(beta mu)).
+  Args<1, double> empty_args({}, {});
+  double Z_inf = 1.0 + 2.0 * std::exp(beta * mu);
+  double expected = std::exp(beta * mu) / Z_inf;
+  for (int sigma : {0, 1}) {
+    double via_dec = solver->G0n_with_densities_infinite_U(empty_args, {sigma});
+    EXPECT_NEAR(via_dec, expected, 1e-12) << "sigma = " << sigma;
+  }
+}
+
+TEST_F(HubbardSolverTest, DensityDecoratedSameSpinInfiniteU) {
+  // Infinite-U: n_sigma^2 = n_sigma still holds (still 0/1-valued on projected sector).
+  Args<1, double> empty_args({}, {});
+  for (int sigma : {0, 1}) {
+    double squared = solver->G0n_with_densities_infinite_U(empty_args, {sigma, sigma});
+    double single  = solver->G0n_with_densities_infinite_U(empty_args, {sigma});
+    EXPECT_NEAR(squared, single, 1e-12) << "sigma = " << sigma;
+  }
+}
+
+TEST_F(HubbardSolverTest, DensityDecoratedDoubleOccupancyInfiniteU) {
+  // Infinite-U projects out the doubly-occupied eigenstate: <n_up n_down>_{U=inf} = 0.
+  Args<1, double> empty_args({}, {});
+  double D_inf = solver->G0n_with_densities_infinite_U(empty_args, {0, 1});
+  EXPECT_NEAR(D_inf, 0.0, 1e-14);
+}
+
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

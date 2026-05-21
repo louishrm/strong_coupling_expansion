@@ -99,10 +99,158 @@ namespace sc_expansion {
     }
   }
 
+  template <int N_sites, typename T>
+  T HubbardSolver<N_sites, T>::G0n_with_densities(Args<N_sites, T> const &args, std::vector<int> const &density_orbitals) const {
+    if constexpr (N_sites != 1) {
+      // Cluster (N_sites >= 2) generalization is a separate workstream.
+      static_cast<void>(args);
+      static_cast<void>(density_orbitals);
+      return T(0.0);
+    } else {
+      if (density_orbitals.empty()) return this->G0n(args);
+      if (!args.operator_sequence_is_valid()) return T(0.0);
+
+      int n = args.order;
+
+      // For atomic, n_σ is diagonal in the eigenbasis (states 0..3 are pure
+      // occupation bitstrings). Precompute the per-start-state density factor.
+      std::array<T, N_STATES> density_factor;
+      for (int s = 0; s < N_STATES; ++s) {
+        T factor = T(1.0);
+        for (int orb : density_orbitals) { factor = factor * T((s & (1 << orb)) ? 1.0 : 0.0); }
+        density_factor[s] = factor;
+      }
+
+      if (n == 0) {
+        // Pure density expectation, no time-evolution kernel: just weight by Boltzmann.
+        T result = T(0.0);
+        for (int s = 0; s < N_STATES; ++s) { result = result + density_factor[s] * this->exp_beta_E[s]; }
+        return (T(1.0) / this->Z) * args.permutation_sign * result;
+      }
+
+      ExpTable exp_tau_E, inv_exp_tau_E;
+      this->build_tau_exp_tables(args, exp_tau_E, inv_exp_tau_E);
+
+      std::array<T, N_STATES> buf_a, buf_b;
+      T result = T(0.0);
+      for (int start_state = 0; start_state < N_STATES; ++start_state) {
+        if (is_zero(density_factor[start_state])) continue;
+
+        T *amplitudes = buf_a.data();
+        T *next       = buf_b.data();
+
+        std::fill(amplitudes, amplitudes + N_STATES, T(0.0));
+        amplitudes[start_state] = this->exp_beta_E[start_state];
+
+        for (int i = n - 1; i >= 0; --i) {
+          std::fill(next, next + N_STATES, T(0.0));
+          uint8_t op_idx = args.ops[i].op;
+
+          for (auto const &entry : this->operator_matrices[op_idx].entries) {
+            if (is_zero(amplitudes[entry.col])) continue;
+            next[entry.row] = next[entry.row] + amplitudes[entry.col] * entry.value * exp_tau_E[i][entry.row] * inv_exp_tau_E[i][entry.col];
+          }
+          std::swap(amplitudes, next);
+        }
+        result = result + density_factor[start_state] * amplitudes[start_state];
+      }
+      return (T(1.0) / this->Z) * args.permutation_sign * result;
+    }
+  }
+
+  template <int N_sites, typename T>
+  T HubbardSolver<N_sites, T>::G0n_with_densities_infinite_U(Args<N_sites, T> const &args, std::vector<int> const &density_orbitals) const {
+    if constexpr (N_sites != 1) {
+      static_cast<void>(args);
+      static_cast<void>(density_orbitals);
+      return T(0.0);
+    } else {
+      if (density_orbitals.empty()) return this->G0n_infinite_U(args);
+      if (!args.operator_sequence_is_valid_infinite_U()) return T(0.0);
+
+      int n = args.order;
+
+      // Same diagonal-occupation density factor as the finite-U path; the
+      // doubly-occupied state (s == 3) is then automatically excluded below.
+      std::array<T, N_STATES> density_factor;
+      for (int s = 0; s < N_STATES; ++s) {
+        T factor = T(1.0);
+        for (int orb : density_orbitals) { factor = factor * T((s & (1 << orb)) ? 1.0 : 0.0); }
+        density_factor[s] = factor;
+      }
+
+      // Restrict to the projected sector {|0>, |down>, |up>} = states 0, 1, 2.
+      auto in_projected = [](int s) { return s != 3; };
+
+      if (n == 0) {
+        T result = T(0.0);
+        for (int s = 0; s < N_STATES; ++s) {
+          if (!in_projected(s)) continue;
+          result = result + density_factor[s] * this->exp_beta_E[s];
+        }
+        return (T(1.0) / this->Z_infinite_U) * args.permutation_sign * result;
+      }
+
+      ExpTable exp_tau_E, inv_exp_tau_E;
+      this->build_tau_exp_tables(args, exp_tau_E, inv_exp_tau_E);
+
+      std::array<T, N_STATES> buf_a, buf_b;
+      T result = T(0.0);
+      for (int start_state = 0; start_state < N_STATES; ++start_state) {
+        if (!in_projected(start_state)) continue;
+        if (is_zero(density_factor[start_state])) continue;
+
+        T *amplitudes = buf_a.data();
+        T *next       = buf_b.data();
+
+        std::fill(amplitudes, amplitudes + N_STATES, T(0.0));
+        amplitudes[start_state] = this->exp_beta_E[start_state];
+
+        for (int i = n - 1; i >= 0; --i) {
+          std::fill(next, next + N_STATES, T(0.0));
+          uint8_t op_idx = args.ops[i].op;
+
+          for (auto const &entry : this->operator_matrices[op_idx].entries) {
+            if (!in_projected(entry.row)) continue;
+            if (is_zero(amplitudes[entry.col])) continue;
+            next[entry.row] = next[entry.row] + amplitudes[entry.col] * entry.value * exp_tau_E[i][entry.row] * inv_exp_tau_E[i][entry.col];
+          }
+          std::swap(amplitudes, next);
+        }
+        result = result + density_factor[start_state] * amplitudes[start_state];
+      }
+      return (T(1.0) / this->Z_infinite_U) * args.permutation_sign * result;
+    }
+  }
+
   template <int N_sites, typename T> T HubbardSolver<N_sites, T>::G01(Args<N_sites, T> const &args) const {
     T out = T(0.0);
     Traits::try_closed_form_G0n(args, this->params, this->Z, out);
     return out;
+  }
+
+  template <int N_sites, typename T> T HubbardSolver<N_sites, T>::compute_n_sigma(int orbital) const {
+    // ⟨n_σ⟩ = Σ_α (e^{-βE_α}/Z) ⟨α| c†_σ c_σ |α⟩
+    //       = Σ_α (e^{-βE_α}/Z) Σ_β c_σ_{βα} · c†_σ_{αβ}
+    constexpr uint8_t ACTION_BIT_LOCAL = FermionOperator<N_sites, T>::ACTION_BIT;
+    uint8_t c_op_id      = static_cast<uint8_t>(orbital);
+    uint8_t c_dag_op_id  = static_cast<uint8_t>(ACTION_BIT_LOCAL | orbital);
+
+    T result = T(0.0);
+    for (int alpha = 0; alpha < N_STATES; ++alpha) {
+      // Apply c_σ to |α⟩; record the resulting amplitudes by state.
+      std::array<T, N_STATES> after_c{};
+      for (auto const &e : this->operator_matrices[c_op_id].entries) {
+        if (e.col == alpha) after_c[e.row] = after_c[e.row] + e.value;
+      }
+      // ⟨α| c†_σ |β⟩ for the resulting β states.
+      T diag = T(0.0);
+      for (auto const &e : this->operator_matrices[c_dag_op_id].entries) {
+        if (e.row == alpha) diag = diag + e.value * after_c[e.col];
+      }
+      result = result + this->exp_beta_E[alpha] * diag;
+    }
+    return result / this->Z;
   }
 
   template class HubbardSolver<1, double>;
