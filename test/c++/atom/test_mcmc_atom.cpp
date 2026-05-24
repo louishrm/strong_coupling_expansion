@@ -14,7 +14,7 @@
 
 #include <gtest/gtest.h>
 #include "sc_expansion/atomic/configuration.hpp"
-#include "sc_expansion/atomic/free_energy_calculator.hpp"
+#include "sc_expansion/atomic/sum_diagrams.hpp"
 #include "sc_expansion/generate_diagrams.hpp"
 #include "sc_expansion/graph.hpp"
 #include "sc_expansion/hubbard_solver.hpp"
@@ -38,13 +38,13 @@ static void run_mcmc_atom_check(int order, double U, double beta, double mu, dou
   int length_cycle = 1;
 
   sc_expansion::Parameters<double> params{U, beta, mu, 0.0, true};
-  sc_expansion::atomic::FreeEnergyCalculator<double> calculator(params, order, /*override_fm=*/1);
+  sc_expansion::atomic::SumDiagrams<double> calculator(params, order, /*override_fm=*/1);
 
   double reference_integral        = 0.0;
   double signed_reference_integral = 0.0;
 
   if (world.rank() == 0) {
-    auto [ref_abs, ref_signed] = calculator.compute_infinite_U_coefficient();
+    auto [ref_abs, ref_signed] = calculator.free_energy_infinite_U_coefficient();
     reference_integral         = ref_abs;
     signed_reference_integral  = ref_signed;
   }
@@ -97,8 +97,8 @@ static void run_mcmc_atom_check(int order, double U, double beta, double mu, dou
 // Deterministic infinite-U reference-integral check (no MC).
 static void run_infinite_u_check(int order, double U, double beta, double mu, double expected_signed_coeff, double tol) {
   sc_expansion::Parameters<double> params{U, beta, mu, 0.0, true};
-  sc_expansion::atomic::FreeEnergyCalculator<double> calculator(params, order, /*override_fm=*/1);
-  auto [abs_coeff, signed_coeff] = calculator.compute_infinite_U_coefficient();
+  sc_expansion::atomic::SumDiagrams<double> calculator(params, order, /*override_fm=*/1);
+  auto [abs_coeff, signed_coeff] = calculator.free_energy_infinite_U_coefficient();
 
   std::cout << "Expected (Python): " << expected_signed_coeff << std::endl;
   std::cout << "C++  signed_coeff: " << signed_coeff << std::endl;
@@ -132,13 +132,13 @@ static void run_mcmc_density_check(int order, double U, double beta, double mu, 
 
   sc_expansion::Parameters<Dual> params{Dual(U, 0.0), Dual(beta, 0.0), Dual(mu, 1.0), Dual(0.0, 0.0), true};
 
-  sc_expansion::atomic::FreeEnergyCalculator<Dual> calculator(params, order, /*override_fm=*/1);
+  sc_expansion::atomic::SumDiagrams<Dual> calculator(params, order, /*override_fm=*/1);
 
   double reference_integral        = 0.0;
   double signed_reference_integral = 0.0;
 
   if (world.rank() == 0) {
-    auto [ref_abs, ref_signed] = calculator.compute_infinite_U_coefficient();
+    auto [ref_abs, ref_signed] = calculator.free_energy_infinite_U_coefficient();
     reference_integral         = ref_abs;
     signed_reference_integral  = ref_signed;
   }

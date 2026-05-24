@@ -5,7 +5,7 @@
 #include <iomanip>
 #include <gtest/gtest.h>
 #include "sc_expansion/atomic/diagram.hpp"
-#include "sc_expansion/atomic/free_energy_calculator.hpp"
+#include "sc_expansion/atomic/sum_diagrams.hpp"
 #include "sc_expansion/graph.hpp"
 
 using namespace sc_expansion;
@@ -123,7 +123,7 @@ TEST(DiagramDiagnostics, Order8AtomGlobalConfigCounts) {
   double U = 8.0, beta = 2.0, mu = 3.0;
   Parameters<double> params{U, beta, mu, 0.0, true};
 
-  atomic::FreeEnergyCalculator<double> calculator(params, 8);
+  atomic::SumDiagrams<double> calculator(params, 8);
 
   auto const &graphs   = calculator.get_graphs();
   auto const &diagrams = calculator.get_diagrams();
