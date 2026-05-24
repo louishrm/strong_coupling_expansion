@@ -5,9 +5,10 @@
 namespace sc_expansion::atomic {
 
   template <typename T>
-  Configuration<T>::Configuration(Parameters<T> const &params_, int order_, double alpha_, FreeEnergyCalculator<T> &calculator_)
+  Configuration<T>::Configuration(Parameters<T> const &params_, int order_, double alpha_, SumDiagrams<T> &calculator_)
      : ConfigurationBase<T>(params_, order_), alpha(alpha_), integrand(0.0), reference_integrand(0.0), proposed_integrand(0.0),
-       proposed_reference_integrand(0.0), calculator(calculator_) {
+       proposed_reference_integrand(0.0), calculator(calculator_),
+       target_d_sq(calculator_.is_density_density_mode() ? calculator_.get_target_d_sq() : -1) {
 
     this->state.resize(this->order);
     triqs::mc_tools::random_generator RNG("mt19937", 23432);
@@ -23,8 +24,15 @@ namespace sc_expansion::atomic {
     double finite_U   = 0.0;
     double infinite_U = 0.0;
 
-    T finite_U_T   = this->calculator.compute_sum_diagrams(this->state, false);
-    T infinite_U_T = this->calculator.compute_sum_diagrams(this->state, true);
+    T finite_U_T;
+    T infinite_U_T;
+    if (this->target_d_sq >= 0) {
+      finite_U_T   = this->calculator.density_density(this->state, false).at(this->target_d_sq);
+      infinite_U_T = this->calculator.density_density(this->state, true).at(this->target_d_sq);
+    } else {
+      finite_U_T   = this->calculator.free_energy(this->state, false);
+      infinite_U_T = this->calculator.free_energy(this->state, true);
+    }
 
     if constexpr (std::is_same_v<T, Dual>) {
       finite_U   = finite_U_T.derivative;

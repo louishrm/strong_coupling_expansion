@@ -1,7 +1,7 @@
 #pragma once
 
 #include "../configuration_base.hpp"
-#include "free_energy_calculator.hpp"
+#include "sum_diagrams.hpp"
 
 namespace sc_expansion::atomic {
 
@@ -10,7 +10,7 @@ namespace sc_expansion::atomic {
   // Configuration with a uniform reference weight.
   template <typename T> class Configuration : public ConfigurationBase<T> {
     public:
-    Configuration(Parameters<T> const &params, int order, double alpha, FreeEnergyCalculator<T> &calculator);
+    Configuration(Parameters<T> const &params, int order, double alpha, SumDiagrams<T> &calculator);
 
     double evaluate_proposed() override;
     void commit_proposal() override;
@@ -20,7 +20,7 @@ namespace sc_expansion::atomic {
 
     void mark_tau_dirty(int tau_index) override;
 
-    FreeEnergyCalculator<T> const &get_calculator() const { return this->calculator; }
+    SumDiagrams<T> const &get_calculator() const { return this->calculator; }
 
     private:
     double alpha;
@@ -31,7 +31,8 @@ namespace sc_expansion::atomic {
     double proposed_integrand;
     double proposed_reference_integrand;
 
-    FreeEnergyCalculator<T> &calculator;
+    SumDiagrams<T> &calculator;
+    int target_d_sq;
 
     double compute_weight(double finite_U, double infinite_U) const;
     std::pair<double, double> compute_integrands() const;
