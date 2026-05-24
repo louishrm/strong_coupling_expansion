@@ -149,6 +149,12 @@ if(PythonSupport)
   add_subdirectory(python/${PROJECT_NAME})
 endif()
 
+# Standalone pybind11 module (no TRIQS-Python required). Enable with -DBuildPybind=ON.
+option(BuildPybind "Build the standalone pybind11 module (sc_atomic_py)" OFF)
+if(BuildPybind)
+  add_subdirectory(python/pybind)
+endif()
+
 # Docs
 if(NOT IS_SUBPROJECT AND Build_Documentation)
   add_subdirectory(doc)
