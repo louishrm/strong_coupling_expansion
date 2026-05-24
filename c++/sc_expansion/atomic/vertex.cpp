@@ -29,6 +29,13 @@ namespace sc_expansion::atomic {
       std::vector<double> dummy_taus(this->op_ids.size(), 0.5);
       auto [u0, p0] = Args<1, T>::split_from_raw(dummy_taus, this->op_ids);
       CumulantSolver<1, T> builder(u0, p0);
+      for (size_t k = 0; k < this->block_u_inputs.size(); ++k) {
+        builder.add_block_constraint(this->block_u_inputs[k], this->block_p_inputs[k]);
+      }
+      for (size_t k = 0; k < this->coincidence_orbitals.size(); ++k) {
+        builder.add_coincidence_group(this->coincidence_orbitals[k], this->coincidence_block_indices[k]);
+      }
+      for (int orbital : this->static_density_orbitals) { builder.add_static_density(orbital); }
       builder.record_plan(this->plan);
       this->plan_built = true;
     }

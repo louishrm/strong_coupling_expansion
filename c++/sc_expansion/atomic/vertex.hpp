@@ -36,12 +36,45 @@ namespace sc_expansion::atomic {
       this->is_dirty_infinite = true;
     }
 
+    // Mark this vertex as carrying a density insertion n_σ(0) = c†_σ·c_σ
+    // — the cumulant plan keeps the (c†, c) pair in the same partition
+    // block, producing the partial cumulant κ_partial rather than the full
+    // κ. Call once per mark on this vertex (a vertex with two coincident
+    // marks gets two block constraints — one per density insertion).
+    // u_input_idx / p_input_idx are positions in the unprimed / primed
+    // operator lists *as produced by Args::split_from_raw on op_ids*.
+    void add_block_constraint(int u_input_idx, int p_input_idx) {
+      this->block_u_inputs.push_back(u_input_idx);
+      this->block_p_inputs.push_back(p_input_idx);
+    }
+
+    // Declare a coincidence group of marks sitting at the same (τ=0, σ=
+    // orbital). block_indices reference the order of prior
+    // add_block_constraint calls on this vertex.
+    void add_coincidence_group(int orbital, std::vector<int> block_indices) {
+      this->coincidence_orbitals.push_back(orbital);
+      this->coincidence_block_indices.push_back(std::move(block_indices));
+    }
+
+    // Register one static density n_σ(0) decoration on this vertex (for the
+    // static-density correlator path). Unlike add_block_constraint, this
+    // mechanism does NOT require the mark's (c†_σ, c_σ) pair to live in
+    // op_ids — the density is attached as an external decoration of the
+    // per-vertex cumulant leaf via CumulantSolver::add_static_density.
+    // The two mechanisms are mutually exclusive per mark in practice.
+    void add_static_density(int orbital) { this->static_density_orbitals.push_back(orbital); }
+
     std::vector<int> const &get_tau_indices() const { return this->tau_indices; }
 
     private:
     VertexType<T> *type;
     std::vector<int> tau_indices;
     std::vector<uint8_t> op_ids;
+    std::vector<int> block_u_inputs;
+    std::vector<int> block_p_inputs;
+    std::vector<int> coincidence_orbitals;
+    std::vector<std::vector<int>> coincidence_block_indices;
+    std::vector<int> static_density_orbitals;
 
     mutable T local_cache_finite;
     mutable T local_cache_infinite;
