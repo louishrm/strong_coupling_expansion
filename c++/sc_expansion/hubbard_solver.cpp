@@ -160,66 +160,49 @@ namespace sc_expansion {
 
   template <int N_sites, typename T>
   T HubbardSolver<N_sites, T>::G0n_with_densities_infinite_U(Args<N_sites, T> const &args, std::vector<int> const &density_orbitals) const {
+    using std::exp;
     if constexpr (N_sites != 1) {
       static_cast<void>(args);
       static_cast<void>(density_orbitals);
       return T(0.0);
     } else {
+      // Closed form, τ-independent. At U=∞ the projected Hilbert space is
+      // {|0⟩, |↓⟩, |↑⟩}; the density n_σ(0) projects the trace onto start
+      // state |σ⟩. Because the operator chain is particle-number balanced at
+      // each vertex, the e^{μ(Στ−Στ′)} factors cancel across the diagram —
+      // so the per-leaf trace is either 0 (operator string can't close on
+      // |σ⟩) or e^{βμ}/Z_∞ × permutation_sign (the |σ⟩ Boltzmann weight).
+      //
+      // Cases on density_orbitals.size():
+      //   0   — no density; defer to the vacuum closed form.
+      //   1   — single n_σ(0) at the marked vertex.
+      //   2   — coincident pair. Same spin: n²=n, collapses to one density;
+      //         opposite spin: double-occupancy projector, identically zero
+      //         at U=∞ (no |↑↓⟩ state).
       if (density_orbitals.empty()) return this->G0n_infinite_U(args);
+      if (density_orbitals.size() == 2 && density_orbitals[0] != density_orbitals[1]) return T(0.0);
+      int sigma = density_orbitals[0];
+
       if (!args.operator_sequence_is_valid_infinite_U()) return T(0.0);
 
-      int n = args.order;
-
-      // Same diagonal-occupation density factor as the finite-U path; the
-      // doubly-occupied state (s == 3) is then automatically excluded below.
-      std::array<T, N_STATES> density_factor;
-      for (int s = 0; s < N_STATES; ++s) {
-        T factor = T(1.0);
-        for (int orb : density_orbitals) { factor = factor * T((s & (1 << orb)) ? 1.0 : 0.0); }
-        density_factor[s] = factor;
+      // Order-0 with no hopping operators: just the |σ⟩ Boltzmann weight.
+      if (args.order == 0) {
+        return exp(this->params.beta * this->params.mu) * (T(1.0) / this->Z_infinite_U) * args.permutation_sign;
       }
 
-      // Restrict to the projected sector {|0>, |down>, |up>} = states 0, 1, 2.
-      auto in_projected = [](int s) { return s != 3; };
-
-      if (n == 0) {
-        T result = T(0.0);
-        for (int s = 0; s < N_STATES; ++s) {
-          if (!in_projected(s)) continue;
-          result = result + density_factor[s] * this->exp_beta_E[s];
-        }
-        return (T(1.0) / this->Z_infinite_U) * args.permutation_sign * result;
+      // ops are stored with ops[0]=largest τ, ops[n-1]=smallest τ (matches
+      // operator_sequence_is_valid_infinite_U's iteration convention). The
+      // trace closes on |σ⟩ iff the largest-τ operator is c†_σ (creation of
+      // σ): the time-ordered product is applied to |σ⟩ right-to-left
+      // (smallest τ first); the LAST op applied is ops[0], and it must end
+      // the chain at |σ⟩. c†_σ acting on |0⟩ → |σ⟩ closes the trace; the
+      // mirror "c_σ at largest τ" would end at |0⟩, not |σ⟩.
+      auto last_op = args.ops[0];
+      if (last_op.get_action() != 1 || last_op.get_orbital_index() != (uint8_t)sigma) {
+        return T(0.0);
       }
 
-      ExpTable exp_tau_E, inv_exp_tau_E;
-      this->build_tau_exp_tables(args, exp_tau_E, inv_exp_tau_E);
-
-      std::array<T, N_STATES> buf_a, buf_b;
-      T result = T(0.0);
-      for (int start_state = 0; start_state < N_STATES; ++start_state) {
-        if (!in_projected(start_state)) continue;
-        if (is_zero(density_factor[start_state])) continue;
-
-        T *amplitudes = buf_a.data();
-        T *next       = buf_b.data();
-
-        std::fill(amplitudes, amplitudes + N_STATES, T(0.0));
-        amplitudes[start_state] = this->exp_beta_E[start_state];
-
-        for (int i = n - 1; i >= 0; --i) {
-          std::fill(next, next + N_STATES, T(0.0));
-          uint8_t op_idx = args.ops[i].op;
-
-          for (auto const &entry : this->operator_matrices[op_idx].entries) {
-            if (!in_projected(entry.row)) continue;
-            if (is_zero(amplitudes[entry.col])) continue;
-            next[entry.row] = next[entry.row] + amplitudes[entry.col] * entry.value * exp_tau_E[i][entry.row] * inv_exp_tau_E[i][entry.col];
-          }
-          std::swap(amplitudes, next);
-        }
-        result = result + density_factor[start_state] * amplitudes[start_state];
-      }
-      return (T(1.0) / this->Z_infinite_U) * args.permutation_sign * result;
+      return exp(this->params.beta * this->params.mu) * (T(1.0) / this->Z_infinite_U) * args.permutation_sign;
     }
   }
 
@@ -233,8 +216,8 @@ namespace sc_expansion {
     // ⟨n_σ⟩ = Σ_α (e^{-βE_α}/Z) ⟨α| c†_σ c_σ |α⟩
     //       = Σ_α (e^{-βE_α}/Z) Σ_β c_σ_{βα} · c†_σ_{αβ}
     constexpr uint8_t ACTION_BIT_LOCAL = FermionOperator<N_sites, T>::ACTION_BIT;
-    uint8_t c_op_id      = static_cast<uint8_t>(orbital);
-    uint8_t c_dag_op_id  = static_cast<uint8_t>(ACTION_BIT_LOCAL | orbital);
+    uint8_t c_op_id                    = static_cast<uint8_t>(orbital);
+    uint8_t c_dag_op_id                = static_cast<uint8_t>(ACTION_BIT_LOCAL | orbital);
 
     T result = T(0.0);
     for (int alpha = 0; alpha < N_STATES; ++alpha) {
