@@ -182,6 +182,78 @@ TEST(StaticDensityDiagram, FourCycleDistanceSymmetric) {
   }
 }
 
+// ----------------------------------------------------------------------------
+// Cross-check atomic::count_lattice_embeddings(graph, marks, r) against the
+// shell-indexed RootedGraph::compute_shell_multiplicity values asserted above:
+// summing the per-r count over each d² shell must reproduce shell_mult[d²].
+// ----------------------------------------------------------------------------
+namespace {
+  // r vectors with |r|² = d_sq, generated for small d_sq we need below.
+  std::vector<std::pair<int, int>> shell_vectors(int d_sq) {
+    std::vector<std::pair<int, int>> out;
+    int bound = 0;
+    while (bound * bound <= d_sq) ++bound;
+    for (int x = -bound; x <= bound; ++x)
+      for (int y = -bound; y <= bound; ++y)
+        if (x * x + y * y == d_sq) out.emplace_back(x, y);
+    return out;
+  }
+
+  int shell_sum(Graph const &g, std::vector<int> const &marks, int d_sq) {
+    int s = 0;
+    for (auto [x, y] : shell_vectors(d_sq)) s += atomic::count_lattice_embeddings(g, marks, {x, y});
+    return s;
+  }
+} // namespace
+
+TEST(LatticeEmbeddingCount, FourCycleShellsMatch) {
+  Graph cycle(four_cycle_adjacency(), /*V=*/4, /*bipartite_only=*/true);
+
+  // marks={0,0}: only d²=0 entry of value 36.
+  EXPECT_EQ(shell_sum(cycle, {0, 0}, 0), 36);
+
+  // marks={0,2}: shells 0, 2, 4 with values 16, 16, 4.
+  EXPECT_EQ(shell_sum(cycle, {0, 2}, 0), 16);
+  EXPECT_EQ(shell_sum(cycle, {0, 2}, 2), 16);
+  EXPECT_EQ(shell_sum(cycle, {0, 2}, 4), 4);
+  // Off-shell parities must vanish (bipartite 4-cycle, opposite-color marks).
+  EXPECT_EQ(shell_sum(cycle, {0, 2}, 1), 0);
+
+  // marks={0,1}: only odd-parity shells, d²=1 has value 36.
+  EXPECT_EQ(shell_sum(cycle, {0, 1}, 1), 36);
+  EXPECT_EQ(shell_sum(cycle, {0, 1}, 0), 0);
+  EXPECT_EQ(shell_sum(cycle, {0, 1}, 2), 0);
+}
+
+TEST(LatticeEmbeddingCount, V3PathShellsMatch) {
+  std::vector<uint8_t> adj = {0, 1, 0, 1, 0, 1, 0, 1, 0};
+  Graph path(adj, /*V=*/3, /*bipartite_only=*/true);
+
+  EXPECT_EQ(shell_sum(path, {0, 0}, 0), 16);
+  EXPECT_EQ(shell_sum(path, {1, 1}, 0), 16);
+
+  EXPECT_EQ(shell_sum(path, {0, 1}, 1), 16);
+  EXPECT_EQ(shell_sum(path, {0, 1}, 0), 0);
+  EXPECT_EQ(shell_sum(path, {0, 1}, 2), 0);
+
+  EXPECT_EQ(shell_sum(path, {0, 2}, 0), 4);
+  EXPECT_EQ(shell_sum(path, {0, 2}, 2), 8);
+  EXPECT_EQ(shell_sum(path, {0, 2}, 4), 4);
+  EXPECT_EQ(shell_sum(path, {0, 2}, 1), 0);
+}
+
+// Spot-check a single non-trivial per-r entry: 4-cycle marks={0,2} at r=(2,0)
+// — the per-r decomposition I worked out by hand (φ(0)=(0,0), φ(2)=(2,0), then
+// φ(1)=φ(3)=(1,0) forced) gives count = 1, and r=(1,1) gives count = 4 (φ(1),
+// φ(3) ∈ NN(0)∩NN((1,1)) = {(0,1),(1,0)}, two choices each).
+TEST(LatticeEmbeddingCount, FourCycleSpotCheck) {
+  Graph cycle(four_cycle_adjacency(), /*V=*/4, /*bipartite_only=*/true);
+  EXPECT_EQ(atomic::count_lattice_embeddings(cycle, {0, 2}, {2, 0}), 1);
+  EXPECT_EQ(atomic::count_lattice_embeddings(cycle, {0, 2}, {1, 1}), 4);
+  // r at the wrong parity for bipartite opposite-color marks: 0.
+  EXPECT_EQ(atomic::count_lattice_embeddings(cycle, {0, 2}, {1, 0}), 0);
+}
+
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

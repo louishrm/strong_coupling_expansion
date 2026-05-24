@@ -2,7 +2,10 @@
 #include "../dual.hpp"
 #include "../fock_space.hpp"
 #include <algorithm>
+#include <cstdlib>
+#include <functional>
 #include <map>
+#include <queue>
 #include <set>
 #include <stdexcept>
 
@@ -359,5 +362,104 @@ namespace sc_expansion::atomic {
 
   template class Diagram<double>;
   template class Diagram<Dual>;
+
+  int count_lattice_embeddings(Graph const &graph, std::vector<int> const &marks, std::vector<int> const &r) {
+    if (marks.size() != 2 || r.size() != 2) return 0;
+    int V     = graph.get_V();
+    int mark0 = marks[0];
+    int mark1 = marks[1];
+    if (mark0 < 0 || mark0 >= V || mark1 < 0 || mark1 >= V) return 0;
+
+    // Simple-graph adjacency: multi-edges collapse to one constraint (L¹=1
+    // between the two endpoint sites), self-loops are skipped (they would
+    // impose L¹=0 on a vertex with itself, which can never satisfy L¹=1).
+    std::vector<std::vector<int>> adj(V);
+    for (int i = 0; i < V; ++i) {
+      for (int j = i + 1; j < V; ++j) {
+        if (graph(i, j) != 0 || graph(j, i) != 0) {
+          adj[i].push_back(j);
+          adj[j].push_back(i);
+        }
+      }
+    }
+
+    // BFS from mark0: guarantees every later-placed vertex has ≥1 already-
+    // placed neighbor we can use as a lattice anchor (≤4 candidate sites).
+    std::vector<int> order;
+    order.reserve(V);
+    std::vector<char> in_queue(V, 0);
+    std::queue<int> q;
+    q.push(mark0);
+    in_queue[mark0] = 1;
+    while (!q.empty()) {
+      int u = q.front();
+      q.pop();
+      order.push_back(u);
+      for (int v : adj[u])
+        if (!in_queue[v]) {
+          in_queue[v] = 1;
+          q.push(v);
+        }
+    }
+    if ((int)order.size() != V) return 0; // disconnected — vacuum diagrams shouldn't be.
+
+    std::vector<std::pair<int, int>> pos(V, {0, 0});
+    std::vector<char> placed(V, 0);
+    pos[mark0]    = {0, 0};
+    placed[mark0] = 1;
+    if (mark1 != mark0) {
+      pos[mark1]    = {r[0], r[1]};
+      placed[mark1] = 1;
+    } else if (r[0] != 0 || r[1] != 0) {
+      return 0; // coincident marks force r=(0,0).
+    }
+
+    auto verify = [&](int u, int x, int y) {
+      for (int v : adj[u]) {
+        if (placed[v]) {
+          int d = std::abs(pos[v].first - x) + std::abs(pos[v].second - y);
+          if (d != 1) return false;
+        }
+      }
+      return true;
+    };
+
+    constexpr int dx[4] = {1, -1, 0, 0};
+    constexpr int dy[4] = {0, 0, 1, -1};
+
+    std::function<int(int)> dfs = [&](int idx) -> int {
+      // Skip past pre-placed vertices (mark0, mark1), verifying constraints
+      // against whatever is currently placed.
+      while (idx < (int)order.size() && placed[order[idx]]) {
+        int u = order[idx];
+        if (!verify(u, pos[u].first, pos[u].second)) return 0;
+        ++idx;
+      }
+      if (idx == (int)order.size()) return 1;
+
+      int u      = order[idx];
+      int anchor = -1;
+      for (int v : adj[u])
+        if (placed[v]) {
+          anchor = v;
+          break;
+        }
+      if (anchor == -1) return 0; // unreachable in a connected graph + BFS order.
+
+      int total = 0;
+      for (int d = 0; d < 4; ++d) {
+        int nx = pos[anchor].first + dx[d];
+        int ny = pos[anchor].second + dy[d];
+        if (!verify(u, nx, ny)) continue;
+        pos[u]    = {nx, ny};
+        placed[u] = 1;
+        total += dfs(idx + 1);
+        placed[u] = 0;
+      }
+      return total;
+    };
+
+    return dfs(0);
+  }
 
 } // namespace sc_expansion::atomic

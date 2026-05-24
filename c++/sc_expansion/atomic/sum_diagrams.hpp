@@ -34,9 +34,18 @@ namespace sc_expansion::atomic {
 
     // Rooted density-density constructor (Flavor 2): builds the catalog of
     // rooted topologies whose two marks can embed at displacement r on the
-    // bipartite hypercubic lattice, forcing free_multiplicity = 1 and
-    // lattice_multiplier = {|r|²: 1} per diagram.
-    SumDiagrams(Parameters<T> const &params, int order, std::vector<int> r, int s1, int s2);
+    // bipartite hypercubic lattice. Each kept graph carries
+    // free_multiplicity = 1; the per-diagram lattice_multiplier defaults to
+    // the actual count of Z² embeddings (mark[0] at origin, mark[1] at r)
+    // via count_lattice_embeddings — graphs with zero embeddings are dropped.
+    //
+    // override_lm: if ≥ 0, bypasses count_lattice_embeddings and forces every
+    // kept diagram's lattice_multiplier to {|r|²: override_lm}. Intended for
+    // cluster-cell tests (e.g. dimer) where the embedding count is known a
+    // priori — on a 2-site dimer the count is 1 for any (graph, marks, r),
+    // so the test fixture passes override_lm = 1 to evaluate per-diagram
+    // coefficients without the Z² lattice sum.
+    SumDiagrams(Parameters<T> const &params, int order, std::vector<int> r, int s1, int s2, int override_lm = -1);
 
     // Rooted density-density constructor with prebuilt catalog. Mirrors the
     // vacuum prebuilt-graphs path so MPI drivers can have rank 0 enumerate
@@ -44,10 +53,11 @@ namespace sc_expansion::atomic {
     // graphs[i] must already carry the rooted symmetry factor and
     // free_multiplicity = 1 (i.e. constructed via Graph's override ctor);
     // marks[i] gives the two mark indices in graphs[i]'s labeling.
+    // override_lm has the same semantics as the catalog-building ctor above.
     SumDiagrams(Parameters<T> const &params, int order,
                 std::vector<Graph> const &prebuilt_rooted_graphs,
                 std::vector<std::vector<int>> const &prebuilt_marks,
-                std::vector<int> const &r, int s1, int s2);
+                std::vector<int> const &r, int s1, int s2, int override_lm = -1);
 
     // Scalar accumulator over the vacuum/free-energy diagram list.
     T free_energy(std::vector<double> const &taus, bool infinite_U) const;
@@ -79,7 +89,7 @@ namespace sc_expansion::atomic {
     void init_from_graphs(std::vector<Graph> const &source_graphs, int override_fm);
     void init_from_rooted_catalog(std::vector<Graph> const &rooted_graphs,
                                   std::vector<std::vector<int>> const &marks,
-                                  std::vector<int> const &r, int s1, int s2);
+                                  std::vector<int> const &r, int s1, int s2, int override_lm);
 
     // Shared n!-permutation SJT sweep used by both *_infinite_U_coefficient
     // implementations. `per_perm(taus, accum)` is invoked once per permutation

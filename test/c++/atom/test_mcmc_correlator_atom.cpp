@@ -4,10 +4,10 @@
  * (density-density) constructor.
  *
  * Reference values come from test_correlator_atom.cpp's exact infinite-U
- * thermodynamic-limit coefficients on the bipartite hypercubic lattice.
- * Under the rooted constructor with shell-filter + override_fm=1, the
- * per-diagram lattice multiplier degenerates to {|r|²: 1}, so the calculator
- * sums to the same value the analytical sweep produces.
+ * dimer-cluster coefficients. Like that test, we pass override_lm = 1 to the
+ * rooted SumDiagrams constructor so each kept diagram enters with multiplier
+ * 1 instead of its actual Z² embedding count — matching the per-diagram,
+ * no-lattice-sum convention the references were computed under.
  *
  * Usage:  mpirun -np 4 ./test_mcmc_correlator_atom
  *         (also works with 1 rank: ./test_mcmc_correlator_atom)
@@ -39,7 +39,7 @@ static void run_mcmc_correlator_check(int order, double U, double beta, double m
   int length_cycle = 1;
 
   sc_expansion::Parameters<double> params{U, beta, mu, 0.0, true};
-  sc_expansion::atomic::SumDiagrams<double> calculator(params, order, r, s1, s2);
+  sc_expansion::atomic::SumDiagrams<double> calculator(params, order, r, s1, s2, /*override_lm=*/1);
 
   double reference_integral        = 0.0;
   double signed_reference_integral = 0.0;
@@ -90,7 +90,7 @@ static void run_mcmc_correlator_check(int order, double U, double beta, double m
 static void run_infinite_u_correlator_check(int order, double U, double beta, double mu, std::vector<int> const &r, int s1, int s2,
                                             double expected_signed_coeff, double tol) {
   sc_expansion::Parameters<double> params{U, beta, mu, 0.0, true};
-  sc_expansion::atomic::SumDiagrams<double> calculator(params, order, r, s1, s2);
+  sc_expansion::atomic::SumDiagrams<double> calculator(params, order, r, s1, s2, /*override_lm=*/1);
 
   auto coeff_map     = calculator.density_density_infinite_U_coefficient();
   auto [abs_coeff, signed_coeff] = coeff_map.at(calculator.get_target_d_sq());

@@ -66,16 +66,36 @@ namespace sc_expansion::atomic {
 
   template <typename T>
   void SumDiagrams<T>::init_from_rooted_catalog(std::vector<Graph> const &rooted_graphs, std::vector<std::vector<int>> const &marks,
-                                                std::vector<int> const &r, int s1, int s2) {
+                                                std::vector<int> const &r, int s1, int s2, int override_lm) {
     int d_sq = 0;
     for (int c : r) d_sq += c * c;
     this->target_d_sq = d_sq;
+
+    // Per-diagram lattice multiplier: count of Z² embeddings of (graph, marks)
+    // with mark[0] at origin and mark[1] at r. Default path computes this via
+    // count_lattice_embeddings() — the DistanceRootedDiagramGenerator filter
+    // is only a necessary condition for ≥1 embedding, so some catalog entries
+    // have count == 0 and we drop them outright (they would contribute zero
+    // anyway, just at the cost of wasted Diagram evaluation in the MC).
+    //
+    // override_lm ≥ 0 bypasses this: every catalog entry is kept with the
+    // override as its multiplier, mirroring the "per-diagram, no lattice sum"
+    // convention used by cluster-cell reference computations.
+    std::vector<int> embedding_counts(rooted_graphs.size(), 0);
+    if (override_lm >= 0) {
+      std::fill(embedding_counts.begin(), embedding_counts.end(), override_lm);
+    } else {
+      for (size_t i = 0; i < rooted_graphs.size(); ++i) {
+        embedding_counts[i] = count_lattice_embeddings(rooted_graphs[i], marks[i], r);
+      }
+    }
 
     // Max cumulant order over kept graphs, accounting for mark bonus (each
     // mark contributes +1 to its vertex degree under the StaticDensity
     // encoding).
     int max_cumulant_order = std::max(1, this->order / 2);
     for (size_t i = 0; i < rooted_graphs.size(); ++i) {
+      if (embedding_counts[i] == 0) continue;
       auto const &g  = rooted_graphs[i];
       auto const &mk = marks[i];
       int V          = g.get_V();
@@ -97,10 +117,11 @@ namespace sc_expansion::atomic {
     auto order_idx              = sorted_graph_indices(rooted_graphs);
     std::vector<int> mark_spins = {s1, s2};
     for (int i : order_idx) {
+      if (embedding_counts[i] == 0) continue;
       this->graphs.emplace_back(rooted_graphs[i]);
       this->diagrams.emplace_back(this->graphs.back(), vt_ptrs, marks[i], mark_spins,
                                   /*flip_mark_order=*/false, MarkEncoding::StaticDensity);
-      this->lattice_multiplier.push_back({{d_sq, 1}});
+      this->lattice_multiplier.push_back({{d_sq, embedding_counts[i]}});
     }
   }
 
@@ -118,19 +139,19 @@ namespace sc_expansion::atomic {
   }
 
   template <typename T>
-  SumDiagrams<T>::SumDiagrams(Parameters<T> const &params_, int order_, std::vector<int> r, int s1, int s2)
+  SumDiagrams<T>::SumDiagrams(Parameters<T> const &params_, int order_, std::vector<int> r, int s1, int s2, int override_lm)
      : params(params_), order(order_), solver(params_) {
     std::vector<Graph> rooted_graphs;
     std::vector<std::vector<int>> marks;
     build_rooted_catalog(this->order, this->params.bipartite, r, rooted_graphs, marks);
-    this->init_from_rooted_catalog(rooted_graphs, marks, r, s1, s2);
+    this->init_from_rooted_catalog(rooted_graphs, marks, r, s1, s2, override_lm);
   }
 
   template <typename T>
   SumDiagrams<T>::SumDiagrams(Parameters<T> const &params_, int order_, std::vector<Graph> const &prebuilt_rooted_graphs,
-                              std::vector<std::vector<int>> const &prebuilt_marks, std::vector<int> const &r, int s1, int s2)
+                              std::vector<std::vector<int>> const &prebuilt_marks, std::vector<int> const &r, int s1, int s2, int override_lm)
      : params(params_), order(order_), solver(params_) {
-    this->init_from_rooted_catalog(prebuilt_rooted_graphs, prebuilt_marks, r, s1, s2);
+    this->init_from_rooted_catalog(prebuilt_rooted_graphs, prebuilt_marks, r, s1, s2, override_lm);
   }
 
   template <typename T> T SumDiagrams<T>::free_energy(std::vector<double> const &taus, bool infinite_U) const {

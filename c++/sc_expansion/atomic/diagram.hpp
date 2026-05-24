@@ -23,6 +23,19 @@ namespace sc_expansion::atomic {
   // marks, mark_spins) — cross-validated in the test suite.
   enum class MarkEncoding { BlockConstraint, StaticDensity };
 
+  // Count lattice embeddings of `graph` on Z² with marks landing at displacement
+  // r: φ(marks[0]) = (0,0), φ(marks[1]) = (r[0], r[1]). Edges map to L¹-unit
+  // lattice steps (nearest-neighbor on the square lattice); vertex coincidence
+  // is allowed (distinct graph vertices may share a lattice site). Multi-edges
+  // collapse to a single L¹=1 constraint (same simple-graph treatment as
+  // bfs_all_pairs in generate_diagrams.cpp).
+  //
+  // Cross-check: summing the return value over r at a fixed |r|² reproduces
+  // RootedGraph::compute_shell_multiplicity()[|r|²] for the same (graph, marks).
+  int count_lattice_embeddings(Graph const &graph,
+                               std::vector<int> const &marks,
+                               std::vector<int> const &r);
+
   template <typename T> class Diagram {
     public:
     // Free-energy (vacuum) constructor.

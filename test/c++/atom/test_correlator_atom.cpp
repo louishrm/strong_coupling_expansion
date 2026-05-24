@@ -7,14 +7,17 @@
 using namespace sc_expansion;
 
 // Thin wrapper around SumDiagrams::density_density_infinite_U_coefficient.
-// The calculator's rooted constructor lifts the same recipe this test file
-// used to inline (rooted-diagram generation, shell-filter on |r|², per-diagram
-// override_fm=1) and runs the same SJT-sum at U=∞.
+// Reference coefficients below are computed on a 2-site dimer cluster, where
+// every (graph, marks, r) admits exactly one embedding. We bypass the default
+// Z² embedding-count path by passing override_lm = 1 so each diagram enters
+// with multiplier 1 instead of its actual Z² count — i.e. this is a
+// per-diagram, no-lattice-sum check of the SJT evaluator and the rooted
+// catalog construction.
 //
 // spin convention: 0 = ↓, 1 = ↑.
 static double compute_infinite_U_coefficient(int order, double beta, double mu, std::vector<int> const &r, int s1, int s2) {
   Parameters<double> params{/*U=*/0.0, beta, mu, 0.0, /*bipartite=*/true};
-  atomic::SumDiagrams<double> calculator(params, order, r, s1, s2);
+  atomic::SumDiagrams<double> calculator(params, order, r, s1, s2, /*override_lm=*/1);
   auto coeff_map = calculator.density_density_infinite_U_coefficient();
   return coeff_map.at(calculator.get_target_d_sq()).second;
 }
