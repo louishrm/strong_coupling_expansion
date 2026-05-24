@@ -413,13 +413,16 @@ namespace sc_expansion {
         // drop it for those graphs. Non-bipartite lattices also drop it.
         bool use_parity_filter = this->bipartite_only && G.get_bipartite();
 
-        // Enumerate unordered mark pairs {i, j} (i < j) whose graph-distance
-        // matches the target Manhattan distance up to parity. The n-cycle
-        // (V == n) contributes multiple distance classes here; canonical
-        // dedup collapses pairs equivalent under Aut(G), so e.g. the n-cycle
+        // Enumerate unordered mark pairs {i, j} (i <= j) whose graph-distance
+        // matches the target Manhattan distance up to parity. Same-vertex
+        // pairs (i == j) are needed for the on-site case (d == 0): both
+        // density operators on one hopping vertex. For d > 0 the dij < d
+        // filter prunes (i, i) automatically. The n-cycle (V == n)
+        // contributes multiple distance classes here; canonical dedup
+        // collapses pairs equivalent under Aut(G), so e.g. the n-cycle
         // surfaces one rooted topology per distinct graph-distance >= d.
         for (int i = 0; i < V; ++i) {
-          for (int j = i + 1; j < V; ++j) {
+          for (int j = i; j < V; ++j) {
             int dij = dist_G[i * V + j];
             if (dij < this->d) continue;
             if (use_parity_filter && ((dij - this->d) % 2 != 0)) continue;
