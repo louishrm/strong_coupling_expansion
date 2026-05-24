@@ -186,11 +186,14 @@ namespace sc_expansion {
       if (m < 0 || m >= this->V) throw std::invalid_argument("RootedGraph: mark index out of range");
     }
 
-    // Colored canonicalization: marks share color 1, unmarked share color 0.
-    // The two marks are interchangeable (same color), so bliss's automorphism
-    // count is exactly |Stab_{Aut(G)}({m0, m1})| as an unordered set.
+    // Colored canonicalization: the color of vertex v equals the *number* of
+    // marks placed on v (0 unmarked, 1 single mark, 2 if both marks coincide
+    // on v). Distinct color values keep single-mark and double-mark vertices
+    // in separate bliss equivalence classes, so {v,v} same-vertex placements
+    // do not collapse with {v} single-mark forms — and bliss's automorphism
+    // count is |Stab_{Aut(G)}(M)| where M is the unordered mark multiset.
     std::vector<int> color(this->V, 0);
-    for (int m : marks_in) color[m] = 1;
+    for (int m : marks_in) color[m] += 1;
     auto adj    = parent.get_adjacency_matrix();
     auto result = canonicalize(adj, this->V, color);
 
