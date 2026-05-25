@@ -316,25 +316,32 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
 
     std::string lattice = bipartite ? "square" : "triangular";
 
+    namespace fs = std::filesystem;
+    std::string filename;
+    std::string header;
+    std::string row_str;
     if (corr_mode) {
-      std::string filename = "./results/atom_" + lattice + "_lattice_corr.csv";
+      filename = "./results/atom_" + lattice + "_lattice_corr.csv";
+      header   = "U,beta,mu,order,alpha,rx,ry,s1,s2,coeff,error,reference_integral";
       std::ostringstream row;
       row << std::setprecision(17);
       row << U << ',' << beta << ',' << mu << ',' << order << ',' << alpha << ',' << r[0] << ',' << r[1] << ',' << s1 << ',' << s2 << ','
           << meas.result->coeff << ',' << meas.result->error << ',' << reference_integral;
-
-      sc_expansion::append_csv_row(filename, "U,beta,mu,order,alpha,rx,ry,s1,s2,coeff,error,reference_integral", row.str());
+      row_str = row.str();
     } else {
       std::string observable = std::is_same_v<T, Dual> ? "density" : "Omega";
-      std::string filename   = "./results/atom_" + lattice + "_lattice_" + observable + ".csv";
-
+      filename               = "./results/atom_" + lattice + "_lattice_" + observable + ".csv";
+      header                 = "U,beta,mu,order,alpha,coeff,error,reference_integral";
       std::ostringstream row;
       row << std::setprecision(17);
       row << U << ',' << beta << ',' << mu << ',' << order << ',' << alpha << ',' << meas.result->coeff << ',' << meas.result->error << ','
           << reference_integral;
-
-      sc_expansion::append_csv_row(filename, "U,beta,mu,order,alpha,coeff,error,reference_integral", row.str());
+      row_str = row.str();
     }
+
+    std::cout << "Writing row to " << fs::absolute(filename).string() << " ..." << std::endl;
+    sc_expansion::append_csv_row(filename, header, row_str);
+    std::cout << "CSV write OK (file size " << fs::file_size(filename) << " bytes)." << std::endl;
   }
 }
 
