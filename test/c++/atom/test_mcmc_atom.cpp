@@ -8,6 +8,9 @@
  * embedding weight). Pure-hopping only — the shifted-expansion (delta) scheme
  * relied on self-loop counterterms which have been removed from this branch.
  *
+ * Uses the uniform-reference defensive estimator (measure_dimer): the atomic
+ * Configuration's weight is now W = |f + alpha|, matching the dimer scheme.
+ *
  * Usage:  mpirun -np 4 ./test_mcmc_atom
  *         (also works with 1 rank: ./test_mcmc_atom)
  */
@@ -21,7 +24,7 @@
 #include "sc_expansion/args.hpp"
 #include "sc_expansion/fock_space.hpp"
 #include "sc_expansion/move.hpp"
-#include "sc_expansion/measure.hpp"
+#include "sc_expansion/dimer/measure_dimer.hpp"
 #include "sc_expansion/dual.hpp"
 #include <triqs/mc_tools/mc_generic.hpp>
 #include <triqs/utility/callbacks.hpp>
@@ -40,18 +43,6 @@ static void run_mcmc_atom_check(int order, double U, double beta, double mu, dou
   sc_expansion::Parameters<double> params{U, beta, mu, 0.0, true};
   sc_expansion::atomic::SumDiagrams<double> calculator(params, order, /*override_fm=*/1);
 
-  double reference_integral        = 0.0;
-  double signed_reference_integral = 0.0;
-
-  if (world.rank() == 0) {
-    auto [ref_abs, ref_signed] = calculator.free_energy_infinite_U_coefficient();
-    reference_integral         = ref_abs;
-    signed_reference_integral  = ref_signed;
-  }
-
-  mpi::broadcast(reference_integral, world);
-  mpi::broadcast(signed_reference_integral, world);
-
   auto config = std::make_unique<sc_expansion::atomic::Configuration<double>>(params, order, alpha, calculator);
 
   int random_seed = 32186222 + world.rank() * 786512;
@@ -62,8 +53,7 @@ static void run_mcmc_atom_check(int order, double U, double beta, double mu, dou
   int n_bins     = 50;
   int block_size = (n_cycles / n_bins) + 1;
 
-  free_energy_estimator est{reference_integral, signed_reference_integral};
-  measure<double, free_energy_estimator> meas(config.get(), est, n_bins, block_size);
+  measure_dimer<double> meas(config.get(), n_bins, block_size, alpha);
   mc.add_move(move<double>(config.get(), mc.get_rng()), "time_swap");
   mc.add_measure(meas, "defensive_measure");
 
@@ -71,7 +61,7 @@ static void run_mcmc_atom_check(int order, double U, double beta, double mu, dou
   mc.collect_results(world);
 
   if (world.rank() == 0) {
-    double mc_mean  = meas.result->mean;
+    double mc_mean  = meas.result->coeff;
     double mc_error = meas.result->error;
 
     double rel_err = std::abs(mc_mean - exact_coeff) / std::abs(exact_coeff);
@@ -135,18 +125,6 @@ static void run_mcmc_density_check(int order, double U, double beta, double mu, 
 
   sc_expansion::atomic::SumDiagrams<Dual> calculator(params, order, /*override_fm=*/1);
 
-  double reference_integral        = 0.0;
-  double signed_reference_integral = 0.0;
-
-  if (world.rank() == 0) {
-    auto [ref_abs, ref_signed] = calculator.free_energy_infinite_U_coefficient();
-    reference_integral         = ref_abs;
-    signed_reference_integral  = ref_signed;
-  }
-
-  mpi::broadcast(reference_integral, world);
-  mpi::broadcast(signed_reference_integral, world);
-
   auto config = std::make_unique<sc_expansion::atomic::Configuration<Dual>>(params, order, alpha, calculator);
 
   int random_seed = 32186222 + world.rank() * 786512;
@@ -157,8 +135,7 @@ static void run_mcmc_density_check(int order, double U, double beta, double mu, 
   int n_bins     = 50;
   int block_size = (n_cycles / n_bins) + 1;
 
-  free_energy_estimator est{reference_integral, signed_reference_integral};
-  measure<Dual, free_energy_estimator> meas(config.get(), est, n_bins, block_size);
+  measure_dimer<Dual> meas(config.get(), n_bins, block_size, alpha);
   mc.add_move(move<Dual>(config.get(), mc.get_rng()), "time_swap");
   mc.add_measure(meas, "defensive_measure");
 
@@ -166,7 +143,7 @@ static void run_mcmc_density_check(int order, double U, double beta, double mu, 
   mc.collect_results(world);
 
   if (world.rank() == 0) {
-    double mc_mean  = meas.result->mean;
+    double mc_mean  = meas.result->coeff;
     double mc_error = meas.result->error;
     double rel_err  = std::abs(mc_mean - exact_density_coeff) / std::abs(exact_density_coeff);
 

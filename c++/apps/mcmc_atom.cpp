@@ -3,7 +3,7 @@
 #include "sc_expansion/generate_diagrams.hpp"
 #include "sc_expansion/combinatorics.hpp"
 #include "sc_expansion/move.hpp"
-#include "sc_expansion/measure.hpp"
+#include "sc_expansion/dimer/measure_dimer.hpp"
 #include "sc_expansion/dual.hpp"
 #include "sc_expansion/csv_append.hpp"
 #include <triqs/mc_tools/mc_generic.hpp>
@@ -111,6 +111,10 @@ static void broadcast_graphs(std::vector<sc_expansion::Graph> &graphs, mpi::comm
 // Each rank fast-forwards the SJT generator to its chunk start, then evaluates its
 // portion. Within each chunk the consecutive-transposition property is preserved,
 // so the vertex cache is kept alive across permutations for maximum reuse.
+//
+// Since the atomic MC moved to the uniform-reference scheme (W = |f + alpha|),
+// this is computed only for diagnostic reporting (printed + written to CSV) and
+// does not feed the estimator.
 template <typename T>
 std::pair<double, double> compute_reference_integral_mpi(sc_expansion::atomic::SumDiagrams<T> &calculator,
                                                          sc_expansion::Parameters<T> const &params, int order, mpi::communicator &world) {
@@ -238,8 +242,8 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
   }
   auto &calculator = *calculator_ptr;
 
-  // --- Phase 3: MPI-parallel infinite-U reference integral using SJT ---
-  if (world.rank() == 0) { std::cout << "Computing reference integral across " << world.size() << " MPI ranks (SJT)..." << std::endl; }
+  // --- Phase 3: MPI-parallel infinite-U reference integral using SJT (diagnostic only) ---
+  if (world.rank() == 0) { std::cout << "Computing reference integral across " << world.size() << " MPI ranks (SJT) [diagnostic only]..." << std::endl; }
   auto t_ref_start                                     = std::chrono::high_resolution_clock::now();
   auto [reference_integral, signed_reference_integral] = compute_reference_integral_mpi(calculator, params, order, world);
   auto t_ref_end                                       = std::chrono::high_resolution_clock::now();
@@ -248,10 +252,43 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
               << " computed in " << std::chrono::duration<double>(t_ref_end - t_ref_start).count() << " s." << std::endl;
   }
 
-  // --- Phase 4: MC sampling (reuses the same calculator — no second diagram generation) ---
-  auto config = std::make_unique<sc_expansion::atomic::Configuration<T>>(params, order, alpha, calculator);
-
   if (world.rank() == 0) { std::filesystem::create_directory("./results"); }
+
+  // --- Phase 4: Alpha auto-tuning pilot ---
+  // Short MC with user-supplied alpha as initial guess; rescale via
+  //   alpha_new = alpha_0 * <|f|/W> / <alpha/W>
+  // so alpha matches typical|f|, the variance-minimising choice for the ratio
+  // estimator coeff = alpha * beta^n * <f/W> / <alpha/W>.
+  {
+    int pilot_warmup   = 1000;
+    int pilot_cycles   = 5000;
+    int pilot_block    = 200;
+    int pilot_n_bins   = std::max(20, pilot_cycles / pilot_block);
+    int pilot_blk_size = (pilot_cycles / pilot_n_bins) + 1;
+
+    auto pilot_config = std::make_unique<sc_expansion::atomic::Configuration<T>>(params, order, alpha, calculator);
+    triqs::mc_tools::mc_generic<double> pilot_mc(random_name, random_seed, 0);
+    measure_dimer<T> pilot_meas(pilot_config.get(), pilot_n_bins, pilot_blk_size, alpha, 0);
+    pilot_mc.add_move(move<T>(pilot_config.get(), pilot_mc.get_rng()), "time_swap");
+    pilot_mc.add_measure(pilot_meas, "alpha_pilot");
+
+    if (world.rank() == 0) { std::cout << "Pilot run for alpha tuning (initial alpha = " << alpha << ")..." << std::endl; }
+    pilot_mc.warmup_and_accumulate(pilot_warmup, pilot_cycles, length_cycle, triqs::utility::clock_callback(-1));
+    pilot_mc.collect_results(world);
+
+    double new_alpha = alpha;
+    if (world.rank() == 0) {
+      double mean_abs_f   = pilot_meas.result->mean_omega_abs; // <|f|/W>
+      double mean_alpha_W = pilot_meas.result->mean_abs;       // <alpha/W>
+      if (mean_alpha_W > 1e-18 && mean_abs_f > 0.0) { new_alpha = alpha * mean_abs_f / mean_alpha_W; }
+      std::cout << "Pilot estimated typical|f| = " << new_alpha << "  (was alpha = " << alpha << ")" << std::endl;
+    }
+    MPI_Bcast(&new_alpha, 1, MPI_DOUBLE, 0, world.get());
+    alpha = new_alpha;
+  }
+
+  // --- Phase 5: Production MC with tuned alpha ---
+  auto config = std::make_unique<sc_expansion::atomic::Configuration<T>>(params, order, alpha, calculator);
 
   triqs::mc_tools::mc_generic<double> mc(random_name, random_seed, verbosity);
 
@@ -259,25 +296,9 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
   int n_bins            = std::max(50, n_cycles / target_block_size);
   int block_size        = (n_cycles / n_bins) + 1;
 
-  // Domain volume β^order — the atomic move samples each τ independently on
-  // [0, β], so the MC integration domain is the hypercube, not the simplex.
-  // Used as the multiplier in density_density_estimator.
-  double domain_volume = std::pow(beta, order);
-
+  measure_dimer<T> meas(config.get(), n_bins, block_size, alpha, verbosity);
   mc.add_move(move<T>(config.get(), mc.get_rng()), "time_swap");
-
-  std::shared_ptr<MeasureResult> result_ptr;
-  if (corr_mode) {
-    density_density_estimator est{domain_volume, signed_reference_integral, reference_integral};
-    measure<T, density_density_estimator> meas(config.get(), est, n_bins, block_size, verbosity);
-    mc.add_measure(meas, "defensive_measure");
-    result_ptr = meas.result;
-  } else {
-    free_energy_estimator est{reference_integral, signed_reference_integral};
-    measure<T, free_energy_estimator> meas(config.get(), est, n_bins, block_size, verbosity);
-    mc.add_measure(meas, "defensive_measure");
-    result_ptr = meas.result;
-  }
+  mc.add_measure(meas, "defensive_measure");
 
   auto start_time = std::chrono::high_resolution_clock::now();
   mc.warmup_and_accumulate(n_warmup_cycles, n_cycles, length_cycle, triqs::utility::clock_callback(-1));
@@ -293,14 +314,14 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
     std::cout << "Time per step (s): " << total_time / total_steps << std::endl;
     std::cout << "Exact infinite-U coefficient (order " << order << "): " << signed_reference_integral << std::endl;
 
-    std::string lattice    = bipartite ? "square" : "triangular";
+    std::string lattice = bipartite ? "square" : "triangular";
 
     if (corr_mode) {
       std::string filename = "./results/atom_" + lattice + "_lattice_corr.csv";
       std::ostringstream row;
       row << std::setprecision(17);
       row << U << ',' << beta << ',' << mu << ',' << order << ',' << alpha << ',' << r[0] << ',' << r[1] << ',' << s1 << ',' << s2 << ','
-          << result_ptr->mean << ',' << result_ptr->error << ',' << reference_integral;
+          << meas.result->coeff << ',' << meas.result->error << ',' << reference_integral;
 
       sc_expansion::append_csv_row(filename, "U,beta,mu,order,alpha,rx,ry,s1,s2,coeff,error,reference_integral", row.str());
     } else {
@@ -309,7 +330,7 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
 
       std::ostringstream row;
       row << std::setprecision(17);
-      row << U << ',' << beta << ',' << mu << ',' << order << ',' << alpha << ',' << result_ptr->mean << ',' << result_ptr->error << ','
+      row << U << ',' << beta << ',' << mu << ',' << order << ',' << alpha << ',' << meas.result->coeff << ',' << meas.result->error << ','
           << reference_integral;
 
       sc_expansion::append_csv_row(filename, "U,beta,mu,order,alpha,coeff,error,reference_integral", row.str());

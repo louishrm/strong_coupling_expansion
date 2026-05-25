@@ -9,6 +9,9 @@
  * 1 instead of its actual Z² embedding count — matching the per-diagram,
  * no-lattice-sum convention the references were computed under.
  *
+ * Uses the uniform-reference defensive estimator (measure_dimer) — atomic
+ * Configuration's weight is W = |f + alpha|, matching the dimer scheme.
+ *
  * Usage:  mpirun -np 4 ./test_mcmc_correlator_atom
  *         (also works with 1 rank: ./test_mcmc_correlator_atom)
  */
@@ -17,7 +20,7 @@
 #include "sc_expansion/atomic/configuration.hpp"
 #include "sc_expansion/atomic/sum_diagrams.hpp"
 #include "sc_expansion/move.hpp"
-#include "sc_expansion/measure.hpp"
+#include "sc_expansion/dimer/measure_dimer.hpp"
 #include <triqs/mc_tools/mc_generic.hpp>
 #include <triqs/utility/callbacks.hpp>
 #include <mpi/mpi.hpp>
@@ -41,19 +44,6 @@ static void run_mcmc_correlator_check(int order, double U, double beta, double m
   sc_expansion::Parameters<double> params{U, beta, mu, 0.0, true};
   sc_expansion::atomic::SumDiagrams<double> calculator(params, order, r, s1, s2, /*override_lm=*/1);
 
-  double reference_integral        = 0.0;
-  double signed_reference_integral = 0.0;
-
-  if (world.rank() == 0) {
-    auto coeff_map      = calculator.density_density_infinite_U_coefficient();
-    auto [ref_abs, ref_signed] = coeff_map.at(calculator.get_target_d_sq());
-    reference_integral         = ref_abs;
-    signed_reference_integral  = ref_signed;
-  }
-
-  mpi::broadcast(reference_integral, world);
-  mpi::broadcast(signed_reference_integral, world);
-
   auto config = std::make_unique<sc_expansion::atomic::Configuration<double>>(params, order, alpha, calculator);
 
   int random_seed = 32186222 + world.rank() * 786512;
@@ -64,9 +54,7 @@ static void run_mcmc_correlator_check(int order, double U, double beta, double m
   int n_bins     = 50;
   int block_size = (n_cycles / n_bins) + 1;
 
-  double domain_volume = std::pow(beta, order);
-  density_density_estimator est{domain_volume, signed_reference_integral, reference_integral};
-  measure<double, density_density_estimator> meas(config.get(), est, n_bins, block_size);
+  measure_dimer<double> meas(config.get(), n_bins, block_size, alpha);
   mc.add_move(move<double>(config.get(), mc.get_rng()), "time_swap");
   mc.add_measure(meas, "defensive_measure");
 
@@ -74,7 +62,7 @@ static void run_mcmc_correlator_check(int order, double U, double beta, double m
   mc.collect_results(world);
 
   if (world.rank() == 0) {
-    double mc_mean  = meas.result->mean;
+    double mc_mean  = meas.result->coeff;
     double mc_error = meas.result->error;
     double rel_err  = std::abs(mc_mean - exact_coeff) / std::abs(exact_coeff);
 

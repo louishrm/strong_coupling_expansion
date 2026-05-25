@@ -109,7 +109,7 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
 
     auto pilot_config = std::make_unique<sc_expansion::dimer::Configuration<T>>(params, order, calculator, alpha);
     triqs::mc_tools::mc_generic<double> pilot_mc(random_name, random_seed, 0);
-    measure_dimer<T> pilot_meas(pilot_config.get(), pilot_n_bins, pilot_blk_size, mu, 0);
+    measure_dimer<T> pilot_meas(pilot_config.get(), pilot_n_bins, pilot_blk_size, alpha, 0);
     pilot_mc.add_move(move<T>(pilot_config.get(), pilot_mc.get_rng()), "time_swap");
     pilot_mc.add_measure(pilot_meas, "alpha_pilot");
 
@@ -139,7 +139,7 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
   int n_bins            = std::max(50, n_cycles / target_block_size);
   int block_size        = (n_cycles / n_bins) + 1;
 
-  measure_dimer<T> meas(config.get(), n_bins, block_size, mu, verbosity);
+  measure_dimer<T> meas(config.get(), n_bins, block_size, alpha, verbosity);
   mc.add_move(move<T>(config.get(), mc.get_rng()), "time_swap");
   mc.add_measure(meas, "dimer_coefficient");
 

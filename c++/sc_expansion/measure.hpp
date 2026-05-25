@@ -1,4 +1,10 @@
 #pragma once
+// DEPRECATED: these estimators assume the old atomic sampling weight
+//   W = |f - f_ref| + alpha * |f_ref|
+// (with f_ref = the U=infinity reference integrand). The atomic Configuration
+// now uses the uniform-reference weight W = |f + alpha| (matching the dimer
+// scheme), and the corresponding estimator lives in dimer/measure_dimer.hpp.
+// Nothing currently includes this file. Kept as a reference for the old scheme.
 #include "configuration_base.hpp"
 #include <triqs/arrays.hpp>
 #include <triqs/stat/accumulator.hpp>

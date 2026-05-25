@@ -57,7 +57,7 @@ static void run_mcmc_dimer_check(int order, double exact_coeff, double rel_tol, 
   int n_bins     = 50;
   int block_size = (n_cycles / n_bins) + 1;
 
-  measure_dimer<double> meas(config.get(), n_bins, block_size, mu);
+  measure_dimer<double> meas(config.get(), n_bins, block_size, alpha);
   mc.add_move(move<double>(config.get(), mc.get_rng()), "time_swap");
   mc.add_measure(meas, "dimer_measure");
 

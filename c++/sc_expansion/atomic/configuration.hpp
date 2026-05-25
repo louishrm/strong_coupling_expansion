@@ -5,9 +5,12 @@
 
 namespace sc_expansion::atomic {
 
-  // Single-site MCMC configuration. Reference weight is the infinite-U integrand
-  // (defensive importance sampling). The dimer namespace defines its own
-  // Configuration with a uniform reference weight.
+  // Single-site MCMC configuration with uniform-reference defensive weight:
+  //   W = |f(τ) + α|
+  // where f(τ) is either the free-energy or rooted density-density integrand
+  // (selected by the SumDiagrams calculator's mode). Mirrors the scheme used
+  // by sc_expansion::dimer::Configuration so the same measure_dimer estimator
+  // serves both expansions.
   template <typename T> class Configuration : public ConfigurationBase<T> {
     public:
     Configuration(Parameters<T> const &params, int order, double alpha, SumDiagrams<T> &calculator);
@@ -20,22 +23,19 @@ namespace sc_expansion::atomic {
 
     void mark_tau_dirty(int tau_index) override;
 
+    double get_alpha() const { return this->alpha; }
     SumDiagrams<T> const &get_calculator() const { return this->calculator; }
 
     private:
     double alpha;
 
     double integrand;
-    double reference_integrand;
-
     double proposed_integrand;
-    double proposed_reference_integrand;
 
     SumDiagrams<T> &calculator;
     int target_d_sq;
 
-    double compute_weight(double finite_U, double infinite_U) const;
-    std::pair<double, double> compute_integrands() const;
+    double compute_integrand() const;
   };
 
 } // namespace sc_expansion::atomic
