@@ -259,9 +259,25 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
   int n_bins            = std::max(50, n_cycles / target_block_size);
   int block_size        = (n_cycles / n_bins) + 1;
 
-  measure<T> meas(config.get(), reference_integral, signed_reference_integral, n_bins, block_size, mu, verbosity);
+  // Domain volume β^order — the atomic move samples each τ independently on
+  // [0, β], so the MC integration domain is the hypercube, not the simplex.
+  // Used as the multiplier in density_density_estimator.
+  double domain_volume = std::pow(beta, order);
+
   mc.add_move(move<T>(config.get(), mc.get_rng()), "time_swap");
-  mc.add_measure(meas, "defensive_measure");
+
+  std::shared_ptr<MeasureResult> result_ptr;
+  if (corr_mode) {
+    density_density_estimator est{domain_volume, signed_reference_integral, reference_integral};
+    measure<T, density_density_estimator> meas(config.get(), est, n_bins, block_size, verbosity);
+    mc.add_measure(meas, "defensive_measure");
+    result_ptr = meas.result;
+  } else {
+    free_energy_estimator est{reference_integral, signed_reference_integral};
+    measure<T, free_energy_estimator> meas(config.get(), est, n_bins, block_size, verbosity);
+    mc.add_measure(meas, "defensive_measure");
+    result_ptr = meas.result;
+  }
 
   auto start_time = std::chrono::high_resolution_clock::now();
   mc.warmup_and_accumulate(n_warmup_cycles, n_cycles, length_cycle, triqs::utility::clock_callback(-1));
@@ -284,7 +300,7 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
       std::ostringstream row;
       row << std::setprecision(17);
       row << U << ',' << beta << ',' << mu << ',' << order << ',' << alpha << ',' << r[0] << ',' << r[1] << ',' << s1 << ',' << s2 << ','
-          << meas.result->mean << ',' << meas.result->error << ',' << reference_integral;
+          << result_ptr->mean << ',' << result_ptr->error << ',' << reference_integral;
 
       sc_expansion::append_csv_row(filename, "U,beta,mu,order,alpha,rx,ry,s1,s2,coeff,error,reference_integral", row.str());
     } else {
@@ -293,7 +309,7 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
 
       std::ostringstream row;
       row << std::setprecision(17);
-      row << U << ',' << beta << ',' << mu << ',' << order << ',' << alpha << ',' << meas.result->mean << ',' << meas.result->error << ','
+      row << U << ',' << beta << ',' << mu << ',' << order << ',' << alpha << ',' << result_ptr->mean << ',' << result_ptr->error << ','
           << reference_integral;
 
       sc_expansion::append_csv_row(filename, "U,beta,mu,order,alpha,coeff,error,reference_integral", row.str());

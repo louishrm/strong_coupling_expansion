@@ -64,7 +64,9 @@ static void run_mcmc_correlator_check(int order, double U, double beta, double m
   int n_bins     = 50;
   int block_size = (n_cycles / n_bins) + 1;
 
-  measure<double> meas(config.get(), reference_integral, signed_reference_integral, n_bins, block_size, mu);
+  double domain_volume = std::pow(beta, order);
+  density_density_estimator est{domain_volume, signed_reference_integral, reference_integral};
+  measure<double, density_density_estimator> meas(config.get(), est, n_bins, block_size);
   mc.add_move(move<double>(config.get(), mc.get_rng()), "time_swap");
   mc.add_measure(meas, "defensive_measure");
 

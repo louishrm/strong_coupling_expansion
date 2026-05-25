@@ -86,9 +86,7 @@ TEST(StaticDensityFreeMultiplicity, FourCycle) {
 //   shell_multiplicity histogram keys on Euclidean d^2 = x^2 + y^2.
 // ----------------------------------------------------------------------------
 TEST(StaticDensityFreeMultiplicity, V3Path) {
-  std::vector<uint8_t> adj = {0, 1, 0,
-                              1, 0, 1,
-                              0, 1, 0};
+  std::vector<uint8_t> adj = {0, 1, 0, 1, 0, 1, 0, 1, 0};
   Graph path(adj, /*V=*/3, /*bipartite_only=*/true);
   ASSERT_EQ(path.get_free_multiplicity(), 16);
 
@@ -157,8 +155,8 @@ TEST(StaticDensityDiagram, FourCycleDistanceSymmetric) {
     int k; // mark rotation index
   };
   const std::vector<Case> cases = {
-     {{1, 0},  {0, 1}, 0},
-     {{0, 1},  {1, 2}, 1},
+     {{1, 0}, {0, 1}, 0},
+     {{0, 1}, {1, 2}, 1},
      {{-1, 0}, {2, 3}, 2},
      {{0, -1}, {0, 3}, 3},
   };
@@ -176,9 +174,10 @@ TEST(StaticDensityDiagram, FourCycleDistanceSymmetric) {
     atomic::Diagram<double> diag(g, vts, c.marks, mark_spins);
     diag.mark_all_dirty();
     double val = diag.evaluate(taus, solver, /*infinite_U=*/false);
-    if (std::isnan(reference)) reference = val;
-    else EXPECT_DOUBLE_EQ(val, reference)
-        << "r=(" << c.r.first << "," << c.r.second << ") marks={" << c.marks[0] << "," << c.marks[1] << "}";
+    if (std::isnan(reference))
+      reference = val;
+    else
+      EXPECT_DOUBLE_EQ(val, reference) << "r=(" << c.r.first << "," << c.r.second << ") marks={" << c.marks[0] << "," << c.marks[1] << "}";
   }
 }
 

@@ -62,7 +62,8 @@ static void run_mcmc_atom_check(int order, double U, double beta, double mu, dou
   int n_bins     = 50;
   int block_size = (n_cycles / n_bins) + 1;
 
-  measure<double> meas(config.get(), reference_integral, signed_reference_integral, n_bins, block_size, mu);
+  free_energy_estimator est{reference_integral, signed_reference_integral};
+  measure<double, free_energy_estimator> meas(config.get(), est, n_bins, block_size);
   mc.add_move(move<double>(config.get(), mc.get_rng()), "time_swap");
   mc.add_measure(meas, "defensive_measure");
 
@@ -156,7 +157,8 @@ static void run_mcmc_density_check(int order, double U, double beta, double mu, 
   int n_bins     = 50;
   int block_size = (n_cycles / n_bins) + 1;
 
-  measure<Dual> meas(config.get(), reference_integral, signed_reference_integral, n_bins, block_size, mu);
+  free_energy_estimator est{reference_integral, signed_reference_integral};
+  measure<Dual, free_energy_estimator> meas(config.get(), est, n_bins, block_size);
   mc.add_move(move<Dual>(config.get(), mc.get_rng()), "time_swap");
   mc.add_measure(meas, "defensive_measure");
 
