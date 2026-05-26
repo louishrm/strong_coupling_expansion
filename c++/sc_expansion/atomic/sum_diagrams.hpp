@@ -66,6 +66,14 @@ namespace sc_expansion::atomic {
     // constructor (Flavor 2) the map has exactly one entry keyed by |r|².
     std::map<int, T> density_density(std::vector<double> const &taus, bool infinite_U) const;
 
+    // Hot-path scalar accumulator for the single target |r|² shell. Equivalent
+    // to density_density(...).at(get_target_d_sq()) but avoids the per-call
+    // std::map and τ-padding allocations: for a fixed displacement r the series
+    // is a single scalar, not a shell sum. Valid only in density-density mode
+    // (diagrams built with MarkEncoding::StaticDensity, whose vertices never
+    // reference the pinned τ slot, so the unpadded taus suffices).
+    T density_density_single(std::vector<double> const &taus, bool infinite_U) const;
+
     // Returns {abs sum, signed sum} × β^n/n!.
     std::pair<double, double> free_energy_infinite_U_coefficient();
 
@@ -106,6 +114,7 @@ namespace sc_expansion::atomic {
     // Density-density state. target_d_sq < 0 ⇒ vacuum/free-energy mode.
     int target_d_sq = -1;
     std::vector<std::map<int, int>> lattice_multiplier; // per-diagram
+    std::vector<double> lattice_mult_flat;              // per-diagram count for target_d_sq (hot path)
   };
 
 } // namespace sc_expansion::atomic

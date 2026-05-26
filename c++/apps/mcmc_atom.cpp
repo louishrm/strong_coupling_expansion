@@ -138,8 +138,7 @@ std::pair<double, double> compute_reference_integral_mpi(sc_expansion::atomic::S
 
   std::vector<double> taus(order);
 
-  bool corr_mode  = calculator.is_density_density_mode();
-  int target_d_sq = corr_mode ? calculator.get_target_d_sq() : -1;
+  bool corr_mode = calculator.is_density_density_mode();
 
   for (uint64_t i = 0; i < my_count; i++) {
     auto const &perm = sjt.get_permutation();
@@ -148,7 +147,7 @@ std::pair<double, double> compute_reference_integral_mpi(sc_expansion::atomic::S
     calculator.mark_all_dirty();
     T val_T;
     if (corr_mode) {
-      val_T = calculator.density_density(taus, true).at(target_d_sq);
+      val_T = calculator.density_density_single(taus, true);
     } else {
       val_T = calculator.free_energy(taus, true);
     }

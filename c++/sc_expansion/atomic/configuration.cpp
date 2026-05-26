@@ -21,7 +21,7 @@ namespace sc_expansion::atomic {
   template <typename T> double Configuration<T>::compute_integrand() const {
     T val_T;
     if (this->target_d_sq >= 0) {
-      val_T = this->calculator.density_density(this->state, false).at(this->target_d_sq);
+      val_T = this->calculator.density_density_single(this->state, false);
     } else {
       val_T = this->calculator.free_energy(this->state, false);
     }

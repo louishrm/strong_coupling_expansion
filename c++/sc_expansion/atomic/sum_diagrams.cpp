@@ -122,6 +122,7 @@ namespace sc_expansion::atomic {
       this->diagrams.emplace_back(this->graphs.back(), vt_ptrs, marks[i], mark_spins,
                                   /*flip_mark_order=*/false, MarkEncoding::StaticDensity);
       this->lattice_multiplier.push_back({{d_sq, embedding_counts[i]}});
+      this->lattice_mult_flat.push_back((double)embedding_counts[i]);
     }
   }
 
@@ -183,6 +184,19 @@ namespace sc_expansion::atomic {
       }
     }
     return sums;
+  }
+
+  template <typename T> T SumDiagrams<T>::density_density_single(std::vector<double> const &taus, bool infinite_U) const {
+    // Single-shell (fixed r) hot path. No τ-padding: StaticDensity vertices
+    // never reference the pinned slot, so unpadded taus (size = n_lines) is
+    // exactly what Diagram::evaluate reads. No std::map round-trip either —
+    // the whole series for displacement r collapses to one scalar.
+    T sum = T(0.0);
+    for (size_t i = 0; i < this->diagrams.size(); ++i) {
+      T temporal = const_cast<Diagram<T> &>(this->diagrams[i]).evaluate(taus, this->solver, infinite_U);
+      sum        = sum + T(this->lattice_mult_flat[i]) * temporal;
+    }
+    return sum;
   }
 
   template <typename T> void SumDiagrams<T>::mark_tau_dirty(int tau_index) {

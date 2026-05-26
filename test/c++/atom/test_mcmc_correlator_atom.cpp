@@ -28,12 +28,12 @@
 #include <memory>
 
 namespace {
-[[maybe_unused]] constexpr int SPIN_DOWN = 0;
-constexpr int SPIN_UP                    = 1;
+  [[maybe_unused]] constexpr int SPIN_DOWN = 0;
+  constexpr int SPIN_UP                    = 1;
 } // namespace
 
-static void run_mcmc_correlator_check(int order, double U, double beta, double mu, std::vector<int> const &r, int s1, int s2,
-                                      double exact_coeff, double rel_tol, int n_cycles) {
+static void run_mcmc_correlator_check(int order, double U, double beta, double mu, std::vector<int> const &r, int s1, int s2, double exact_coeff,
+                                      double rel_tol, int n_cycles) {
 
   mpi::communicator world;
 
@@ -82,7 +82,7 @@ static void run_infinite_u_correlator_check(int order, double U, double beta, do
   sc_expansion::Parameters<double> params{U, beta, mu, 0.0, true};
   sc_expansion::atomic::SumDiagrams<double> calculator(params, order, r, s1, s2, /*override_lm=*/1);
 
-  auto coeff_map     = calculator.density_density_infinite_U_coefficient();
+  auto coeff_map                 = calculator.density_density_infinite_U_coefficient();
   auto [abs_coeff, signed_coeff] = coeff_map.at(calculator.get_target_d_sq());
 
   std::cout << "Expected:      " << expected_signed_coeff << std::endl;
@@ -134,6 +134,38 @@ TEST(McmcCorrelatorAtom, NearestNeighborSameSpinOrder4) {
   run_mcmc_correlator_check(/*order=*/4, /*U=*/8.0, /*beta=*/2.0, /*mu=*/1.0,
                             /*r=*/{1, 0}, SPIN_UP, SPIN_UP,
                             /*exact_coeff=*/-0.0005279366897435804, /*rel_tol=*/0.10, /*n_cycles=*/5000000);
+}
+
+// PROFILING-ONLY (revert before committing): drives the exact finite-U
+// per-step path with no reference integral / no alpha pilot. override_lm = -1
+// uses the real Z² embedding counts, so the kept-diagram set (and thus the
+// per-step cost) matches production. Run a single test via:
+//   --gtest_filter='McmcCorrelatorAtom.ProfileOrder8NN'
+TEST(McmcCorrelatorAtom, ProfileOrder8NN) {
+  mpi::communicator world;
+
+  double alpha     = 0.001;
+  int n_warmup     = 5;    // tiny: we just need to reach steady state cheaply
+  int n_cycles     = 1000; // the 100 steps we want to profile
+  int length_cycle = 1;
+  int order        = 8;
+
+  sc_expansion::Parameters<double> params{8.0, 2.0, 1.0, 0.0, true};
+  sc_expansion::atomic::SumDiagrams<double> calculator(params, order, /*r=*/{1, 0}, SPIN_UP, SPIN_UP, /*override_lm=*/-1);
+
+  auto config = std::make_unique<sc_expansion::atomic::Configuration<double>>(params, order, alpha, calculator);
+
+  triqs::mc_tools::mc_generic<double> mc("", 32186222, /*verbosity=*/2);
+
+  int n_bins     = 50;
+  int block_size = (n_cycles / n_bins) + 1;
+
+  measure_dimer<double> meas(config.get(), n_bins, block_size, alpha);
+  mc.add_move(move<double>(config.get(), mc.get_rng()), "time_swap");
+  mc.add_measure(meas, "defensive_measure");
+
+  mc.warmup_and_accumulate(n_warmup, n_cycles, length_cycle, triqs::utility::clock_callback(-1));
+  mc.collect_results(world);
 }
 
 int main(int argc, char **argv) {
