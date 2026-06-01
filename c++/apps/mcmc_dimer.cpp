@@ -18,8 +18,9 @@
 // (order, r) on every rank (cheap), so each rank builds an identical
 // SumDiagrams independently — no broadcast.
 //
-// Correlator mode embeds on a 3-dimer triangular cluster by default
-// (use_cluster=1, ED-comparable), or the full lattice (use_cluster=0).
+// Correlator mode embeds on the full (infinite) lattice by default
+// (use_cluster=0), or on a 3-dimer triangular cluster (use_cluster=1,
+// ED-comparable).
 //
 // use_dual (μ-derivative → density) is supported for the free-energy expansion
 // only. The density-density correlator has no μ-derivative observable, so
@@ -106,7 +107,7 @@ DimerMeasureResult run_mcmc(mpi::communicator &world, sc_expansion::Parameters<T
   // ratio estimator coeff = alpha * beta^n * <f/W> / <alpha/W>.
   {
     int pilot_warmup   = 1000;
-    int pilot_cycles   = 5000;
+    int pilot_cycles   = 2000;
     int pilot_block    = 200;
     int pilot_n_bins   = std::max(20, pilot_cycles / pilot_block);
     int pilot_blk_size = (pilot_cycles / pilot_n_bins) + 1;
@@ -189,8 +190,8 @@ void run_free_energy(mpi::communicator &world, int order, int n_cycles, double U
     gen.generate();
     graphs  = gen.get_unique_graphs();
     auto t1 = std::chrono::high_resolution_clock::now();
-    std::cout << "Generated " << graphs.size() << " unique diagrams (incl. non-bipartite) in "
-              << std::chrono::duration<double>(t1 - t0).count() << " s." << std::endl;
+    std::cout << "Generated " << graphs.size() << " unique diagrams (incl. non-bipartite) in " << std::chrono::duration<double>(t1 - t0).count()
+              << " s." << std::endl;
   }
   broadcast_graphs(graphs, world);
 
@@ -277,7 +278,7 @@ int main(int argc, char *argv[]) {
       std::cerr << "Usage: " << argv[0] << " order n_cycles U beta mu t [alpha] [use_dual] [use_cluster] [rx ry s1 s2]" << std::endl;
       std::cerr << "  rx ry s1 s2 : if all four are present, run the density-density correlator at r=(rx,ry) with mark spins (s1,s2)." << std::endl;
       std::cerr << "  use_dual (default 0): 1 = μ-derivative (density) coefficient. Free-energy mode only." << std::endl;
-      std::cerr << "  use_cluster (default 1): 1 = 3-dimer triangle (ED-comparable), 0 = infinite lattice (correlator mode only)." << std::endl;
+      std::cerr << "  use_cluster (default 0): 1 = 3-dimer triangle (ED-comparable), 0 = infinite lattice (correlator mode only)." << std::endl;
       std::cerr << "  s1 s2 : mark spins (0=down, 1=up) at (0,0) and r." << std::endl;
     }
     return 1;
@@ -291,13 +292,15 @@ int main(int argc, char *argv[]) {
   double t_hop     = std::stod(argv[6]);
   double alpha     = (argc > 7 ? std::stod(argv[7]) : 0.001);
   bool use_dual    = (argc > 8 ? std::stoi(argv[8]) != 0 : false);
-  bool use_cluster = (argc > 9 ? std::stoi(argv[9]) != 0 : true);
+  bool use_cluster = (argc > 9 ? std::stoi(argv[9]) != 0 : false);
 
   std::vector<int> r;
   int s1 = 0, s2 = 0;
   if (argc > 10) {
     if (argc < 14) {
-      if (mpi::communicator().rank() == 0) { std::cerr << "Density-density mode requires all four of rx ry s1 s2; got " << (argc - 10) << "." << std::endl; }
+      if (mpi::communicator().rank() == 0) {
+        std::cerr << "Density-density mode requires all four of rx ry s1 s2; got " << (argc - 10) << "." << std::endl;
+      }
       return 1;
     }
     int rx = std::stoi(argv[10]);
@@ -332,8 +335,8 @@ int main(int argc, char *argv[]) {
   int verbosity           = (world.rank() == 0 ? 2 : 0);
 
   if (!r.empty()) {
-    run_correlator(world, order, n_cycles, U, beta, mu, t_hop, alpha, use_cluster, n_warmup_cycles, length_cycle, random_name, random_seed, verbosity, r,
-                   s1, s2);
+    run_correlator(world, order, n_cycles, U, beta, mu, t_hop, alpha, use_cluster, n_warmup_cycles, length_cycle, random_name, random_seed, verbosity,
+                   r, s1, s2);
   } else if (use_dual) {
     run_free_energy<Dual>(world, order, n_cycles, U, beta, mu, t_hop, alpha, n_warmup_cycles, length_cycle, random_name, random_seed, verbosity);
   } else {
