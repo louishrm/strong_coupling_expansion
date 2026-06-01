@@ -150,4 +150,90 @@ namespace sc_expansion {
     void try_emit(Graph const &G, std::vector<int> marks, int V,
                   std::unordered_set<RootedKey, RootedKeyHasher> &unique_keys);
   };
+
+  // ---------------------------------------------------------------------------
+  // DimerDistanceRootedDiagramGenerator
+  //
+  // Distance-targeted rooted diagram generator for the staggered (triangular)
+  // dimer expansion. Analogous to DistanceRootedDiagramGenerator but with two
+  // structural differences:
+  //   1. Each mark also carries a within-dimer site index ms ∈ {0, 1}, so the
+  //      catalog enumerates (graph, marks, sites) tuples — see
+  //      dimer-rooted-constraints memory.
+  //   2. Two (ms₀, ms₁) sectors are parity-allowed per r (those with
+  //      (ms₀+ms₁) ≡ (rx+ry) mod 2); each has its own d_super (the dimer-
+  //      superlattice graph-distance lower bound on the number of NN dimer
+  //      hops). The two sectors are the two "anchorings" needed to restore
+  //      the half-step x-translation broken by the dimer tiling — they both
+  //      contribute to the catalog with their own V_min / dist_G filter.
+  //
+  // Vacuum graphs are non-bipartite (the staggered superlattice is triangular
+  // and admits odd cycles), so the lattice-bipartite parity filter from the
+  // atomic side is dropped wholesale. Embedding count is not computed here —
+  // that's the consumer's job (analog of count_lattice_embeddings on the
+  // atomic side, but on the staggered superlattice).
+  // ---------------------------------------------------------------------------
+
+  // Dedup key for dimer rooted diagrams, parallel to RootedKey but extended
+  // with the canonical within-dimer-site sequence (so sectors (0,1) and (1,0)
+  // on the same (G, marks) don't collide unless the colored canonicalisation
+  // says they're equivalent).
+  struct DimerRootedKey {
+    std::vector<uint8_t> canonical_adj;
+    std::vector<int> canonical_marks;
+    std::vector<int> canonical_sites;
+    bool operator==(DimerRootedKey const &o) const {
+      return this->canonical_adj == o.canonical_adj && this->canonical_marks == o.canonical_marks && this->canonical_sites == o.canonical_sites;
+    }
+  };
+  struct DimerRootedKeyHasher {
+    size_t operator()(DimerRootedKey const &k) const {
+      size_t seed = VectorHasher{}(k.canonical_adj);
+      for (int m : k.canonical_marks) seed ^= std::hash<int>{}(m) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+      for (int s : k.canonical_sites) seed ^= std::hash<int>{}(s) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+      return seed;
+    }
+  };
+
+  class DimerDistanceRootedDiagramGenerator {
+
+    public:
+    // r: physical-site displacement (rx, ry) on Z².
+    // n: truncation expansion order for this call. Throws if every parity-
+    //    allowed sector has 2*d_super > n (no sector reachable at this order).
+    DimerDistanceRootedDiagramGenerator(std::vector<int> r, int n);
+
+    void generate();
+
+    // Rooted graphs (with sites) keyed by vertex count V.
+    std::map<int, std::vector<DimerRootedGraph>> const &get_rooted_graphs() const { return this->rooted_graphs_by_V; }
+
+    // The 2 parity-allowed sectors paired with their d_super; populated at
+    // construction. Exposed for tests / diagnostics.
+    std::vector<std::pair<std::pair<int, int>, int>> const &get_allowed_sectors() const { return this->allowed_sectors; }
+
+    // d_super formula in centered Bravais coords (Δû = ms₀ - ms₁ + rx,
+    // Δv = ry; primitives a₁ = 2x̂, a₂ = x̂ + ŷ):
+    //   d_super = max(|Δv|, (|Δû| + |Δv|) / 2)
+    // Caller must ensure (ms₀ + ms₁) ≡ (rx + ry) mod 2 (parity-allowed sector);
+    // otherwise the dimer index of mark₁'s anchor would be non-integer.
+    static int d_super(int rx, int ry, int ms0, int ms1);
+
+    private:
+    std::vector<int> r;
+    int n;
+
+    // (sector, d_super) for each of the (up to 2) parity-allowed sectors.
+    std::vector<std::pair<std::pair<int, int>, int>> allowed_sectors;
+
+    std::map<int, std::vector<DimerRootedGraph>> rooted_graphs_by_V;
+
+    // All-pairs BFS distance on the simple (multi-edges collapsed) graph.
+    static std::vector<int> bfs_all_pairs(Graph const &G);
+
+    // Canonicalise-and-emit a (G, marks, sites) candidate into bucket V.
+    void try_emit(Graph const &G, std::vector<int> marks, std::vector<int> sites, int V,
+                  std::unordered_set<DimerRootedKey, DimerRootedKeyHasher> &unique_keys);
+  };
+
 } // namespace sc_expansion

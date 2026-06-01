@@ -5,6 +5,7 @@
 #include <chrono>
 #include <queue>
 #include <stdexcept>
+#include <tuple>
 
 namespace sc_expansion {
 
@@ -232,6 +233,102 @@ namespace sc_expansion {
     this->shell_multiplicity = compute_rooted_shell_multiplicity(wrapper, m0, m1);
     auto t1                  = std::chrono::steady_clock::now();
     embedding_total_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count();
+  }
+
+  // ---------------------------------------------------------------------------
+  // DimerRootedGraph
+  // ---------------------------------------------------------------------------
+
+  DimerRootedGraph::DimerRootedGraph(Graph const &parent, std::vector<int> marks_in, std::vector<int> sites_in)
+     : V(parent.get_V()), order(parent.get_order()) {
+
+    if (marks_in.size() != sites_in.size())
+      throw std::invalid_argument("DimerRootedGraph: marks and sites size mismatch");
+    if (marks_in.empty() || marks_in.size() > 2)
+      throw std::invalid_argument("DimerRootedGraph: marks must have size 1 or 2");
+    for (int m : marks_in) {
+      if (m < 0 || m >= this->V) throw std::invalid_argument("DimerRootedGraph: mark index out of range");
+    }
+    for (int s : sites_in) {
+      if (s != 0 && s != 1) throw std::invalid_argument("DimerRootedGraph: site must be 0 or 1");
+    }
+
+    // Colored canonicalisation. Color of vertex v encodes which marks (if any)
+    // sit on v together with their within-dimer-site assignments:
+    //   color 0           : unmarked
+    //   color 1           : single mark at site 0
+    //   color 2           : single mark at site 1
+    //   color 3           : two coincident marks, multiset {0,0}
+    //   color 4           : two coincident marks, multiset {0,1}
+    //   color 5           : two coincident marks, multiset {1,1}
+    // The coincident-mark encoding uses 3 + (lo + hi) so the multiset {ms_a,
+    // ms_b} canonically maps to a single color regardless of input order.
+    //
+    // Dimer-inversion symmetry (180° rotation about a dimer center, which
+    // swaps sites 0 ↔ 1 globally) is a symmetry of the staggered tiling.
+    // We fold it into the canonical key by canonicalising both the input
+    // (G, marks, sites) and its site-flipped counterpart (G, marks, 1-sites),
+    // and picking the lex-min (canonical_adj, marks, sites) tuple. Sectors
+    // (0,0) ↔ (1,1) and (0,1) ↔ (1,0) collapse to a single catalog entry.
+    auto adj = parent.get_adjacency_matrix();
+
+    auto canonicalise_with_sites = [&](std::vector<int> const &sites_v) {
+      std::vector<int> color(this->V, 0);
+      std::vector<std::vector<int>> site_buckets(this->V);
+      for (size_t k = 0; k < marks_in.size(); ++k) site_buckets[marks_in[k]].push_back(sites_v[k]);
+      for (int v = 0; v < this->V; ++v) {
+        auto &sb = site_buckets[v];
+        if (sb.empty()) {
+          color[v] = 0;
+        } else if (sb.size() == 1) {
+          color[v] = 1 + sb[0];
+        } else {
+          int lo   = std::min(sb[0], sb[1]);
+          int hi   = std::max(sb[0], sb[1]);
+          color[v] = 3 + lo + hi;
+        }
+      }
+      auto result = canonicalize(adj, this->V, color);
+      std::vector<std::pair<int, int>> ms_pairs;
+      ms_pairs.reserve(marks_in.size());
+      for (size_t k = 0; k < marks_in.size(); ++k) {
+        ms_pairs.emplace_back(static_cast<int>(result.canonical_permutation[marks_in[k]]), sites_v[k]);
+      }
+      std::sort(ms_pairs.begin(), ms_pairs.end());
+      std::vector<int> out_marks, out_sites;
+      out_marks.reserve(ms_pairs.size());
+      out_sites.reserve(ms_pairs.size());
+      for (auto const &p : ms_pairs) {
+        out_marks.push_back(p.first);
+        out_sites.push_back(p.second);
+      }
+      return std::make_tuple(result.canonical_matrix, std::move(out_marks), std::move(out_sites),
+                             static_cast<int>(result.automorphism_count));
+    };
+
+    std::vector<int> sites_flipped(sites_in.size());
+    for (size_t k = 0; k < sites_in.size(); ++k) sites_flipped[k] = 1 - sites_in[k];
+
+    auto cand_a = canonicalise_with_sites(sites_in);
+    auto cand_b = canonicalise_with_sites(sites_flipped);
+
+    // Lex-min on (canonical_adj, marks, sites).
+    auto key_a = std::tie(std::get<0>(cand_a), std::get<1>(cand_a), std::get<2>(cand_a));
+    auto key_b = std::tie(std::get<0>(cand_b), std::get<1>(cand_b), std::get<2>(cand_b));
+    auto &chosen = (key_a <= key_b) ? cand_a : cand_b;
+
+    this->canonical_matrix          = std::get<0>(chosen);
+    this->adjacency_matrix          = std::get<0>(chosen);
+    this->marks                     = std::get<1>(chosen);
+    this->sites                     = std::get<2>(chosen);
+    this->rooted_automorphism_count = std::get<3>(chosen);
+
+    // Multi-edge factorial correction (same as RootedGraph): parallel edges
+    // between fixed vertex pairs are permutable but invisible to bliss.
+    int factorial_product = 1;
+    for (auto e : this->adjacency_matrix)
+      if (e > 1) factorial_product *= sc_expansion::factorial(e);
+    this->rooted_symmetry_factor = this->rooted_automorphism_count * factorial_product;
   }
 
 } // namespace sc_expansion

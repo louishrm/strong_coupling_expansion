@@ -433,4 +433,156 @@ namespace sc_expansion {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // DimerDistanceRootedDiagramGenerator
+  // ---------------------------------------------------------------------------
+
+  // Floor-divide-by-2 of a non-negative integer parity. Used only on values
+  // derived from the parity-allowed sector check, so the numerator is always
+  // even here — but std::abs would also work.
+  static inline int positive_mod2(int x) { return ((x % 2) + 2) % 2; }
+
+  int DimerDistanceRootedDiagramGenerator::d_super(int rx, int ry, int ms0, int ms1) {
+    int du     = ms0 - ms1 + rx;
+    int dv     = ry;
+    int abs_du = std::abs(du);
+    int abs_dv = std::abs(dv);
+    // d_super = max(|Δv|, (|Δû| + |Δv|) / 2). Parity-allowed sectors have
+    // (ms0 + ms1) ≡ (rx + ry) mod 2 ⟹ (Δû + Δv) even ⟹ (|Δû| + |Δv|) even,
+    // so the integer division is exact.
+    return std::max(abs_dv, (abs_du + abs_dv) / 2);
+  }
+
+  std::vector<int> DimerDistanceRootedDiagramGenerator::bfs_all_pairs(Graph const &G) {
+    int V = G.get_V();
+    std::vector<int> dist(static_cast<size_t>(V) * V, -1);
+    for (int src = 0; src < V; ++src) {
+      int *row = dist.data() + src * V;
+      row[src] = 0;
+      std::queue<int> q;
+      q.push(src);
+      while (!q.empty()) {
+        int u = q.front();
+        q.pop();
+        for (int v = 0; v < V; ++v) {
+          if (v == u) continue;
+          if ((G(u, v) != 0 || G(v, u) != 0) && row[v] < 0) {
+            row[v] = row[u] + 1;
+            q.push(v);
+          }
+        }
+      }
+    }
+    return dist;
+  }
+
+  DimerDistanceRootedDiagramGenerator::DimerDistanceRootedDiagramGenerator(std::vector<int> r_, int n_)
+     : r(std::move(r_)), n(n_) {
+    if (this->r.size() != 2)
+      throw std::invalid_argument("DimerDistanceRootedDiagramGenerator: r must have size 2");
+
+    int rx       = this->r[0];
+    int ry       = this->r[1];
+    int r_parity = positive_mod2(rx + ry);
+
+    // Enumerate the 2 parity-allowed sectors (out of 4 (ms₀, ms₁) ∈ {0,1}²)
+    // with their d_super values. The other 2 sectors have non-integer u' for
+    // mark₁'s dimer anchor and are off-lattice.
+    for (int ms0 = 0; ms0 < 2; ++ms0) {
+      for (int ms1 = 0; ms1 < 2; ++ms1) {
+        if (positive_mod2(ms0 + ms1) != r_parity) continue;
+        int d = d_super(rx, ry, ms0, ms1);
+        this->allowed_sectors.emplace_back(std::make_pair(ms0, ms1), d);
+      }
+    }
+    if (this->allowed_sectors.empty()) {
+      // Cannot occur — every r-parity admits exactly 2 of 4 sectors. Guard
+      // against future refactors that change the parity logic.
+      throw std::runtime_error("DimerDistanceRootedDiagramGenerator: no parity-allowed sectors (logic bug?)");
+    }
+
+    // Catalog-level n_min = 2 · min over sectors of d_super. If n is below
+    // every sector's n_min, no graph at this order can host both marks at
+    // displacement r.
+    int n_min = std::numeric_limits<int>::max();
+    for (auto const &kv : this->allowed_sectors) n_min = std::min(n_min, 2 * kv.second);
+    if (this->n < n_min) {
+      throw std::invalid_argument("DimerDistanceRootedDiagramGenerator: n (" + std::to_string(this->n)
+                                  + ") is below n_min = 2 * min(d_super) (" + std::to_string(n_min) + ") for r");
+    }
+  }
+
+  void DimerDistanceRootedDiagramGenerator::try_emit(Graph const &G, std::vector<int> marks, std::vector<int> sites, int V,
+                                                       std::unordered_set<DimerRootedKey, DimerRootedKeyHasher> &unique_keys) {
+    DimerRootedGraph rg(G, std::move(marks), std::move(sites));
+    DimerRootedKey key{rg.get_canonical_form(), rg.get_marks(), rg.get_sites()};
+    if (unique_keys.insert(key).second) this->rooted_graphs_by_V[V].push_back(std::move(rg));
+  }
+
+  void DimerDistanceRootedDiagramGenerator::generate() {
+    // Dimer expansion always uses the full (non-bipartite) graph set — the
+    // staggered superlattice is triangular and admits odd cycles.
+    VacuumDiagramGenerator gen(this->n, /*bipartite_only=*/false);
+
+    // Smallest V_min across allowed sectors. VacuumDiagramGenerator skips
+    // V == 1 (would require self-loops, not generated), so the V = 1 case
+    // (intra-dimer / on-site correlator at zeroth order) is not produced by
+    // this generator — that contribution is computed separately.
+    int v_min_overall = std::numeric_limits<int>::max();
+    for (auto const &kv : this->allowed_sectors) v_min_overall = std::min(v_min_overall, kv.second + 1);
+    if (v_min_overall < 2) v_min_overall = 2;
+
+    for (int V = v_min_overall; V <= this->n; ++V) {
+      gen.generate_at_vertex_count(V);
+
+      // Per-V dedup set: canonical adjacency size differs across V's, so
+      // scoping the set to V keeps it small and avoids cross-V bookkeeping.
+      std::unordered_set<DimerRootedKey, DimerRootedKeyHasher> unique_keys;
+
+      for (auto const &G : gen.get_unique_graphs()) {
+        std::vector<int> dist_G = bfs_all_pairs(G);
+
+        // Required diameter prune: skip the graph if no allowed sector's
+        // d_super is reachable given the graph diameter.
+        int diameter = 0;
+        for (int v : dist_G) diameter = std::max(diameter, v);
+
+        bool graph_ok = false;
+        for (auto const &kv : this->allowed_sectors) {
+          if (V >= kv.second + 1 && diameter >= kv.second) {
+            graph_ok = true;
+            break;
+          }
+        }
+        if (!graph_ok) continue;
+
+        // Enumerate unordered mark pairs {i, j} (i <= j). Same-vertex pairs
+        // (i == j) are needed for the on-dimer / on-site correlator (small r,
+        // d_super == 0) — the dij < d_super filter prunes them when d_super
+        // > 0. No graph-bipartite parity filter (superlattice is triangular).
+        for (int i = 0; i < V; ++i) {
+          for (int j = i; j < V; ++j) {
+            int dij = dist_G[i * V + j];
+            if (dij < 0) continue; // shouldn't happen for a connected G
+
+            // Each parity-allowed sector adds an emit candidate when its
+            // d_super is satisfied. The DimerRootedGraph constructor's
+            // colored canonicalisation handles dedup across input sectors
+            // that map to the same canonical form (e.g. sector (0,1) and
+            // (1,0) on a graph whose auto swaps the two marks both produce
+            // the same canonical form — bliss merges them via colors).
+            for (auto const &kv : this->allowed_sectors) {
+              int ms0 = kv.first.first;
+              int ms1 = kv.first.second;
+              int d_s = kv.second;
+              if (V < d_s + 1) continue;
+              if (dij < d_s) continue;
+              this->try_emit(G, {i, j}, {ms0, ms1}, V, unique_keys);
+            }
+          }
+        }
+      }
+    }
+  }
+
 } // namespace sc_expansion
