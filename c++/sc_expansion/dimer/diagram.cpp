@@ -752,15 +752,21 @@ namespace sc_expansion::dimer {
     // Vacuum/cluster: divide by the full graph symmetry factor and fold the
     // spin-flip orbit. Rooted: the fixed mark spins break the global spin-flip
     // symmetry, so the orbit is NOT folded (mirrors atomic::Diagram); divide by
-    // the rooted symmetry factor instead. n_mark_orbit doubles the weight only
-    // when the two non-coincident marks are identical in BOTH within-dimer site
-    // and spin (then the catalog's set-stabiliser admits a mark-swap that the
-    // pointwise enumeration omits — the second anchoring has equal weight).
+    // the rooted symmetry factor instead.
+    //
+    // No n_mark_orbit doubling. The earlier code doubled the weight for distinct
+    // marks sharing both within-dimer site and spin, on the theory that the
+    // catalog folds the (i,j)/(j,i) mark-swap that the pointwise enumeration
+    // omits. That is wrong: an embedding-multiplicity factor cannot depend on
+    // the measured mark spins (the lattice placement count is spin-blind), yet
+    // that condition did. The mark-swap is already supplied by the ±r
+    // enumeration (the −r anchoring is the translation-image of the swapped +r
+    // placement); at r=0 there is no second anchoring to restore. The on-site
+    // same-spin sum rule ⟨n_σ(0)n_σ(0)⟩_c = ⟨n_σ⟩−⟨n_σ⟩² (t-independent at half
+    // filling ⇒ zero at every order ≥1) confirms the correct factor is 1: with
+    // the doubling the order-4 coefficient was ≈+0.018 instead of 0.
     double sym_factor   = this->is_rooted ? this->rooted_sym_factor : this->graph.get_symmetry_factor();
     double n_mark_orbit = 1.0;
-    if (this->is_rooted && this->marks[0] != this->marks[1] && this->sites[0] == this->sites[1]
-        && this->mark_spins[0] == this->mark_spins[1])
-      n_mark_orbit = 2.0;
 
     constexpr uint8_t ACTION_BIT = FermionOperator<2, T>::ACTION_BIT;
 

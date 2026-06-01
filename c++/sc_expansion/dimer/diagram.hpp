@@ -107,6 +107,11 @@ namespace sc_expansion::dimer {
     std::vector<int> const &get_sites() const { return this->sites; }
     std::vector<int> const &get_mark_spins() const { return this->mark_spins; }
     std::vector<int> const &get_target_r() const { return this->target_r; }
+    // Diagnostic: rooted weight normaliser (|mark-fixing automorphisms| ×
+    // multi-edge factorial), used in place of the vacuum symmetry factor by the
+    // rooted branch of compute_valid_configurations. Exposed for the on-site
+    // same-spin weight-bookkeeping cross-check.
+    double get_rooted_sym_factor() const { return this->rooted_sym_factor; }
     std::pair<long, long> get_local_cache_stats() const { return {this->local_cache_hits, this->local_cache_misses}; }
     std::vector<int> get_local_state_counts() const {
       std::vector<int> counts;
