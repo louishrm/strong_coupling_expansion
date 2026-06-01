@@ -7,12 +7,12 @@
 #include <cmath>
 #include <numeric>
 #include <set>
+#include <stdexcept>
 #include <utility>
 
 namespace sc_expansion::dimer {
 
-  template <typename T>
-  Diagram<T>::Diagram(Graph const &graph_, std::vector<VertexType<T> *> const &vertex_types) : graph(graph_) {
+  template <typename T> Diagram<T>::Diagram(Graph const &graph_, std::vector<VertexType<T> *> const &vertex_types) : graph(graph_) {
     this->hopping_lines = compute_hopping_lines(this->graph);
     this->compute_spatial_configurations();
     this->setup_vertices(vertex_types);
@@ -33,10 +33,101 @@ namespace sc_expansion::dimer {
 
   template <typename T>
   Diagram<T>::Diagram(Graph const &graph_, std::vector<VertexType<T> *> const &vertex_types,
-                       std::vector<std::pair<int, int>> const &cluster_positions, int n_cluster_sites)
+                      std::vector<std::pair<int, int>> const &cluster_positions, int n_cluster_sites)
      : graph(graph_) {
     this->hopping_lines = compute_hopping_lines(this->graph);
     this->compute_spatial_configurations_cluster(cluster_positions, n_cluster_sites);
+    this->setup_vertices(vertex_types);
+    this->compute_valid_configurations();
+    this->diagram_sign = compute_diagram_sign(this->graph.get_V(), this->hopping_lines, this->legs_per_vertex);
+
+    bool has_any_type = false;
+    for (auto *p : this->vertex_type_ptrs) {
+      if (p != nullptr) {
+        has_any_type = true;
+        break;
+      }
+    }
+    if (has_any_type) this->build_local_state_tables();
+
+    this->build_vertex_instances();
+  }
+
+  template <typename T>
+  Diagram<T>::Diagram(Graph const &graph_, std::vector<VertexType<T> *> const &vertex_types, std::vector<int> marks_, std::vector<int> sites_,
+                      std::vector<int> mark_spins_, std::vector<int> r_, MarkEncoding mark_encoding_)
+     : graph(graph_) {
+    this->is_rooted     = true;
+    this->mark_encoding = mark_encoding_;
+    this->marks         = std::move(marks_);
+    this->sites         = std::move(sites_);
+    this->mark_spins    = std::move(mark_spins_);
+    this->target_r      = std::move(r_);
+
+    if (this->marks.size() != 2 || this->sites.size() != 2 || this->mark_spins.size() != 2)
+      throw std::invalid_argument("dimer::Diagram(rooted): marks/sites/mark_spins must each have size 2");
+    if (this->target_r.size() != 2) throw std::invalid_argument("dimer::Diagram(rooted): r must have size 2");
+    for (int m : this->marks)
+      if (m < 0 || m >= this->graph.get_V()) throw std::invalid_argument("dimer::Diagram(rooted): mark index out of range");
+    for (int s : this->sites)
+      if (s != 0 && s != 1) throw std::invalid_argument("dimer::Diagram(rooted): site must be 0 or 1");
+    for (int s : this->mark_spins)
+      if (s != 0 && s != 1) throw std::invalid_argument("dimer::Diagram(rooted): mark spin must be 0 or 1");
+
+    this->hopping_lines = compute_hopping_lines(this->graph);
+
+    // Mark-constrained spatial embedding (task 3). Pins the two marks at
+    // physical (0,0)-anchored and r-displaced dimers and enumerates the
+    // remaining vertices' staggered-superlattice placements; the density
+    // decoration of the marked vertices is applied later in build_local_plans.
+    this->compute_spatial_configurations_rooted();
+    this->setup_vertices(vertex_types);
+    this->compute_valid_configurations();
+    this->diagram_sign = compute_diagram_sign(this->graph.get_V(), this->hopping_lines, this->legs_per_vertex);
+
+    bool has_any_type = false;
+    for (auto *p : this->vertex_type_ptrs) {
+      if (p != nullptr) {
+        has_any_type = true;
+        break;
+      }
+    }
+    if (has_any_type) this->build_local_state_tables();
+
+    this->build_vertex_instances();
+  }
+
+  template <typename T>
+  Diagram<T>::Diagram(Graph const &graph_, std::vector<VertexType<T> *> const &vertex_types, std::vector<int> marks_, std::vector<int> sites_,
+                      std::vector<int> mark_spins_, std::vector<int> r_, std::vector<std::pair<int, int>> const &cluster_positions,
+                      int n_cluster_sites, MarkEncoding mark_encoding_, bool pin_origin)
+     : graph(graph_) {
+    this->is_rooted     = true;
+    this->mark_encoding = mark_encoding_;
+    this->marks         = std::move(marks_);
+    this->sites         = std::move(sites_);
+    this->mark_spins    = std::move(mark_spins_);
+    this->target_r      = std::move(r_);
+
+    if (this->marks.size() != 2 || this->sites.size() != 2 || this->mark_spins.size() != 2)
+      throw std::invalid_argument("dimer::Diagram(rooted cluster): marks/sites/mark_spins must each have size 2");
+    if (this->target_r.size() != 2) throw std::invalid_argument("dimer::Diagram(rooted cluster): r must have size 2");
+    for (int m : this->marks)
+      if (m < 0 || m >= this->graph.get_V()) throw std::invalid_argument("dimer::Diagram(rooted cluster): mark index out of range");
+    for (int s : this->sites)
+      if (s != 0 && s != 1) throw std::invalid_argument("dimer::Diagram(rooted cluster): site must be 0 or 1");
+    for (int s : this->mark_spins)
+      if (s != 0 && s != 1) throw std::invalid_argument("dimer::Diagram(rooted cluster): mark spin must be 0 or 1");
+
+    this->hopping_lines = compute_hopping_lines(this->graph);
+
+    // Finite-cluster mark-constrained embedding (the rooted analog of the vacuum
+    // cluster ctor): pins the marks at physical (0,0)/r on cluster cells. With
+    // pin_origin=false mark0's home dimer is swept over the cluster and the summed
+    // weight divided by n_cluster_sites (per-dimer average); with pin_origin=true
+    // mark0 is pinned at cluster_positions[0] with no ÷n_cluster_sites (single-site
+    // correlator). The density decoration is applied later in build_local_plans.
+    this->compute_spatial_configurations_rooted_cluster(cluster_positions, n_cluster_sites, pin_origin);
     this->setup_vertices(vertex_types);
     this->compute_valid_configurations();
     this->diagram_sign = compute_diagram_sign(this->graph.get_V(), this->hopping_lines, this->legs_per_vertex);
@@ -73,9 +164,7 @@ namespace sc_expansion::dimer {
   // first (so callers that iterate this set can rely on the first 3 being
   // label 0 if needed).
   static inline std::array<std::pair<int, int>, 6> tri_offsets(int v) {
-    if (v_is_odd(v)) {
-      return {{{+1, 0}, {+1, +1}, {+1, -1}, {-1, 0}, {0, +1}, {0, -1}}};
-    }
+    if (v_is_odd(v)) { return {{{+1, 0}, {+1, +1}, {+1, -1}, {-1, 0}, {0, +1}, {0, -1}}}; }
     return {{{+1, 0}, {0, +1}, {0, -1}, {-1, 0}, {-1, +1}, {-1, -1}}};
   }
 
@@ -155,9 +244,230 @@ namespace sc_expansion::dimer {
       merged[canonical] += count;
     }
 
-    for (auto &[dirs, weight] : merged) {
-      this->spatial_configurations.push_back({dirs, weight});
+    for (auto &[dirs, weight] : merged) { this->spatial_configurations.push_back({dirs, weight}); }
+  }
+
+  // Mark-constrained spatial embedding for the rooted density-density correlator.
+  // Mirrors compute_spatial_configurations but (1) seeds the recursion with the
+  // two marks pinned at physical (0,0)-anchored / r-displaced dimers (removing
+  // translational freedom and most of the embedding multiplicity), and (2)
+  // canonicalises over only the rooted (mark-fixing) automorphisms, with NO
+  // lattice-inversion step.
+  //
+  // Both parity-allowed dimer sectors are summed by enumerating the SAME
+  // (sites[0], sites[1]) pinning at displacement +r AND -r. The catalog folds
+  // the two sectors into one (graph, marks, sites) entry; the dimer-inversion
+  // symmetry (180° rotation: sites 0↔1 globally, r→-r, cumulant value
+  // unchanged) makes sector (1-s0,1-s1)@+r value-equal to sector (s0,s1)@-r, so
+  // the -r enumeration with the SAME decoration recovers the folded partner.
+  // At low order one sector is unreachable and contributes zero automatically.
+  // (See dimer_density_density_correlator-03.md, "Open questions".)
+  template <typename T> void Diagram<T>::compute_spatial_configurations_rooted() {
+    int V           = this->graph.get_V();
+    int s0          = this->sites[0];
+    int s1          = this->sites[1];
+    int m0          = this->marks[0];
+    int m1          = this->marks[1];
+    bool coincident = (m0 == m1);
+
+    // Step 1: raw embeddings, pinning the marks, for displacement +r and -r.
+    std::map<std::vector<uint8_t>, int> raw_counts;
+
+    std::vector<std::pair<int, int>> disps;
+    disps.push_back({this->target_r[0], this->target_r[1]});
+    if (!(this->target_r[0] == 0 && this->target_r[1] == 0)) disps.push_back({-this->target_r[0], -this->target_r[1]});
+
+    for (auto const &[rx, ry] : disps) {
+      std::vector<std::pair<int, int>> coords(V, {0, 0});
+      std::vector<bool> placed(V, false);
+      int placed_count = 0;
+
+      if (coincident) {
+        // One dimer hosts both marks: the intra-dimer displacement (s1-s0, 0)
+        // must equal this displacement, else there is no embedding here.
+        if (!(ry == 0 && rx == (s1 - s0))) continue;
+        coords[m0]   = {0, 0};
+        placed[m0]   = true;
+        placed_count = 1;
+      } else {
+        // mark0's dimer anchored at superlattice (0,0): mark0 is at physical
+        // (s0, 0). mark1 must be at physical (s0+rx, ry), which forces its
+        // dimer: v1 = ry and 2*u1 + (v1 mod 2) + s1 = s0 + rx.
+        int v1   = ry;
+        int vmod = ((v1 % 2) + 2) % 2;
+        int num  = s0 + rx - s1 - vmod;
+        if (((num % 2) + 2) % 2 != 0) continue; // parity violation ⇒ no embedding
+        int u1       = num / 2;
+        coords[m0]   = {0, 0};
+        placed[m0]   = true;
+        coords[m1]   = {u1, v1};
+        placed[m1]   = true;
+        placed_count = 2;
+      }
+
+      this->solve_dimer_embedding(placed_count, placed, coords, raw_counts);
     }
+
+    // Step 2: rooted automorphisms (graph automorphisms fixing every marked
+    // vertex pointwise) + rooted_sym_factor. Shared with the cluster path.
+    std::vector<std::vector<int>> automorphisms = this->compute_rooted_automorphisms();
+
+    // Step 3: canonicalise raw configs over the rooted automorphisms only — no
+    // lattice inversion (inversion changes the marks' sites; its contribution is
+    // already summed via the -r enumeration in step 1).
+    std::map<std::vector<uint8_t>, double> merged;
+    for (auto &[dirs, count] : raw_counts) {
+      auto canonical = this->canonicalize_directions(dirs, automorphisms, /*include_inversion=*/false);
+      merged[canonical] += count;
+    }
+
+    for (auto &[dirs, weight] : merged) this->spatial_configurations.push_back({dirs, weight});
+  }
+
+  // Graph automorphisms that fix every marked vertex pointwise (the mark-fixing
+  // subgroup of Aut(G); permutations swapping a marked and an unmarked vertex, or
+  // the two marks, are excluded — they do not preserve the pinned mark positions).
+  // Also sets rooted_sym_factor = |these automorphisms| × multi-edge factorial
+  // (parallel hopping lines between a fixed vertex pair are interchangeable but
+  // invisible to the permutation enumeration; matches Graph's both-directed-entries
+  // convention). For distinct-site marks this equals the catalog's rooted_symmetry_factor.
+  template <typename T> std::vector<std::vector<int>> Diagram<T>::compute_rooted_automorphisms() {
+    int V = this->graph.get_V();
+
+    std::vector<int> degrees(V, 0);
+    for (int i = 0; i < V; ++i)
+      for (int j = 0; j < V; ++j) degrees[i] += this->graph(i, j) + this->graph(j, i);
+
+    std::vector<std::vector<int>> automorphisms;
+    std::vector<int> perm(V);
+    std::iota(perm.begin(), perm.end(), 0);
+    do {
+      bool fixes_marks = true;
+      for (int m : this->marks)
+        if (perm[m] != m) {
+          fixes_marks = false;
+          break;
+        }
+      if (!fixes_marks) continue;
+
+      bool degree_ok = true;
+      for (int i = 0; i < V; ++i)
+        if (degrees[perm[i]] != degrees[i]) {
+          degree_ok = false;
+          break;
+        }
+      if (!degree_ok) continue;
+
+      bool is_auto = true;
+      for (int i = 0; i < V && is_auto; ++i)
+        for (int j = 0; j < V && is_auto; ++j)
+          if (this->graph(i, j) != this->graph(perm[i], perm[j])) is_auto = false;
+      if (is_auto) automorphisms.push_back(perm);
+    } while (std::next_permutation(perm.begin(), perm.end()));
+
+    double multiedge = 1.0;
+    for (int i = 0; i < V; ++i)
+      for (int j = 0; j < V; ++j) {
+        uint8_t e = this->graph(i, j);
+        if (e > 1) multiedge *= (double)sc_expansion::factorial(e);
+      }
+    this->rooted_sym_factor = (double)automorphisms.size() * multiedge;
+
+    return automorphisms;
+  }
+
+  // Cluster-restricted variant of compute_spatial_configurations_rooted. mark1's
+  // forced dimer and every interior vertex must land on a cluster cell; the ±r
+  // enumeration (recovering the inversion-folded sector) and the rooted
+  // no-lattice-inversion canonicalisation are identical to the infinite path.
+  //
+  // pin_origin selects how mark0's home dimer (the reference site of the
+  // correlator) is treated:
+  //   false: mark0 is swept over ALL cluster positions and the summed embedding
+  //     weight divided by n_cluster_sites — the per-dimer translation average
+  //     (matching compute_spatial_configurations_cluster). On an inhomogeneous
+  //     open cluster this averages over inequivalent reference sites.
+  //   true: mark0 is pinned at cluster_positions[0] only, with NO division. This
+  //     anchors ⟨n(r)n(0)⟩ at a single reference site, reproducing a finite-cluster
+  //     ED measurement at that site.
+  template <typename T>
+  void Diagram<T>::compute_spatial_configurations_rooted_cluster(std::vector<std::pair<int, int>> const &cluster_positions,
+                                                                 int n_cluster_sites, bool pin_origin) {
+    int V           = this->graph.get_V();
+    int s0          = this->sites[0];
+    int s1          = this->sites[1];
+    int m0          = this->marks[0];
+    int m1          = this->marks[1];
+    bool coincident = (m0 == m1);
+
+    auto in_cluster = [&](int u, int v) {
+      for (auto const &p : cluster_positions)
+        if (p.first == u && p.second == v) return true;
+      return false;
+    };
+
+    std::vector<std::pair<int, int>> disps;
+    disps.push_back({this->target_r[0], this->target_r[1]});
+    if (!(this->target_r[0] == 0 && this->target_r[1] == 0)) disps.push_back({-this->target_r[0], -this->target_r[1]});
+
+    std::map<std::vector<uint8_t>, int> raw_counts;
+
+    // Anchors for mark0's home dimer: the whole cluster (swept, per-dimer average)
+    // or just cluster_positions[0] (pinned single reference site).
+    std::vector<std::pair<int, int>> mark0_anchors;
+    if (pin_origin) {
+      if (!cluster_positions.empty()) mark0_anchors.push_back(cluster_positions[0]);
+    } else {
+      mark0_anchors = cluster_positions;
+    }
+
+    for (auto const &[rx, ry] : disps) {
+      for (auto const &anchor : mark0_anchors) {
+        int u0 = anchor.first;
+        int v0 = anchor.second;
+
+        std::vector<std::pair<int, int>> coords(V, {0, 0});
+        std::vector<bool> placed(V, false);
+        int placed_count = 0;
+
+        if (coincident) {
+          // One dimer hosts both marks: intra-dimer displacement (s1-s0, 0) == r.
+          if (!(ry == 0 && rx == (s1 - s0))) continue;
+          coords[m0]   = {u0, v0};
+          placed[m0]   = true;
+          placed_count = 1;
+        } else {
+          // mark0's dimer at cluster cell (u0,v0): mark0 at physical
+          // (2u0 + v0%2 + s0, v0). mark1 must be at physical (mark0 + (rx,ry)),
+          // forcing its dimer: v1 = v0 + ry, 2u1 = 2u0 + v0%2 + s0 + rx - v1%2 - s1.
+          int v1    = v0 + ry;
+          int v0mod = ((v0 % 2) + 2) % 2;
+          int v1mod = ((v1 % 2) + 2) % 2;
+          int num   = 2 * u0 + v0mod + s0 + rx - v1mod - s1;
+          if (((num % 2) + 2) % 2 != 0) continue; // parity violation ⇒ no embedding
+          int u1 = num / 2;
+          if (!in_cluster(u1, v1)) continue;      // mark1's dimer must be on the cluster
+          coords[m0]   = {u0, v0};
+          placed[m0]   = true;
+          coords[m1]   = {u1, v1};
+          placed[m1]   = true;
+          placed_count = 2;
+        }
+
+        this->solve_cluster_embedding(placed_count, placed, coords, raw_counts, cluster_positions);
+      }
+    }
+
+    std::vector<std::vector<int>> automorphisms = this->compute_rooted_automorphisms();
+
+    std::map<std::vector<uint8_t>, double> merged;
+    for (auto &[dirs, count] : raw_counts) {
+      auto canonical = this->canonicalize_directions(dirs, automorphisms, /*include_inversion=*/false);
+      merged[canonical] += count;
+    }
+
+    double divisor = pin_origin ? 1.0 : (double)n_cluster_sites;
+    for (auto &[dirs, weight] : merged) this->spatial_configurations.push_back({dirs, weight / divisor});
   }
 
   template <typename T>
@@ -207,15 +517,13 @@ namespace sc_expansion::dimer {
       merged[canonical] += count;
     }
 
-    for (auto &[dirs, weight] : merged) {
-      this->spatial_configurations.push_back({dirs, weight / (double)n_cluster_sites});
-    }
+    for (auto &[dirs, weight] : merged) { this->spatial_configurations.push_back({dirs, weight / (double)n_cluster_sites}); }
   }
 
   template <typename T>
   void Diagram<T>::solve_cluster_embedding(int placed_count, std::vector<bool> &placed, std::vector<std::pair<int, int>> &coords,
-                                            std::map<std::vector<uint8_t>, int> &config_counts,
-                                            std::vector<std::pair<int, int>> const &cluster_positions) const {
+                                           std::map<std::vector<uint8_t>, int> &config_counts,
+                                           std::vector<std::pair<int, int>> const &cluster_positions) const {
     int V = this->graph.get_V();
 
     if (placed_count == V) {
@@ -282,7 +590,7 @@ namespace sc_expansion::dimer {
   // pair (see SpatialConfiguration in diagram.hpp for the bond-label table).
   template <typename T>
   void Diagram<T>::solve_dimer_embedding(int placed_count, std::vector<bool> &placed, std::vector<std::pair<int, int>> &coords,
-                                          std::map<std::vector<uint8_t>, int> &config_counts) const {
+                                         std::map<std::vector<uint8_t>, int> &config_counts) const {
     int V = this->graph.get_V();
 
     if (placed_count == V) {
@@ -384,9 +692,16 @@ namespace sc_expansion::dimer {
   // Lex-min over all graph automorphisms × {identity, lattice inversion}.
   // Lattice inversion (2-fold rotation about a dimer center) swaps site 0
   // <-> site 1 within each dimer, mapping bond labels 0 <-> 1.
+  //
+  // `include_inversion` is true for the vacuum/cluster paths. The rooted path
+  // passes false: inversion changes the marks' within-dimer sites, so it is not
+  // a symmetry of a fixed-(marks,sites) rooted graph; its physical contribution
+  // is instead summed explicitly via the -r enumeration in
+  // compute_spatial_configurations_rooted.
   template <typename T>
   std::vector<uint8_t> Diagram<T>::canonicalize_directions(std::vector<uint8_t> const &dirs,
-                                                            std::vector<std::vector<int>> const &automorphisms) const {
+                                                           std::vector<std::vector<int>> const &automorphisms,
+                                                           bool include_inversion) const {
     static constexpr uint8_t inversion_map[2] = {1, 0};
 
     auto min_dirs = dirs;
@@ -394,6 +709,7 @@ namespace sc_expansion::dimer {
       auto permuted = this->apply_automorphism_to_directions(dirs, perm);
       if (permuted < min_dirs) min_dirs = permuted;
 
+      if (!include_inversion) continue;
       auto inverted = permuted;
       for (auto &d : inverted) d = inversion_map[d];
       if (inverted < min_dirs) min_dirs = inverted;
@@ -409,19 +725,42 @@ namespace sc_expansion::dimer {
     int V = this->graph.get_V();
     this->vertex_type_ptrs.resize(V, nullptr);
 
+    // For rooted diagrams, each StaticDensity mark on a vertex adds +1 to that
+    // vertex's effective cumulant order (mirrors atomic::Diagram and the sizing
+    // in dimer::SumDiagrams::init_from_rooted_catalog). The density adds no
+    // hopping leg, so this bonus is only needed to (a) pick a vertex_types index
+    // matching the over-allocated catalog sizing and (b) give a non-null
+    // VertexType to a degree-0 marked vertex (the V=1 intra-dimer case), which
+    // is what routes the diagram through the density-decorated factored path.
+    std::vector<int> mark_bonus(V, 0);
+    if (this->is_rooted)
+      for (int m : this->marks) mark_bonus[m] += 1;
+
     for (int v = 0; v < V; ++v) {
       int degree = 0;
       for (int j = 0; j < V; ++j) degree += this->graph(v, j) + this->graph(j, v);
-      int cumulant_order = degree / 2;
+      int cumulant_order = degree / 2 + mark_bonus[v];
       int vt_idx         = cumulant_order - 1;
       if (vt_idx >= 0 && vt_idx < (int)vertex_types.size()) this->vertex_type_ptrs[v] = vertex_types[vt_idx];
     }
   }
 
   template <typename T> void Diagram<T>::compute_valid_configurations() {
-    int V             = this->graph.get_V();
-    int n_lines       = (int)this->hopping_lines.lines.size();
-    double sym_factor = this->graph.get_symmetry_factor();
+    int V       = this->graph.get_V();
+    int n_lines = (int)this->hopping_lines.lines.size();
+
+    // Vacuum/cluster: divide by the full graph symmetry factor and fold the
+    // spin-flip orbit. Rooted: the fixed mark spins break the global spin-flip
+    // symmetry, so the orbit is NOT folded (mirrors atomic::Diagram); divide by
+    // the rooted symmetry factor instead. n_mark_orbit doubles the weight only
+    // when the two non-coincident marks are identical in BOTH within-dimer site
+    // and spin (then the catalog's set-stabiliser admits a mark-swap that the
+    // pointwise enumeration omits — the second anchoring has equal weight).
+    double sym_factor   = this->is_rooted ? this->rooted_sym_factor : this->graph.get_symmetry_factor();
+    double n_mark_orbit = 1.0;
+    if (this->is_rooted && this->marks[0] != this->marks[1] && this->sites[0] == this->sites[1]
+        && this->mark_spins[0] == this->mark_spins[1])
+      n_mark_orbit = 2.0;
 
     constexpr uint8_t ACTION_BIT = FermionOperator<2, T>::ACTION_BIT;
 
@@ -460,11 +799,15 @@ namespace sc_expansion::dimer {
             global.config.push_back(op_id);
 
             if (leg.is_source) {
-              if (spin == 1) up_ann++;
-              else dn_ann++;
+              if (spin == 1)
+                up_ann++;
+              else
+                dn_ann++;
             } else {
-              if (spin == 1) up_cre++;
-              else dn_cre++;
+              if (spin == 1)
+                up_cre++;
+              else
+                dn_cre++;
             }
           }
 
@@ -472,6 +815,17 @@ namespace sc_expansion::dimer {
         }
 
         if (!valid) continue;
+
+        if (this->is_rooted) {
+          // No spin-flip orbit folding (fixed mark spins break the symmetry):
+          // each internal-spin assignment contributes once. The mark densities
+          // are NOT in global.config — they decorate the cumulant later in
+          // build_local_plans. Different (spatial, spin_mask) pairs that yield
+          // the same op_ids accumulate their weights here, which is correct.
+          double weight = spatial.weight * n_mark_orbit / sym_factor;
+          canonical_weights[global.config] += weight;
+          continue;
+        }
 
         auto orbit      = SymmetryGroup<2, T>::get_orbit(global);
         auto &canonical = orbit[0];
@@ -553,18 +907,14 @@ namespace sc_expansion::dimer {
     }
 
     this->local_values.resize(V);
-    for (int v = 0; v < V; ++v) {
-      this->local_values[v].resize(this->local_states[v].size(), T(0.0));
-    }
+    for (int v = 0; v < V; ++v) { this->local_values[v].resize(this->local_states[v].size(), T(0.0)); }
 
     this->vertex_dirty_finite.assign(V, true);
   }
 
   template <typename T> void Diagram<T>::mark_tau_dirty(int tau_index) {
     if (!this->local_states.empty()) {
-      for (int v : this->tau_to_vertices[tau_index]) {
-        this->vertex_dirty_finite[v] = true;
-      }
+      for (int v : this->tau_to_vertices[tau_index]) { this->vertex_dirty_finite[v] = true; }
       return;
     }
     for (int v : this->tau_to_vertices[tau_index]) {
@@ -592,6 +942,16 @@ namespace sc_expansion::dimer {
     int V = this->graph.get_V();
     this->local_plans_finite.assign(V, {});
 
+    // Rooted: each mark on a vertex attaches a static density n_σ(0) to that
+    // vertex's cumulant as an external decoration (it never enters op_ids). The
+    // orbital packs (within-dimer site, spin) as site + spin*2 — matching the
+    // (site, spin) → orbital convention in compute_valid_configurations. Two
+    // coincident marks on one vertex contribute two decorations.
+    std::vector<std::vector<int>> density_orbitals(V);
+    if (this->is_rooted)
+      for (size_t k = 0; k < this->marks.size(); ++k)
+        density_orbitals[this->marks[k]].push_back(this->sites[k] + this->mark_spins[k] * 2);
+
     for (int v = 0; v < V; ++v) {
       int n_legs = (int)this->legs_per_vertex[v].size();
       std::vector<double> dummy_taus(n_legs, 0.5);
@@ -604,6 +964,7 @@ namespace sc_expansion::dimer {
 
         CumulantPlan plan;
         CumulantSolver<2, T> builder(u, p);
+        for (int orbital : density_orbitals[v]) builder.add_static_density(orbital);
         builder.record_plan(plan);
         this->local_plans_finite[v].push_back(std::move(plan));
       }
@@ -612,8 +973,7 @@ namespace sc_expansion::dimer {
     this->local_plans_built = true;
   }
 
-  template <typename T>
-  T Diagram<T>::evaluate_factored(std::vector<double> const &taus, HubbardSolver<2, T> const &solver) {
+  template <typename T> T Diagram<T>::evaluate_factored(std::vector<double> const &taus, HubbardSolver<2, T> const &solver) {
     if (!this->local_plans_built) this->build_local_plans(solver);
 
     int V        = this->graph.get_V();
@@ -656,14 +1016,18 @@ namespace sc_expansion::dimer {
 
     // Absorb the (-t)^n factor that each hopping line contributes, so the
     // returned coefficient is the n-th order term in a series in t (not -t).
-    int n_lines    = (int)this->hopping_lines.lines.size();
-    double t_sign  = (n_lines % 2 == 0) ? 1.0 : -1.0;
-    T prefactor    = (T(-1.0) / solver.params.beta) * T(this->diagram_sign * (int)t_sign);
+    int n_lines   = (int)this->hopping_lines.lines.size();
+    double t_sign = (n_lines % 2 == 0) ? 1.0 : -1.0;
+    // Free-energy (vacuum/cluster) diagrams carry the Ω prefactor -1/β, since
+    // Ω = -(1/β) log Z. A rooted density-density diagram instead represents the
+    // connected correlator ⟨n(r)n(0)⟩_c = -β ∂²Ω[J]/∂J∂J, and the -β cancels
+    // that -1/β exactly ⇒ the rooted prefactor is just sign·(-t)^n (no 1/β).
+    T prefactor = this->is_rooted ? T(this->diagram_sign * (int)t_sign)
+                                  : (T(-1.0) / solver.params.beta) * T(this->diagram_sign * (int)t_sign);
     return prefactor * sum;
   }
 
-  template <typename T>
-  T Diagram<T>::evaluate(std::vector<double> const &taus, HubbardSolver<2, T> const &solver) {
+  template <typename T> T Diagram<T>::evaluate(std::vector<double> const &taus, HubbardSolver<2, T> const &solver) {
     if (!this->local_states.empty()) return this->evaluate_factored(taus, solver);
 
     int V = this->graph.get_V();
@@ -683,14 +1047,18 @@ namespace sc_expansion::dimer {
 
     // Absorb the (-t)^n factor that each hopping line contributes, so the
     // returned coefficient is the n-th order term in a series in t (not -t).
-    int n_lines    = (int)this->hopping_lines.lines.size();
-    double t_sign  = (n_lines % 2 == 0) ? 1.0 : -1.0;
-    T prefactor    = (T(-1.0) / solver.params.beta) * T(this->diagram_sign * (int)t_sign);
+    int n_lines   = (int)this->hopping_lines.lines.size();
+    double t_sign = (n_lines % 2 == 0) ? 1.0 : -1.0;
+    // Free-energy (vacuum/cluster) diagrams carry the Ω prefactor -1/β, since
+    // Ω = -(1/β) log Z. A rooted density-density diagram instead represents the
+    // connected correlator ⟨n(r)n(0)⟩_c = -β ∂²Ω[J]/∂J∂J, and the -β cancels
+    // that -1/β exactly ⇒ the rooted prefactor is just sign·(-t)^n (no 1/β).
+    T prefactor = this->is_rooted ? T(this->diagram_sign * (int)t_sign)
+                                  : (T(-1.0) / solver.params.beta) * T(this->diagram_sign * (int)t_sign);
     return prefactor * sum;
   }
 
-  template <typename T>
-  std::vector<T> Diagram<T>::evaluate_per_config(std::vector<double> const &taus, HubbardSolver<2, T> const &solver) {
+  template <typename T> std::vector<T> Diagram<T>::evaluate_per_config(std::vector<double> const &taus, HubbardSolver<2, T> const &solver) {
     if (!this->local_plans_built) this->build_local_plans(solver);
 
     int V = this->graph.get_V();
