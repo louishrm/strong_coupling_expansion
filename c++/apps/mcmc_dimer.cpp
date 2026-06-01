@@ -1,17 +1,39 @@
-// MCMC for the staggered (triangular) dimer expansion.
+// MCMC for the staggered (triangular) dimer expansion — free energy AND the
+// equal-time density-density correlator, in one file (mirrors mcmc_atom.cpp).
 //
-// Computes the order-n coefficient of the strong-coupling free-energy series
-// for the two-site (dimer) cluster on the staggered superlattice. Every NN
-// bond crosses the A/B sublattices, so the expansion runs over the FULL set
-// of vacuum diagrams (bipartite + non-bipartite — odd cycles included). This
-// app forces `params.bipartite = false` accordingly.
+// The mode is chosen exactly as in mcmc_atom.cpp: if a displacement r=(rx,ry)
+// is supplied on the command line we run the rooted ⟨n_{r,s2}(0) n_{0,s1}(0)⟩
+// correlator series; otherwise we run the free-energy (Omega) series. The two
+// modes share the same templated dimer::Configuration, move and defensive
+// measure_dimer estimator — only the calculator changes:
+//   * free energy : dimer::FreeEnergyCalculator (vacuum diagrams)
+//   * correlator  : dimer::SumDiagrams (rooted density-density catalog)
 //
-// Reference scheme: Configuration samples with weight W = |Omega + alpha|
+// The dimer superlattice is non-bipartite (each dimer has 6 NN), so both
+// catalogs span bipartite + non-bipartite topologies; params.bipartite is
+// forced false accordingly.
+//
+// Free-energy mode broadcasts the (expensive) vacuum-diagram set from rank 0.
+// Correlator mode enumerates its rooted catalog deterministically from
+// (order, r) on every rank (cheap), so each rank builds an identical
+// SumDiagrams independently — no broadcast.
+//
+// Correlator mode embeds on a 3-dimer triangular cluster by default
+// (use_cluster=1, ED-comparable), or the full lattice (use_cluster=0).
+//
+// use_dual (μ-derivative → density) is supported for the free-energy expansion
+// only. The density-density correlator has no μ-derivative observable, so
+// use_dual is rejected in that mode (as in mcmc_atom.cpp) and the correlator
+// always runs in double precision.
+//
+// Reference scheme (both modes): Configuration samples with weight W = |f+alpha|
 // and the coefficient is recovered via the ratio estimator
-//   coeff = alpha * beta^n * <Omega/W> / <alpha/W>.
+//   coeff = alpha * beta^n * <f/W> / <alpha/W>,
+// with f the free-energy or ⟨n(r)n(0)⟩ series value at the sampled times.
 
 #include "sc_expansion/dimer/configuration.hpp"
 #include "sc_expansion/dimer/free_energy_calculator.hpp"
+#include "sc_expansion/dimer/sum_diagrams.hpp"
 #include "sc_expansion/dimer/measure_dimer.hpp"
 #include "sc_expansion/generate_diagrams.hpp"
 #include "sc_expansion/move.hpp"
@@ -26,6 +48,10 @@
 #include <chrono>
 #include <memory>
 
+// Broadcast a vector of Graph objects from rank 0 to all other ranks (used by
+// free-energy mode for the vacuum-diagram set). Each graph is serialised as:
+// V, automorphism_count, symmetry_factor, free_multiplicity, bipartite_only
+// flag, and the flattened canonical adjacency matrix (V*V uint8_t values).
 static void broadcast_graphs(std::vector<sc_expansion::Graph> &graphs, mpi::communicator &world) {
 
   int n_graphs = (int)graphs.size();
@@ -62,52 +88,30 @@ static void broadcast_graphs(std::vector<sc_expansion::Graph> &graphs, mpi::comm
   }
 }
 
-template <typename T>
-void run(mpi::communicator &world, int order, int n_cycles, double U, double beta, double mu, double t_hop, double alpha, int n_warmup_cycles,
-         int length_cycle, std::string random_name, int random_seed, int verbosity) {
+// Shared pilot + production MCMC for either calculator. `ConfigT` is the
+// dimer::Configuration instantiation wrapping `Calculator` (FreeEnergyCalculator
+// for the free energy, SumDiagrams for the correlator); both take the same
+// (params, order, calculator, alpha) constructor. The pilot auto-tunes alpha
+// in place (returned through the reference), and the measured coefficient/error
+// is returned to the caller for CSV output.
+template <typename T, typename ConfigT, typename Calculator>
+DimerMeasureResult run_mcmc(mpi::communicator &world, sc_expansion::Parameters<T> const &params, int order, int n_cycles, Calculator &calculator,
+                            double &alpha, std::string const &measure_name, int n_warmup_cycles, int length_cycle, std::string random_name,
+                            int random_seed, int verbosity) {
 
-  // Staggered dimer expansion: full (non-bipartite) graph set.
-  bool bipartite = false;
-
-  sc_expansion::Parameters<T> params;
-  if constexpr (std::is_same_v<T, Dual>) {
-    params = {Dual(U, 0.0), Dual(beta, 0.0), Dual(mu, 1.0), Dual(t_hop, 0.0), bipartite, Dual(0.0, 0.0)};
-  } else {
-    params = {U, beta, mu, t_hop, bipartite, 0.0};
-  }
-
-  // --- Phase 1: rank 0 generates non-bipartite vacuum diagrams, broadcasts ---
-  std::vector<sc_expansion::Graph> graphs;
-  if (world.rank() == 0) {
-    std::cout << "Generating non-bipartite vacuum diagrams on rank 0..." << std::endl;
-    auto t0 = std::chrono::high_resolution_clock::now();
-    sc_expansion::VacuumDiagramGenerator gen(order, /*bipartite_only=*/false);
-    gen.generate();
-    graphs  = gen.get_unique_graphs();
-    auto t1 = std::chrono::high_resolution_clock::now();
-    std::cout << "Generated " << graphs.size() << " unique diagrams (incl. non-bipartite) in "
-              << std::chrono::duration<double>(t1 - t0).count() << " s." << std::endl;
-  }
-  broadcast_graphs(graphs, world);
-
-  // --- Phase 2: dimer calculator (alpha-independent, reused across pilot + production) ---
-  sc_expansion::dimer::FreeEnergyCalculator<T> calculator(params, order, graphs);
-
-  if (world.rank() == 0) { std::filesystem::create_directory("./results"); }
-
-  // --- Phase 3: alpha auto-tuning pilot ---
+  // --- Alpha auto-tuning pilot ---
   // Run a short MC with the user-supplied alpha as initial guess, then rescale via
-  //   alpha_new = alpha_0 * <|Omega|/W> / <alpha/W>
-  // which equates alpha to typical|Omega|, the variance-minimising choice for the
-  // ratio estimator coeff = alpha * beta^n * <Omega/W> / <alpha/W>.
+  //   alpha_new = alpha_0 * <|f|/W> / <alpha/W>
+  // which equates alpha to typical|f|, the variance-minimising choice for the
+  // ratio estimator coeff = alpha * beta^n * <f/W> / <alpha/W>.
   {
-    int pilot_warmup    = 1000;
-    int pilot_cycles    = 5000;
-    int pilot_block     = 200;
-    int pilot_n_bins    = std::max(20, pilot_cycles / pilot_block);
-    int pilot_blk_size  = (pilot_cycles / pilot_n_bins) + 1;
+    int pilot_warmup   = 1000;
+    int pilot_cycles   = 5000;
+    int pilot_block    = 200;
+    int pilot_n_bins   = std::max(20, pilot_cycles / pilot_block);
+    int pilot_blk_size = (pilot_cycles / pilot_n_bins) + 1;
 
-    auto pilot_config = std::make_unique<sc_expansion::dimer::Configuration<T>>(params, order, calculator, alpha);
+    auto pilot_config = std::make_unique<ConfigT>(params, order, calculator, alpha);
     triqs::mc_tools::mc_generic<double> pilot_mc(random_name, random_seed, 0);
     measure_dimer<T> pilot_meas(pilot_config.get(), pilot_n_bins, pilot_blk_size, alpha, 0);
     pilot_mc.add_move(move<T>(pilot_config.get(), pilot_mc.get_rng()), "time_swap");
@@ -119,19 +123,17 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
 
     double new_alpha = alpha;
     if (world.rank() == 0) {
-      double mean_abs_omega = pilot_meas.result->mean_omega_abs; // <|Omega|/W>
-      double mean_alpha_W   = pilot_meas.result->mean_abs;       // <alpha/W>
-      if (mean_alpha_W > 1e-18 && mean_abs_omega > 0.0) {
-        new_alpha = alpha * mean_abs_omega / mean_alpha_W;
-      }
-      std::cout << "Pilot estimated typical|Omega| = " << new_alpha << "  (was alpha = " << alpha << ")" << std::endl;
+      double mean_abs_f   = pilot_meas.result->mean_omega_abs; // <|f|/W>
+      double mean_alpha_W = pilot_meas.result->mean_abs;       // <alpha/W>
+      if (mean_alpha_W > 1e-18 && mean_abs_f > 0.0) { new_alpha = alpha * mean_abs_f / mean_alpha_W; }
+      std::cout << "Pilot estimated typical|f| = " << new_alpha << "  (was alpha = " << alpha << ")" << std::endl;
     }
     MPI_Bcast(&new_alpha, 1, MPI_DOUBLE, 0, world.get());
     alpha = new_alpha;
   }
 
-  // --- Phase 4: production MC with tuned alpha ---
-  auto config = std::make_unique<sc_expansion::dimer::Configuration<T>>(params, order, calculator, alpha);
+  // --- Production MC with tuned alpha ---
+  auto config = std::make_unique<ConfigT>(params, order, calculator, alpha);
 
   triqs::mc_tools::mc_generic<double> mc(random_name, random_seed, verbosity);
 
@@ -141,7 +143,7 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
 
   measure_dimer<T> meas(config.get(), n_bins, block_size, alpha, verbosity);
   mc.add_move(move<T>(config.get(), mc.get_rng()), "time_swap");
-  mc.add_measure(meas, "dimer_coefficient");
+  mc.add_measure(meas, measure_name);
 
   auto start_time = std::chrono::high_resolution_clock::now();
   mc.warmup_and_accumulate(n_warmup_cycles, n_cycles, length_cycle, triqs::utility::clock_callback(-1));
@@ -155,16 +157,116 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
 
     std::cout << "Total time (s): " << total_time << std::endl;
     std::cout << "Time per step (s): " << total_time / total_steps << std::endl;
-    std::cout << "Order-" << order << " staggered dimer coefficient: " << meas.result->coeff << " ± " << meas.result->error << std::endl;
+  }
+
+  return *meas.result;
+}
+
+// Free-energy (ln Z) expansion. Templated on the scalar T so the Dual variant
+// yields the μ-derivative (density) coefficient.
+template <typename T>
+void run_free_energy(mpi::communicator &world, int order, int n_cycles, double U, double beta, double mu, double t_hop, double alpha,
+                     int n_warmup_cycles, int length_cycle, std::string random_name, int random_seed, int verbosity) {
+
+  // Staggered dimer expansion: full (non-bipartite) topology set.
+  bool bipartite = false;
+
+  sc_expansion::Parameters<T> params;
+  if constexpr (std::is_same_v<T, Dual>) {
+    params = {Dual(U, 0.0), Dual(beta, 0.0), Dual(mu, 1.0), Dual(t_hop, 0.0), bipartite, Dual(0.0, 0.0)};
+  } else {
+    params = {U, beta, mu, t_hop, bipartite, 0.0};
+  }
+
+  if (world.rank() == 0) { std::filesystem::create_directory("./results"); }
+
+  // Rank 0 generates non-bipartite vacuum diagrams, then broadcasts.
+  std::vector<sc_expansion::Graph> graphs;
+  if (world.rank() == 0) {
+    std::cout << "Generating non-bipartite vacuum diagrams on rank 0..." << std::endl;
+    auto t0 = std::chrono::high_resolution_clock::now();
+    sc_expansion::VacuumDiagramGenerator gen(order, /*bipartite_only=*/false);
+    gen.generate();
+    graphs  = gen.get_unique_graphs();
+    auto t1 = std::chrono::high_resolution_clock::now();
+    std::cout << "Generated " << graphs.size() << " unique diagrams (incl. non-bipartite) in "
+              << std::chrono::duration<double>(t1 - t0).count() << " s." << std::endl;
+  }
+  broadcast_graphs(graphs, world);
+
+  sc_expansion::dimer::FreeEnergyCalculator<T> calculator(params, order, graphs);
+
+  using ConfigT = sc_expansion::dimer::Configuration<T>;
+  auto result   = run_mcmc<T, ConfigT>(world, params, order, n_cycles, calculator, alpha, "dimer_coefficient", n_warmup_cycles, length_cycle,
+                                       random_name, random_seed, verbosity);
+
+  if (world.rank() == 0) {
+    std::cout << "Order-" << order << " staggered dimer coefficient: " << result.coeff << " ± " << result.error << std::endl;
 
     std::string observable = std::is_same_v<T, Dual> ? "density" : "Omega";
     std::string filename   = "./results/dimer_square_lattice_" + observable + ".csv";
 
     std::ostringstream row;
     row << std::setprecision(17);
-    row << U << ',' << beta << ',' << mu << ',' << t_hop << ',' << order << ',' << alpha << ',' << meas.result->coeff << ',' << meas.result->error;
-
+    row << U << ',' << beta << ',' << mu << ',' << t_hop << ',' << order << ',' << alpha << ',' << result.coeff << ',' << result.error;
     sc_expansion::append_csv_row(filename, "U,beta,mu,t,order,alpha,coeff,error", row.str());
+  }
+}
+
+// Equal-time density-density correlator ⟨n(r)n(0)⟩. Double precision only:
+// there is no μ-derivative observable here, so use_dual is rejected upstream.
+void run_correlator(mpi::communicator &world, int order, int n_cycles, double U, double beta, double mu, double t_hop, double alpha, bool use_cluster,
+                    int n_warmup_cycles, int length_cycle, std::string random_name, int random_seed, int verbosity, std::vector<int> const &r, int s1,
+                    int s2) {
+
+  // Staggered dimer expansion: full (non-bipartite) topology set.
+  bool bipartite                          = false;
+  sc_expansion::Parameters<double> params = {U, beta, mu, t_hop, bipartite, 0.0};
+
+  // 3-dimer triangular cluster on the staggered superlattice. n_cluster_sites is
+  // the per-dimer normaliser for the sweep convention; the correlator pins one
+  // reference site (pin_origin=true) so it is unused there (no ÷n_cluster_sites).
+  std::vector<std::pair<int, int>> cluster_positions = {{0, 0}, {1, 0}, {0, 1}};
+  int n_cluster_sites                                = 3;
+
+  if (world.rank() == 0) { std::filesystem::create_directory("./results"); }
+
+  // --- Rooted density-density calculator ---
+  // Built per-rank: the catalog is a deterministic function of (order, r), so
+  // every rank enumerates the same SumDiagrams independently (no broadcast).
+  // Cluster mode pins n(0) at cluster_positions[0] (pin_origin=true): the
+  // correlator is INTENSIVE/local, anchored at one reference site rather than
+  // swept-and-averaged like the EXTENSIVE free energy, so the coefficient is
+  // directly comparable to single-site finite-cluster ED. The infinite-lattice
+  // mode already pins the origin in its full-lattice embedding.
+  std::unique_ptr<sc_expansion::dimer::SumDiagrams<double>> calculator;
+  if (use_cluster) {
+    calculator = std::make_unique<sc_expansion::dimer::SumDiagrams<double>>(params, order, r, s1, s2, cluster_positions, n_cluster_sites,
+                                                                            /*pin_origin=*/true);
+  } else {
+    calculator = std::make_unique<sc_expansion::dimer::SumDiagrams<double>>(params, order, r, s1, s2);
+  }
+
+  if (world.rank() == 0) {
+    std::cout << "Building rooted catalog for r=(" << r[0] << "," << r[1] << ") spins=(" << s1 << "," << s2 << ")"
+              << (use_cluster ? " on the 3-dimer cluster..." : " on the infinite lattice...") << std::endl;
+    std::cout << "Rooted catalog: " << calculator->get_n_diagrams() << " diagrams." << std::endl;
+  }
+
+  using ConfigT = sc_expansion::dimer::Configuration<double, sc_expansion::dimer::SumDiagrams<double>>;
+  auto result   = run_mcmc<double, ConfigT>(world, params, order, n_cycles, *calculator, alpha, "dimer_correlator_coefficient", n_warmup_cycles,
+                                            length_cycle, random_name, random_seed, verbosity);
+
+  if (world.rank() == 0) {
+    std::cout << "Order-" << order << " dimer ⟨n(r)n(0)⟩ coefficient (r=(" << r[0] << "," << r[1] << "), spins=(" << s1 << "," << s2
+              << ")): " << result.coeff << " ± " << result.error << std::endl;
+
+    std::string filename = "./results/dimer_correlator_nn.csv";
+    std::ostringstream row;
+    row << std::setprecision(17);
+    row << U << ',' << beta << ',' << mu << ',' << t_hop << ',' << order << ',' << r[0] << ',' << r[1] << ',' << s1 << ',' << s2 << ','
+        << (use_cluster ? 1 : 0) << ',' << alpha << ',' << result.coeff << ',' << result.error;
+    sc_expansion::append_csv_row(filename, "U,beta,mu,t,order,rx,ry,s1,s2,cluster,alpha,coeff,error", row.str());
   }
 }
 
@@ -172,19 +274,44 @@ int main(int argc, char *argv[]) {
 
   if (argc < 7) {
     if (mpi::communicator().rank() == 0) {
-      std::cerr << "Usage: " << argv[0] << " order n_cycles U beta mu t [alpha] [use_dual]" << std::endl;
+      std::cerr << "Usage: " << argv[0] << " order n_cycles U beta mu t [alpha] [use_dual] [use_cluster] [rx ry s1 s2]" << std::endl;
+      std::cerr << "  rx ry s1 s2 : if all four are present, run the density-density correlator at r=(rx,ry) with mark spins (s1,s2)." << std::endl;
+      std::cerr << "  use_dual (default 0): 1 = μ-derivative (density) coefficient. Free-energy mode only." << std::endl;
+      std::cerr << "  use_cluster (default 1): 1 = 3-dimer triangle (ED-comparable), 0 = infinite lattice (correlator mode only)." << std::endl;
+      std::cerr << "  s1 s2 : mark spins (0=down, 1=up) at (0,0) and r." << std::endl;
     }
     return 1;
   }
 
-  int order     = std::stoi(argv[1]);
-  int n_cycles  = std::stoi(argv[2]);
-  double U      = std::stod(argv[3]);
-  double beta   = std::stod(argv[4]);
-  double mu     = std::stod(argv[5]);
-  double t_hop  = std::stod(argv[6]);
-  double alpha  = (argc > 7 ? std::stod(argv[7]) : 0.001);
-  bool use_dual = (argc > 8 ? std::stoi(argv[8]) != 0 : false);
+  int order        = std::stoi(argv[1]);
+  int n_cycles     = std::stoi(argv[2]);
+  double U         = std::stod(argv[3]);
+  double beta      = std::stod(argv[4]);
+  double mu        = std::stod(argv[5]);
+  double t_hop     = std::stod(argv[6]);
+  double alpha     = (argc > 7 ? std::stod(argv[7]) : 0.001);
+  bool use_dual    = (argc > 8 ? std::stoi(argv[8]) != 0 : false);
+  bool use_cluster = (argc > 9 ? std::stoi(argv[9]) != 0 : true);
+
+  std::vector<int> r;
+  int s1 = 0, s2 = 0;
+  if (argc > 10) {
+    if (argc < 14) {
+      if (mpi::communicator().rank() == 0) { std::cerr << "Density-density mode requires all four of rx ry s1 s2; got " << (argc - 10) << "." << std::endl; }
+      return 1;
+    }
+    int rx = std::stoi(argv[10]);
+    int ry = std::stoi(argv[11]);
+    s1     = std::stoi(argv[12]);
+    s2     = std::stoi(argv[13]);
+    r      = {rx, ry};
+    if (use_dual) {
+      if (mpi::communicator().rank() == 0) {
+        std::cerr << "use_dual must be 0 in density-density mode (no μ-derivative for the correlator)." << std::endl;
+      }
+      return 1;
+    }
+  }
 
   mpi::environment env(argc, argv);
   mpi::communicator world;
@@ -192,8 +319,10 @@ int main(int argc, char *argv[]) {
   if (world.rank() == 0) {
     std::cout << "=== Strong Coupling MC (Staggered Dimer) ===" << std::endl;
     std::cout << "MPI ranks: " << world.size() << std::endl;
-    std::cout << "Order=" << order << " U=" << U << " beta=" << beta << " mu=" << mu << " t=" << t_hop << " alpha=" << alpha
-              << " (non-bipartite graphs)" << std::endl;
+    std::cout << "Order=" << order << " U=" << U << " beta=" << beta << " mu=" << mu << " t=" << t_hop << " alpha=" << alpha;
+    if (!r.empty())
+      std::cout << " r=(" << r[0] << "," << r[1] << ") s1=" << s1 << " s2=" << s2 << (use_cluster ? " [3-dimer cluster]" : " [infinite lattice]");
+    std::cout << " (non-bipartite graphs)" << std::endl;
   }
 
   int length_cycle        = 1;
@@ -202,10 +331,13 @@ int main(int argc, char *argv[]) {
   int random_seed         = 32186222 + world.rank() * 786512;
   int verbosity           = (world.rank() == 0 ? 2 : 0);
 
-  if (use_dual) {
-    run<Dual>(world, order, n_cycles, U, beta, mu, t_hop, alpha, n_warmup_cycles, length_cycle, random_name, random_seed, verbosity);
+  if (!r.empty()) {
+    run_correlator(world, order, n_cycles, U, beta, mu, t_hop, alpha, use_cluster, n_warmup_cycles, length_cycle, random_name, random_seed, verbosity, r,
+                   s1, s2);
+  } else if (use_dual) {
+    run_free_energy<Dual>(world, order, n_cycles, U, beta, mu, t_hop, alpha, n_warmup_cycles, length_cycle, random_name, random_seed, verbosity);
   } else {
-    run<double>(world, order, n_cycles, U, beta, mu, t_hop, alpha, n_warmup_cycles, length_cycle, random_name, random_seed, verbosity);
+    run_free_energy<double>(world, order, n_cycles, U, beta, mu, t_hop, alpha, n_warmup_cycles, length_cycle, random_name, random_seed, verbosity);
   }
 
   return 0;
