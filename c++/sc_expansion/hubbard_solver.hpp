@@ -62,6 +62,22 @@ namespace sc_expansion {
 
     private:
     using ExpTable = std::array<std::array<T, N_STATES>, MAX_G0N_ORDER>;
+    // Dense N_STATES×N_STATES matrix in the energy eigenbasis. Small (4 or 16
+    // per side), so density operators are assembled and applied densely.
+    using DenseMatrix = std::array<std::array<T, N_STATES>, N_STATES>;
+
+    // Build N = Π_k n_{σ_k} (n_σ = c†_σ c_σ) as a dense matrix in the energy
+    // eigenbasis. The factors commute, so build order is irrelevant. Used by
+    // the cluster (N_sites != 1) density-insertion path, where n_σ is not
+    // diagonal in the hybridized eigenbasis.
+    DenseMatrix build_density_matrix(std::vector<int> const &density_orbitals) const;
+
+    // Trace evaluator shared by the density paths: seeds each start state,
+    // applies the τ=0 density matrix N (no evolution factor) at the right-most
+    // trace slot, then the hybridization operators O_i exactly as G0n does.
+    // Correct for any N_sites; the atomic case keeps a diagonal fast path only
+    // for performance.
+    T G0n_with_density_matrix(Args<N_sites, T> const &args, DenseMatrix const &N_matrix) const;
 
     std::array<FermionOperator<N_sites, T>, N_OPS> operators;
     std::array<Eigenstate<T>, N_STATES> all_eigenstates;

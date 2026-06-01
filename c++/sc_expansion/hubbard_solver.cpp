@@ -100,20 +100,108 @@ namespace sc_expansion {
   }
 
   template <int N_sites, typename T>
+  typename HubbardSolver<N_sites, T>::DenseMatrix
+  HubbardSolver<N_sites, T>::build_density_matrix(std::vector<int> const &density_orbitals) const {
+    constexpr uint8_t ACTION_BIT_LOCAL = FermionOperator<N_sites, T>::ACTION_BIT;
+
+    // Start from the identity; multiply in each n_σ. The n_σ commute, so the
+    // accumulation order does not matter.
+    DenseMatrix acc{};
+    for (int i = 0; i < N_STATES; ++i) { acc[i][i] = T(1.0); }
+
+    for (int orb : density_orbitals) {
+      uint8_t c_idx     = static_cast<uint8_t>(orb);
+      uint8_t c_dag_idx = static_cast<uint8_t>(ACTION_BIT_LOCAL | orb);
+
+      // n_σ = M(c†_σ) · M(c_σ) in the eigenbasis (both are sparse eigenbasis
+      // matrices held by the solver).
+      DenseMatrix n_sigma{};
+      for (auto const &cd : this->operator_matrices[c_dag_idx].entries) {
+        for (auto const &ca : this->operator_matrices[c_idx].entries) {
+          if (ca.row == cd.col) { n_sigma[cd.row][ca.col] = n_sigma[cd.row][ca.col] + cd.value * ca.value; }
+        }
+      }
+
+      // acc ← n_σ · acc.
+      DenseMatrix prod{};
+      for (int row = 0; row < N_STATES; ++row) {
+        for (int k = 0; k < N_STATES; ++k) {
+          if (is_zero(n_sigma[row][k])) continue;
+          for (int col = 0; col < N_STATES; ++col) {
+            if (is_zero(acc[k][col])) continue;
+            prod[row][col] = prod[row][col] + n_sigma[row][k] * acc[k][col];
+          }
+        }
+      }
+      acc = prod;
+    }
+    return acc;
+  }
+
+  template <int N_sites, typename T>
+  T HubbardSolver<N_sites, T>::G0n_with_density_matrix(Args<N_sites, T> const &args, DenseMatrix const &N_matrix) const {
+    int n = args.order;
+
+    // exp(tau * deltaE) factors for the hybridization operators (see G0n).
+    ExpTable exp_tau_E, inv_exp_tau_E;
+    this->build_tau_exp_tables(args, exp_tau_E, inv_exp_tau_E);
+
+    std::array<T, N_STATES> buf_a, buf_b;
+
+    T result = T(0.0);
+    for (int start_state = 0; start_state < N_STATES; ++start_state) {
+      T *amplitudes = buf_a.data();
+      T *next       = buf_b.data();
+
+      std::fill(amplitudes, amplitudes + N_STATES, T(0.0));
+      amplitudes[start_state] = this->exp_beta_E[start_state];
+
+      // Apply N at τ=0 (right-most slot of the time-ordered trace, no
+      // evolution factor): amplitudes ← N · amplitudes.
+      std::fill(next, next + N_STATES, T(0.0));
+      for (int col = 0; col < N_STATES; ++col) {
+        if (is_zero(amplitudes[col])) continue;
+        for (int row = 0; row < N_STATES; ++row) {
+          if (is_zero(N_matrix[row][col])) continue;
+          next[row] = next[row] + N_matrix[row][col] * amplitudes[col];
+        }
+      }
+      std::swap(amplitudes, next);
+
+      // Then the hybridization operators, exactly as G0n does.
+      for (int i = n - 1; i >= 0; --i) {
+        std::fill(next, next + N_STATES, T(0.0));
+        uint8_t op_idx = args.ops[i].op;
+
+        for (auto const &entry : this->operator_matrices[op_idx].entries) {
+          if (is_zero(amplitudes[entry.col])) continue;
+          next[entry.row] = next[entry.row] + amplitudes[entry.col] * entry.value * exp_tau_E[i][entry.row] * inv_exp_tau_E[i][entry.col];
+        }
+        std::swap(amplitudes, next);
+      }
+      result = result + amplitudes[start_state];
+    }
+    return (T(1.0) / this->Z) * args.permutation_sign * result;
+  }
+
+  template <int N_sites, typename T>
   T HubbardSolver<N_sites, T>::G0n_with_densities(Args<N_sites, T> const &args, std::vector<int> const &density_orbitals) const {
+    // Empty decoration must recover plain G0n exactly (EmptyOrbitalsMatchesG0n).
+    if (density_orbitals.empty()) return this->G0n(args);
+    if (!args.operator_sequence_is_valid()) return T(0.0);
+
     if constexpr (N_sites != 1) {
-      // Cluster (N_sites >= 2) generalization is a separate workstream.
-      static_cast<void>(args);
-      static_cast<void>(density_orbitals);
-      return T(0.0);
+      // Cluster path: H_dimer mixes orbitals, so n_σ is NOT diagonal in the
+      // energy eigenbasis and the atomic start-state weighting is wrong.
+      // Insert N = Π_k n_{σ_k} as a matrix at the τ=0 trace slot.
+      DenseMatrix N_matrix = this->build_density_matrix(density_orbitals);
+      return this->G0n_with_density_matrix(args, N_matrix);
     } else {
-      if (density_orbitals.empty()) return this->G0n(args);
-      if (!args.operator_sequence_is_valid()) return T(0.0);
-
-      int n = args.order;
-
+      // ---- Atomic diagonal fast path ----
       // For atomic, n_σ is diagonal in the eigenbasis (states 0..3 are pure
       // occupation bitstrings). Precompute the per-start-state density factor.
+      int n = args.order;
+
       std::array<T, N_STATES> density_factor;
       for (int s = 0; s < N_STATES; ++s) {
         T factor = T(1.0);
