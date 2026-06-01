@@ -1,12 +1,13 @@
 #include "configuration.hpp"
+#include "sum_diagrams.hpp"
 #include "../dual.hpp"
 #include <triqs/mc_tools/random_generator.hpp>
 #include <cmath>
 
 namespace sc_expansion::dimer {
 
-  template <typename T>
-  Configuration<T>::Configuration(Parameters<T> const &params_, int order_, FreeEnergyCalculator<T> &calculator_, double alpha_)
+  template <typename T, typename Calculator>
+  Configuration<T, Calculator>::Configuration(Parameters<T> const &params_, int order_, Calculator &calculator_, double alpha_)
      : ConfigurationBase<T>(params_, order_), omega(0.0), proposed_omega(0.0), alpha(alpha_), calculator(calculator_) {
 
     this->state.resize(this->order);
@@ -17,7 +18,7 @@ namespace sc_expansion::dimer {
     this->metropolis_weight = std::abs(this->omega + this->alpha);
   }
 
-  template <typename T> double Configuration<T>::compute_omega() const {
+  template <typename T, typename Calculator> double Configuration<T, Calculator>::compute_omega() const {
     T val = this->calculator.compute_sum_diagrams(this->state);
     this->calculator.clear_all_caches();
     if constexpr (std::is_same_v<T, Dual>) {
@@ -27,23 +28,30 @@ namespace sc_expansion::dimer {
     }
   }
 
-  template <typename T> double Configuration<T>::evaluate_proposed() {
+  template <typename T, typename Calculator> double Configuration<T, Calculator>::evaluate_proposed() {
     this->proposed_omega = this->compute_omega();
     return std::abs(this->proposed_omega + this->alpha);
   }
 
-  template <typename T> void Configuration<T>::commit_proposal() {
+  template <typename T, typename Calculator> void Configuration<T, Calculator>::commit_proposal() {
     this->omega             = this->proposed_omega;
     this->metropolis_weight = std::abs(this->omega + this->alpha);
   }
 
-  template <typename T> double Configuration<T>::get_integrand() const { return this->omega; }
+  template <typename T, typename Calculator> double Configuration<T, Calculator>::get_integrand() const { return this->omega; }
 
-  template <typename T> double Configuration<T>::get_reference_integrand() const { return 0.0; }
+  template <typename T, typename Calculator> double Configuration<T, Calculator>::get_reference_integrand() const { return 0.0; }
 
-  template <typename T> void Configuration<T>::mark_tau_dirty(int tau_index) { this->calculator.mark_tau_dirty(tau_index); }
+  template <typename T, typename Calculator> void Configuration<T, Calculator>::mark_tau_dirty(int tau_index) {
+    this->calculator.mark_tau_dirty(tau_index);
+  }
 
-  template class Configuration<double>;
-  template class Configuration<Dual>;
+  // Free-energy driver (default calculator) — used by mcmc_dimer.cpp.
+  template class Configuration<double, FreeEnergyCalculator<double>>;
+  template class Configuration<Dual, FreeEnergyCalculator<Dual>>;
+
+  // Rooted density-density driver — used by mcmc_dimer_correlator.cpp.
+  template class Configuration<double, SumDiagrams<double>>;
+  template class Configuration<Dual, SumDiagrams<Dual>>;
 
 } // namespace sc_expansion::dimer

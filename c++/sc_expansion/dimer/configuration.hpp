@@ -9,9 +9,19 @@ namespace sc_expansion::dimer {
   // and the reference integrand exposed to the measure is the constant `alpha`.
   // Contrast with sc_expansion::atomic::Configuration, which uses the infinite-U
   // integrand as the reference.
-  template <typename T> class Configuration : public ConfigurationBase<T> {
+  //
+  // `Calculator` is the diagram-series engine driven each MC step. It defaults to
+  // FreeEnergyCalculator<T> (the free-energy / Omega series). Any type exposing the
+  // same surface works — in particular SumDiagrams<T>, which carries the rooted
+  // ⟨n(r)n(0)⟩ density-density series; for that calculator the integrand `omega`
+  // is the correlator value at the sampled imaginary times rather than the free
+  // energy. Required surface:
+  //   T    compute_sum_diagrams(std::vector<double> const &taus) const;
+  //   void clear_all_caches();
+  //   void mark_tau_dirty(int tau_index);
+  template <typename T, typename Calculator = FreeEnergyCalculator<T>> class Configuration : public ConfigurationBase<T> {
     public:
-    Configuration(Parameters<T> const &params, int order, FreeEnergyCalculator<T> &calculator, double alpha = 0.001);
+    Configuration(Parameters<T> const &params, int order, Calculator &calculator, double alpha = 0.001);
 
     double evaluate_proposed() override;
     void commit_proposal() override;
@@ -22,13 +32,13 @@ namespace sc_expansion::dimer {
     void mark_tau_dirty(int tau_index) override;
 
     double get_alpha() const { return this->alpha; }
-    FreeEnergyCalculator<T> const &get_calculator() const { return this->calculator; }
+    Calculator const &get_calculator() const { return this->calculator; }
 
     private:
     double omega;
     double proposed_omega;
     double alpha;
-    FreeEnergyCalculator<T> &calculator;
+    Calculator &calculator;
 
     double compute_omega() const;
   };
