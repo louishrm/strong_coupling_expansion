@@ -32,9 +32,7 @@ namespace sc_expansion::atomic {
   //
   // Cross-check: summing the return value over r at a fixed |r|² reproduces
   // RootedGraph::compute_shell_multiplicity()[|r|²] for the same (graph, marks).
-  int count_lattice_embeddings(Graph const &graph,
-                               std::vector<int> const &marks,
-                               std::vector<int> const &r);
+  int count_lattice_embeddings(Graph const &graph, std::vector<int> const &marks, std::vector<int> const &r);
 
   template <typename T> class Diagram {
     public:
@@ -52,10 +50,8 @@ namespace sc_expansion::atomic {
     // expected (keeps the callers' tau-layout convention uniform).
     // `flip_mark_order` is honored only for BlockConstraint encoding; it is
     // a no-op for StaticDensity (no mark pair to flip).
-    Diagram(Graph const &graph, std::vector<VertexType<T> *> const &vertex_types,
-            std::vector<int> marks, std::vector<int> mark_spins,
-            bool flip_mark_order = false,
-            MarkEncoding mark_encoding = MarkEncoding::BlockConstraint);
+    Diagram(Graph const &graph, std::vector<VertexType<T> *> const &vertex_types, std::vector<int> marks, std::vector<int> mark_spins,
+            bool flip_mark_order = false, MarkEncoding mark_encoding = MarkEncoding::BlockConstraint);
 
     T evaluate(std::vector<double> const &taus, HubbardSolver<1, T> const &solver, bool infinite_U);
 
@@ -83,11 +79,11 @@ namespace sc_expansion::atomic {
     Lines hopping_lines;
     int diagram_sign = 1;
 
-    bool is_rooted = false;
-    bool flip_mark_order = false; // if true, push (c_σ, c†_σ) instead of (c†_σ, c_σ)
+    bool is_rooted             = false;
+    bool flip_mark_order       = false; // if true, push (c_σ, c†_σ) instead of (c†_σ, c_σ)
     MarkEncoding mark_encoding = MarkEncoding::BlockConstraint;
-    std::vector<int> marks;       // vertex indices of marked vertices
-    std::vector<int> mark_spins;  // σ ∈ {0=↓, 1=↑} for each mark
+    std::vector<int> marks;      // vertex indices of marked vertices
+    std::vector<int> mark_spins; // σ ∈ {0=↓, 1=↑} for each mark
 
     // [config_idx][vertex_idx] — local cache per (config, vertex) pair
     std::vector<std::vector<VertexInstance<T>>> vertex_instances;
