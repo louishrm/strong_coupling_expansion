@@ -25,7 +25,6 @@ namespace sc_expansion {
     // Defined only for N_sites=1. Returns false for N_sites>=2 (no infinite-U path).
     bool operator_sequence_is_valid_infinite_U() const;
 
-    static std::pair<Args<N_sites, T>, Args<N_sites, T>> split_from_raw(std::vector<double> const &taus,
-                                                                        std::vector<uint8_t> const &op_ids);
+    static std::pair<Args<N_sites, T>, Args<N_sites, T>> split_from_raw(std::vector<double> const &taus, std::vector<uint8_t> const &op_ids);
   };
 } // namespace sc_expansion
