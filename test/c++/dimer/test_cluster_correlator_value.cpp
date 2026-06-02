@@ -93,22 +93,31 @@ TEST(DimerClusterCorrelator, OppSpinOnSiteMatchesED_U6) {
 }
 
 // -----------------------------------------------------------------------------
-//  Same-spin channel (the one the fix changed). SU(2) requires up,up == down,down.
-//  The off-site value is printed for an external ED cross-check.
+//  Same-spin channel (the one the fix changed). SU(2) requires up,up == down,down,
+//  and the off-site (intra-dimer) order-2 coefficient must match the exact 3-dimer
+//  ED reference — closing the last value-validation gap for the rooted correlator.
 // -----------------------------------------------------------------------------
-TEST(DimerClusterCorrelator, SameSpinObeysSU2AndPrintsValues) {
+TEST(DimerClusterCorrelator, SameSpinObeysSU2AndMatchesED) {
   // On-site same-spin must be spin-flip symmetric.
   double uu = cluster_coeff_order2(12.0, 3.0, 1.0, {0, 0}, SPIN_UP, SPIN_UP);
   double dd = cluster_coeff_order2(12.0, 3.0, 1.0, {0, 0}, SPIN_DOWN, SPIN_DOWN);
   std::cout << std::setprecision(10) << "same-spin on-site order-2:  up,up=" << uu << "  down,down=" << dd << "\n";
   EXPECT_NEAR(uu, dd, 1e-9) << "SU(2): up,up and down,down on-site coefficients must be equal";
 
-  // Off-site (intra-dimer neighbor) same-spin coefficient — print for an external
-  // ED cross-check (compute the order-2 t-coefficient of <n_{(1,0),up} n_{(0,0),up}>_c
-  // on the 3-dimer cluster from your Python HubbardED and compare).
-  double off_uu = cluster_coeff_order2(12.0, 3.0, 1.0, {1, 0}, SPIN_UP, SPIN_UP);
-  std::cout << std::setprecision(10) << "same-spin r=(1,0) order-2 (compare to ED): " << off_uu << "\n";
-  // TODO(ED): replace with EXPECT_NEAR(off_uu, <ED value>, tol) once the reference
-  // is computed. The opp-spin matches above already validate the Simpson machinery.
-  EXPECT_TRUE(std::isfinite(off_uu));
+  // Off-site (intra-dimer neighbor) same-spin coefficient — the value the rooted-
+  // weight fix most directly affects (this intra-dimer separation is the one the
+  // dimer reference treats exactly). Exact 3-dimer ED order-2 (t_inter^2) coefficient
+  // of <n_{(1,0),up} n_{(0,0),up}>_c at U=12, mu=3, beta=1, t_intra=1, computed by the
+  // same ED/Cauchy-contour extraction that produced the opp-spin references above
+  // (down,down == up,up by SU(2)). As with the U=12 on-site opp-spin case, the order-2
+  // integrand is sharply peaked (~1/U), so n_grid=80 carries a few-percent Simpson
+  // (O(h^4)) error; refining to 320 must converge onto ED — confirming the residual is
+  // quadrature, not the rooted weight.
+  double ed_off  = 0.000749059713;
+  double off80   = cluster_coeff_order2(12.0, 3.0, 1.0, {1, 0}, SPIN_UP, SPIN_UP, /*n_grid=*/80);
+  double off320  = cluster_coeff_order2(12.0, 3.0, 1.0, {1, 0}, SPIN_UP, SPIN_UP, /*n_grid=*/320);
+  std::cout << std::setprecision(10) << "same-spin r=(1,0) order-2: Simpson(80)=" << off80 << "  Simpson(320)=" << off320 << "  ED=" << ed_off
+            << "  rel(320)=" << std::abs(off320 - ed_off) / std::abs(ed_off) << "\n";
+  EXPECT_NEAR(off320, ed_off, 0.02 * std::abs(ed_off)) << "off-site same-spin order-2 coefficient must match ED (grid-converged)";
+  EXPECT_LT(std::abs(off320 - ed_off), std::abs(off80 - ed_off)) << "refining the Simpson grid must approach ED (residual is quadrature error)";
 }

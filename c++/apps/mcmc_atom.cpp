@@ -14,6 +14,8 @@
 #include <sstream>
 #include <chrono>
 #include <memory>
+#include <limits>
+#include <cstdlib>
 
 // Broadcast a rooted catalog (graphs + per-graph mark pair) from rank 0 to all
 // other ranks. Each graph is serialised as broadcast_graphs() does; the marks
@@ -183,13 +185,19 @@ std::pair<double, double> compute_reference_integral_mpi(sc_expansion::atomic::S
 
 template <typename T>
 void run(mpi::communicator &world, int order, int n_cycles, double U, double beta, double mu, bool bipartite, double alpha, int n_warmup_cycles,
-         int length_cycle, std::string random_name, int random_seed, int verbosity, std::vector<int> const &r, int s1, int s2) {
+         int length_cycle, std::string random_name, int random_seed, int verbosity, std::vector<int> const &r, int s1, int s2, int dual_mode,
+         bool compute_reference) {
 
   bool corr_mode = !r.empty();
 
   sc_expansion::Parameters<T> params;
   if constexpr (std::is_same_v<T, Dual>) {
-    params = {Dual(U, 0.0), Dual(beta, 0.0), Dual(mu, 1.0), Dual(0.0, 0.0), bipartite, Dual(0.0, 0.0)};
+    // dual_mode picks which static parameter carries the unit derivative seed:
+    //   1 → μ  (∂Ω/∂μ = density)
+    //   2 → U  (∂Ω/∂U = double occupancy ⟨n↑n↓⟩, by Hellmann-Feynman on the U·n↑n↓ term)
+    double mu_seed = (dual_mode == 1) ? 1.0 : 0.0;
+    double U_seed  = (dual_mode == 2) ? 1.0 : 0.0;
+    params         = {Dual(U, U_seed), Dual(beta, 0.0), Dual(mu, mu_seed), Dual(0.0, 0.0), bipartite, Dual(0.0, 0.0)};
   } else {
     params = {U, beta, mu, 0.0, bipartite, 0.0};
   }
@@ -242,13 +250,27 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
   auto &calculator = *calculator_ptr;
 
   // --- Phase 3: MPI-parallel infinite-U reference integral using SJT (diagnostic only) ---
-  if (world.rank() == 0) { std::cout << "Computing reference integral across " << world.size() << " MPI ranks (SJT) [diagnostic only]..." << std::endl; }
-  auto t_ref_start                                     = std::chrono::high_resolution_clock::now();
-  auto [reference_integral, signed_reference_integral] = compute_reference_integral_mpi(calculator, params, order, world);
-  auto t_ref_end                                       = std::chrono::high_resolution_clock::now();
-  if (world.rank() == 0) {
-    std::cout << "Reference integral: " << signed_reference_integral << " (abs: " << reference_integral << ")"
-              << " computed in " << std::chrono::duration<double>(t_ref_end - t_ref_start).count() << " s." << std::endl;
+  // Bypassed by default (compute_reference=false). The production estimator is the
+  // uniform-reference |f+alpha| scheme (Phases 4-5), which needs no infinite-U
+  // baseline; the SJT integral is an O(n!) diagnostic only — and the double-occupancy
+  // (dual-U) observable has no infinite-U baseline to compare against in the first
+  // place. Set SCE_COMPUTE_REFERENCE=1 to re-enable it (e.g. to validate the Omega
+  // series against the exact infinite-U coefficient).
+  double reference_integral        = std::numeric_limits<double>::quiet_NaN();
+  double signed_reference_integral = std::numeric_limits<double>::quiet_NaN();
+  if (compute_reference) {
+    if (world.rank() == 0) { std::cout << "Computing reference integral across " << world.size() << " MPI ranks (SJT) [diagnostic only]..." << std::endl; }
+    auto t_ref_start = std::chrono::high_resolution_clock::now();
+    auto [ri, sri]   = compute_reference_integral_mpi(calculator, params, order, world);
+    auto t_ref_end   = std::chrono::high_resolution_clock::now();
+    reference_integral        = ri;
+    signed_reference_integral = sri;
+    if (world.rank() == 0) {
+      std::cout << "Reference integral: " << signed_reference_integral << " (abs: " << reference_integral << ")"
+                << " computed in " << std::chrono::duration<double>(t_ref_end - t_ref_start).count() << " s." << std::endl;
+    }
+  } else if (world.rank() == 0) {
+    std::cout << "Skipping infinite-U reference integral (|f+alpha| estimator only; set SCE_COMPUTE_REFERENCE=1 to enable the diagnostic)." << std::endl;
   }
 
   if (world.rank() == 0) { std::filesystem::create_directory("./results"); }
@@ -311,7 +333,7 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
 
     std::cout << "Total time (s): " << total_time << std::endl;
     std::cout << "Time per step (s): " << total_time / total_steps << std::endl;
-    std::cout << "Exact infinite-U coefficient (order " << order << "): " << signed_reference_integral << std::endl;
+    if (compute_reference) { std::cout << "Exact infinite-U coefficient (order " << order << "): " << signed_reference_integral << std::endl; }
 
     std::string lattice = bipartite ? "square" : "triangular";
 
@@ -328,7 +350,7 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
           << meas.result->coeff << ',' << meas.result->error << ',' << reference_integral;
       row_str = row.str();
     } else {
-      std::string observable = std::is_same_v<T, Dual> ? "density" : "Omega";
+      std::string observable = (dual_mode == 1) ? "density" : (dual_mode == 2) ? "double_occupancy" : "Omega";
       filename               = "./results/atom_" + lattice + "_lattice_" + observable + ".csv";
       header                 = "U,beta,mu,order,alpha,coeff,error,reference_integral";
       std::ostringstream row;
@@ -348,8 +370,10 @@ int main(int argc, char *argv[]) {
 
   if (argc < 6) {
     if (mpi::communicator().rank() == 0) {
-      std::cerr << "Usage: " << argv[0] << " order n_cycles U beta mu [bipartite] [alpha] [use_dual] [rx ry s1 s2]" << std::endl;
+      std::cerr << "Usage: " << argv[0] << " order n_cycles U beta mu [bipartite] [alpha] [dual_mode] [rx ry s1 s2]" << std::endl;
+      std::cerr << "  dual_mode (default 0): 0 = free energy (Omega); 1 = density (∂Ω/∂μ); 2 = double occupancy (∂Ω/∂U)." << std::endl;
       std::cerr << "  rx ry s1 s2: if all four are present, run density-density correlator at r=(rx,ry) with mark spins (s1,s2)." << std::endl;
+      std::cerr << "  env SCE_COMPUTE_REFERENCE=1: also compute the (diagnostic, O(n!)) infinite-U reference integral; default skips it." << std::endl;
     }
     return 1;
   }
@@ -361,7 +385,20 @@ int main(int argc, char *argv[]) {
   double mu      = std::stod(argv[5]);
   bool bipartite = (argc > 6 ? std::stoi(argv[6]) != 0 : true);
   double alpha   = (argc > 7 ? std::stod(argv[7]) : 0.5);
-  bool use_dual  = (argc > 8 ? std::stoi(argv[8]) != 0 : false);
+  int dual_mode  = (argc > 8 ? std::stoi(argv[8]) : 0); // 0=Omega, 1=density (∂/∂μ), 2=double occupancy (∂/∂U)
+  bool use_dual  = (dual_mode != 0);
+
+  if (dual_mode < 0 || dual_mode > 2) {
+    if (mpi::communicator().rank() == 0) {
+      std::cerr << "dual_mode must be 0 (Omega), 1 (density, ∂/∂μ) or 2 (double occupancy, ∂/∂U); got " << dual_mode << "." << std::endl;
+    }
+    return 1;
+  }
+
+  // Diagnostic infinite-U reference integral is bypassed by default (the |f+alpha|
+  // estimator is self-contained); set SCE_COMPUTE_REFERENCE=1 to re-enable it.
+  const char *ref_env    = std::getenv("SCE_COMPUTE_REFERENCE");
+  bool compute_reference = (ref_env != nullptr && std::string(ref_env) == "1");
 
   std::vector<int> r;
   int s1 = 0, s2 = 0;
@@ -379,7 +416,7 @@ int main(int argc, char *argv[]) {
     r      = {rx, ry};
     if (use_dual) {
       if (mpi::communicator().rank() == 0) {
-        std::cerr << "use_dual must be 0 in density-density mode (no μ-derivative for the correlator)." << std::endl;
+        std::cerr << "dual_mode must be 0 in density-density mode (no μ/U-derivative for the correlator)." << std::endl;
       }
       return 1;
     }
@@ -391,7 +428,8 @@ int main(int argc, char *argv[]) {
   if (world.rank() == 0) {
     std::cout << "=== Strong Coupling MC (Atomic) ===" << std::endl;
     std::cout << "MPI ranks: " << world.size() << std::endl;
-    std::cout << "Order=" << order << " U=" << U << " beta=" << beta << " mu=" << mu << " bipartite=" << bipartite << " alpha=" << alpha;
+    std::cout << "Order=" << order << " U=" << U << " beta=" << beta << " mu=" << mu << " bipartite=" << bipartite << " alpha=" << alpha
+              << " dual_mode=" << dual_mode;
     if (!r.empty()) std::cout << " r=(" << r[0] << "," << r[1] << ") s1=" << s1 << " s2=" << s2;
     std::cout << std::endl;
   }
@@ -403,9 +441,11 @@ int main(int argc, char *argv[]) {
   int verbosity           = (world.rank() == 0 ? 2 : 0);
 
   if (use_dual) {
-    run<Dual>(world, order, n_cycles, U, beta, mu, bipartite, alpha, n_warmup_cycles, length_cycle, random_name, random_seed, verbosity, r, s1, s2);
+    run<Dual>(world, order, n_cycles, U, beta, mu, bipartite, alpha, n_warmup_cycles, length_cycle, random_name, random_seed, verbosity, r, s1, s2,
+              dual_mode, compute_reference);
   } else {
-    run<double>(world, order, n_cycles, U, beta, mu, bipartite, alpha, n_warmup_cycles, length_cycle, random_name, random_seed, verbosity, r, s1, s2);
+    run<double>(world, order, n_cycles, U, beta, mu, bipartite, alpha, n_warmup_cycles, length_cycle, random_name, random_seed, verbosity, r, s1, s2,
+                dual_mode, compute_reference);
   }
 
   return 0;
