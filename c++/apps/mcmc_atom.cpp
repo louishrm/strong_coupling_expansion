@@ -350,7 +350,7 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
           << meas.result->coeff << ',' << meas.result->error << ',' << reference_integral;
       row_str = row.str();
     } else {
-      std::string observable = (dual_mode == 1) ? "density" : (dual_mode == 2) ? "double_occupancy" : "Omega";
+      std::string observable = (dual_mode == 1) ? "density" : (dual_mode == 2) ? "double_occupancy" : "free_energy";
       filename               = "./results/atom_" + lattice + "_lattice_" + observable + ".csv";
       header                 = "U,beta,mu,order,alpha,coeff,error,reference_integral";
       std::ostringstream row;
