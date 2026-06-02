@@ -70,11 +70,18 @@ namespace {
 //  Regression guard: the fix must not perturb the opposite-spin channel.
 // -----------------------------------------------------------------------------
 TEST(DimerClusterCorrelator, OppSpinOnSiteMatchesED_U12) {
-  double coeff = cluster_coeff_order2(/*U=*/12.0, /*mu=*/3.0, /*beta=*/1.0, {0, 0}, SPIN_UP, SPIN_DOWN);
-  double ed    = 0.000675371799; // exact finite-cluster ED (single-site, pinned)
-  std::cout << std::setprecision(10) << "U=12 opp-spin on-site order-2: Simpson=" << coeff << "  ED=" << ed << "  rel=" << std::abs(coeff - ed) / ed
-            << "\n";
-  EXPECT_NEAR(coeff, ed, 0.02 * std::abs(ed)) << "opposite-spin on-site coefficient must still match ED after the fix";
+  double ed = 0.000675371799; // exact finite-cluster ED (single-site, pinned)
+  // At U=12, beta=1 the imaginary-time integrand varies on a scale ~1/U ≈ 0.083;
+  // the default n_grid=80 (h=0.0125) under-resolves it, leaving a ~3% Simpson
+  // (O(h^4)) error. Refining the grid must converge to ED — confirming the
+  // residual is quadrature resolution, not the rooted-weight fix (which leaves
+  // this order-2 opp-spin value untouched: the U=6 case below matches at 0.03%).
+  double c80  = cluster_coeff_order2(12.0, 3.0, 1.0, {0, 0}, SPIN_UP, SPIN_DOWN, /*n_grid=*/80);
+  double c320 = cluster_coeff_order2(12.0, 3.0, 1.0, {0, 0}, SPIN_UP, SPIN_DOWN, /*n_grid=*/320);
+  std::cout << std::setprecision(10) << "U=12 opp-spin on-site order-2: Simpson(80)=" << c80 << "  Simpson(320)=" << c320 << "  ED=" << ed
+            << "  rel(320)=" << std::abs(c320 - ed) / ed << "\n";
+  EXPECT_NEAR(c320, ed, 0.02 * std::abs(ed)) << "opposite-spin on-site coefficient must match ED (grid-converged)";
+  EXPECT_LT(std::abs(c320 - ed), std::abs(c80 - ed)) << "refining the Simpson grid must approach ED (residual is quadrature error)";
 }
 
 TEST(DimerClusterCorrelator, OppSpinOnSiteMatchesED_U6) {

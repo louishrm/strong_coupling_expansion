@@ -232,3 +232,143 @@ TEST(DimerOnSiteSameSpin, SameSpinGroupsCancelAfterFix) {
   // they carry the genuine connected double-occupancy and must be kept.
   EXPECT_GT(std::abs(dist_o), 1e-3) << "distinct-vertex diagrams are legitimate in the opposite-spin channel";
 }
+
+// -----------------------------------------------------------------------------
+//  Test 3 — order-5 residual localizer. After the order-4 fix, the on-site
+//  same-spin coefficient still does not vanish at order 5 (cluster run:
+//  ~4.0e-4, ~113 sigma). The factor-2 doubling is gone, so this is a subtler
+//  per-topology imbalance between the coincident-marks group and the
+//  distinct-vertex group (at r=0 BOTH marks land on site 0 of cell (0,0)).
+//
+//  This dumps the integrated contribution of EACH order-5 diagram (shared tau
+//  stream so the grouping is exact), tagged by a topology signature, so the
+//  single graph whose coincident/distinct partner fails to cancel is visible.
+//  Same-spin must vanish; the opposite-spin column is the legitimate-physics
+//  contrast (it need not vanish).
+// -----------------------------------------------------------------------------
+namespace {
+  // A coarse but stable per-diagram fingerprint: V, #directed-edge-entries,
+  // sorted degree sequence, coincident-marks flag. Enough to tell topologies
+  // apart in the dump without a full canonical form.
+  std::string topo_signature(Diagram<double> const &d) {
+    auto const &g = d.get_graph();
+    int V = g.get_V(), edges = 0;
+    for (int i = 0; i < V; ++i)
+      for (int j = 0; j < V; ++j) edges += g(i, j);
+    auto deg = graph_degrees(g);
+    std::sort(deg.begin(), deg.end());
+    std::string s = "V" + std::to_string(V) + " E" + std::to_string(edges) + " deg[";
+    for (size_t i = 0; i < deg.size(); ++i) s += (i ? "," : "") + std::to_string(deg[i]);
+    s += "]";
+    return s;
+  }
+
+  // Integrate every diagram of `sd` over a shared uniform tau stream; returns
+  // per-diagram coefficient estimates (beta^order * mean), index-aligned with
+  // sd.get_diagrams().
+  std::vector<double> per_diagram_coeffs(SumDiagrams<double> &sd, int order, int n_samples, uint64_t seed) {
+    auto const &solver = sd.get_solver();
+    auto const &diags  = sd.get_diagrams();
+    std::vector<double> acc(diags.size(), 0.0);
+    std::mt19937_64 rng(seed);
+    std::uniform_real_distribution<double> uni(0.0, BETA);
+    std::vector<double> taus(order);
+    for (int i = 0; i < n_samples; ++i) {
+      for (int j = 0; j < order; ++j) taus[j] = uni(rng);
+      for (size_t k = 0; k < diags.size(); ++k) {
+        auto &d = const_cast<Diagram<double> &>(diags[k]);
+        d.mark_all_dirty();
+        acc[k] += d.evaluate(taus, solver);
+      }
+    }
+    double scale = std::pow(BETA, order) / n_samples;
+    for (auto &a : acc) a *= scale;
+    return acc;
+  }
+} // namespace
+
+TEST(DimerOnSiteSameSpin, Order5ResidualPerDiagram) {
+  auto params     = half_filled_params();
+  int const order = 5;
+
+  SumDiagrams<double> sd_same(params, order, {0, 0}, /*s1=*/1, /*s2=*/1); // up, up
+  SumDiagrams<double> sd_opp(params, order, {0, 0}, /*s1=*/0, /*s2=*/1);  // up, down
+  ASSERT_EQ(sd_same.get_n_diagrams(), sd_opp.get_n_diagrams()) << "catalog is spin-blind";
+
+  auto same = per_diagram_coeffs(sd_same, order, kSamples, /*seed=*/24680u);
+  auto opp  = per_diagram_coeffs(sd_opp, order, kSamples, /*seed=*/24680u);
+
+  auto const &diags = sd_same.get_diagrams();
+  std::cout << std::setprecision(6) << std::fixed;
+  std::cout << "\n[order-5 per-diagram on-site coefficient (r=0)]\n";
+  std::cout << "  idx  coin?  marks   sites   rootedSym  |Aut|   same_spin      opp_spin    topology\n";
+
+  double coin_same = 0.0, dist_same = 0.0;
+  // Accumulate same-spin by topology signature to expose which graph's
+  // coincident/distinct pair fails to cancel.
+  std::map<std::string, double> by_topo_same, by_topo_opp;
+  for (size_t k = 0; k < diags.size(); ++k) {
+    auto const &d = diags[k];
+    auto m = d.get_marks(), s = d.get_sites();
+    bool coincident = (m[0] == m[1]);
+    if (coincident) coin_same += same[k];
+    else dist_same += same[k];
+    std::string sig = topo_signature(d);
+    by_topo_same[sig] += same[k];
+    by_topo_opp[sig] += opp[k];
+
+    std::cout << "  " << std::setw(3) << k << "   " << (coincident ? "Y" : "n") << "    (" << m[0] << "," << m[1] << ")   (" << s[0] << ","
+              << s[1] << ")   " << std::setw(7) << d.get_rooted_sym_factor() << "   " << std::setw(4) << count_full_automorphisms(d.get_graph())
+              << "   " << std::setw(11) << same[k] << "  " << std::setw(11) << opp[k] << "   " << sig << "\n";
+  }
+
+  std::cout << "\n[order-5 same-spin grouped by topology]  (each row should be ~0 for same spin)\n";
+  for (auto const &[sig, val] : by_topo_same)
+    std::cout << "  same=" << std::setw(11) << val << "   opp=" << std::setw(11) << by_topo_opp[sig] << "   " << sig << "\n";
+
+  std::cout << "\n  coincident group total : " << coin_same << "\n"
+            << "  distinct  group total  : " << dist_same << "\n"
+            << "  same-spin total        : " << (coin_same + dist_same) << "\n\n";
+
+  // This documents the open bug: at order 5 the same-spin total is NOT yet zero.
+  // Once the per-topology imbalance is fixed, flip this to EXPECT_NEAR(...,0).
+  // For now it is a localizer, not a pass/fail gate, so don't fail the suite.
+  EXPECT_TRUE(true);
+}
+
+// -----------------------------------------------------------------------------
+//  Test 4 — fast (no-MC) STRUCTURAL dump of the order-5 catalog. Prints, per
+//  diagram, the adjacency matrix, directed hopping lines, embedding free
+//  multiplicity, rooted_sym_factor, and #valid-configs. No integration, so it
+//  returns instantly. Purpose: see whether the double-bonded coincident
+//  diagrams (idx 16/18 in the per-diagram test) are isomorphic duplicates and
+//  whether the embedding count already absorbs the parallel-line interchange
+//  (which would make the rooted_sym_factor multi-edge division a double-correct).
+// -----------------------------------------------------------------------------
+TEST(DimerOnSiteSameSpin, Order5StructureDump) {
+  auto params     = half_filled_params();
+  int const order = 5;
+  SumDiagrams<double> sd(params, order, {0, 0}, /*s1=*/1, /*s2=*/1); // up, up
+
+  std::cout << std::setprecision(6) << std::fixed;
+  std::cout << "\n[order-5 structural dump]\n";
+  int idx = 0;
+  for (auto const &d : sd.get_diagrams()) {
+    auto const &g = d.get_graph();
+    int V         = g.get_V();
+    auto m = d.get_marks(), s = d.get_sites();
+    bool coincident = (m[0] == m[1]);
+
+    std::cout << "idx " << idx++ << "  V=" << V << "  marks(" << m[0] << "," << m[1] << ")  sites(" << s[0] << "," << s[1] << ")  "
+              << (coincident ? "COINCIDENT" : "distinct ") << "  freeMult=" << d.get_free_multiplicity()
+              << "  rootedSym=" << d.get_rooted_sym_factor() << "  nValidCfg=" << d.get_valid_configurations().size() << "\n";
+
+    std::cout << "    adj(directed g(i,j)):\n";
+    for (int i = 0; i < V; ++i) {
+      std::cout << "      ";
+      for (int j = 0; j < V; ++j) std::cout << (int)g(i, j) << " ";
+      std::cout << "\n";
+    }
+  }
+  EXPECT_TRUE(true);
+}

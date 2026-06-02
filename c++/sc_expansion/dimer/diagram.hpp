@@ -147,6 +147,14 @@ namespace sc_expansion::dimer {
     // rooted branch of compute_valid_configurations.
     double rooted_sym_factor = 1.0;
 
+    // True iff some graph automorphism swaps the two marks (perm[m0]=m1,
+    // perm[m1]=m0). Set alongside rooted_sym_factor in compute_rooted_automorphisms.
+    // Drives the r=0 label-swap multiplicity (see compute_valid_configurations):
+    // a distinct-mark graph WITHOUT such an automorphism represents two physically
+    // identical but distinctly-labelled mark assignments, only one of which the
+    // mark-fixing canonicalisation keeps, so its weight is doubled at r=0.
+    bool mark_swap_exists = false;
+
     // [config_idx][vertex_idx] — fallback path when local_states isn't built.
     std::vector<std::vector<VertexInstance<T>>> vertex_instances;
 

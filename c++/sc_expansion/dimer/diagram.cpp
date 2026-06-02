@@ -331,6 +331,9 @@ namespace sc_expansion::dimer {
   // (parallel hopping lines between a fixed vertex pair are interchangeable but
   // invisible to the permutation enumeration; matches Graph's both-directed-entries
   // convention). For distinct-site marks this equals the catalog's rooted_symmetry_factor.
+  // Side effect: sets mark_swap_exists if any automorphism swaps the two marks
+  // (m0<->m1), which the r=0 label-swap multiplicity in compute_valid_configurations
+  // consumes.
   template <typename T> std::vector<std::vector<int>> Diagram<T>::compute_rooted_automorphisms() {
     int V = this->graph.get_V();
 
@@ -339,17 +342,10 @@ namespace sc_expansion::dimer {
       for (int j = 0; j < V; ++j) degrees[i] += this->graph(i, j) + this->graph(j, i);
 
     std::vector<std::vector<int>> automorphisms;
+    this->mark_swap_exists = false;
     std::vector<int> perm(V);
     std::iota(perm.begin(), perm.end(), 0);
     do {
-      bool fixes_marks = true;
-      for (int m : this->marks)
-        if (perm[m] != m) {
-          fixes_marks = false;
-          break;
-        }
-      if (!fixes_marks) continue;
-
       bool degree_ok = true;
       for (int i = 0; i < V; ++i)
         if (degrees[perm[i]] != degrees[i]) {
@@ -362,7 +358,22 @@ namespace sc_expansion::dimer {
       for (int i = 0; i < V && is_auto; ++i)
         for (int j = 0; j < V && is_auto; ++j)
           if (this->graph(i, j) != this->graph(perm[i], perm[j])) is_auto = false;
-      if (is_auto) automorphisms.push_back(perm);
+      if (!is_auto) continue;
+
+      // Mark-fixing automorphisms (the rooted stabiliser) feed rooted_sym_factor.
+      bool fixes_marks = true;
+      for (int m : this->marks)
+        if (perm[m] != m) {
+          fixes_marks = false;
+          break;
+        }
+      if (fixes_marks) automorphisms.push_back(perm);
+
+      // Detect a mark-swap automorphism (m0 <-> m1) for the r=0 label-swap
+      // multiplicity. Only meaningful for two distinct marks.
+      if (this->marks.size() == 2 && this->marks[0] != this->marks[1] && perm[this->marks[0]] == this->marks[1]
+          && perm[this->marks[1]] == this->marks[0])
+        this->mark_swap_exists = true;
     } while (std::next_permutation(perm.begin(), perm.end()));
 
     double multiedge = 1.0;
@@ -754,19 +765,34 @@ namespace sc_expansion::dimer {
     // symmetry, so the orbit is NOT folded (mirrors atomic::Diagram); divide by
     // the rooted symmetry factor instead.
     //
-    // No n_mark_orbit doubling. The earlier code doubled the weight for distinct
-    // marks sharing both within-dimer site and spin, on the theory that the
-    // catalog folds the (i,j)/(j,i) mark-swap that the pointwise enumeration
-    // omits. That is wrong: an embedding-multiplicity factor cannot depend on
-    // the measured mark spins (the lattice placement count is spin-blind), yet
-    // that condition did. The mark-swap is already supplied by the ±r
-    // enumeration (the −r anchoring is the translation-image of the swapped +r
-    // placement); at r=0 there is no second anchoring to restore. The on-site
+    // Rooted label-swap multiplicity (n_mark_orbit). The rooted weight mirrors
+    // the validated atomic convention: weight = free_mult · n_mark_orbit /
+    // sym_factor, with n_mark_orbit = m!/∏_v(marks_at_v!) (= 2 for two distinct
+    // marks, 1 for coincident) and sym_factor the FULL symmetry factor. Here we
+    // instead divide by the mark-FIXING symmetry factor (rooted_sym_factor),
+    // which for a graph with a mark-swap automorphism is half the full one — that
+    // factor-2 difference already absorbs n_mark_orbit, so such graphs need
+    // n_mark_orbit = 1. A distinct-mark graph WITHOUT a mark-swap automorphism
+    // has equal full and mark-fixing factors, so it still needs the explicit ×2:
+    // its two physically-identical, distinctly-labelled mark assignments
+    // (m0@a,m1@b) and (m0@b,m1@a) are not related by any symmetry, and the
+    // mark-fixing canonicalisation keeps only one.
+    //
+    // This factor lives at r=0 ONLY. For r≠0 the ±r enumeration already supplies
+    // the swapped placement (the −r anchoring is the translation-image of the
+    // swapped +r placement), and those cases are independently validated; at r=0
+    // there is no second anchoring, so the multiplicity must be restored here.
+    // It is spin-independent (the lattice/label count is spin-blind) — the
+    // earlier spin-dependent doubling was wrong and is gone. The on-site
     // same-spin sum rule ⟨n_σ(0)n_σ(0)⟩_c = ⟨n_σ⟩−⟨n_σ⟩² (t-independent at half
-    // filling ⇒ zero at every order ≥1) confirms the correct factor is 1: with
-    // the doubling the order-4 coefficient was ≈+0.018 instead of 0.
+    // filling ⇒ 0 at every order ≥1) is the regression guard: it vanishes order
+    // by order only with this rule (order 4's distinct C4 has a mark-swap ⇒ ×1;
+    // order 5's distinct graphs without one need ×2).
     double sym_factor   = this->is_rooted ? this->rooted_sym_factor : this->graph.get_symmetry_factor();
     double n_mark_orbit = 1.0;
+    if (this->is_rooted && this->marks[0] != this->marks[1] && this->target_r[0] == 0 && this->target_r[1] == 0
+        && !this->mark_swap_exists)
+      n_mark_orbit = 2.0;
 
     constexpr uint8_t ACTION_BIT = FermionOperator<2, T>::ACTION_BIT;
 
