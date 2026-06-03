@@ -164,17 +164,20 @@ DimerMeasureResult run_mcmc(mpi::communicator &world, sc_expansion::Parameters<T
 }
 
 // Free-energy (ln Z) expansion. Templated on the scalar T so the Dual variant
-// yields the μ-derivative (density) coefficient.
+// yields a derivative coefficient: dual_mode 1 seeds μ (density ∂Ω/∂μ), dual_mode
+// 2 seeds U (double occupancy ⟨n↑n↓⟩ = ∂Ω/∂U). dual_mode 0 is plain free energy.
 template <typename T>
 void run_free_energy(mpi::communicator &world, int order, int n_cycles, double U, double beta, double mu, double t_hop, double alpha,
-                     int n_warmup_cycles, int length_cycle, std::string random_name, int random_seed, int verbosity) {
+                     int n_warmup_cycles, int length_cycle, std::string random_name, int random_seed, int verbosity, int dual_mode) {
 
   // Staggered dimer expansion: full (non-bipartite) topology set.
   bool bipartite = false;
 
   sc_expansion::Parameters<T> params;
   if constexpr (std::is_same_v<T, Dual>) {
-    params = {Dual(U, 0.0), Dual(beta, 0.0), Dual(mu, 1.0), Dual(t_hop, 0.0), bipartite, Dual(0.0, 0.0)};
+    double mu_seed = (dual_mode == 1) ? 1.0 : 0.0;
+    double U_seed  = (dual_mode == 2) ? 1.0 : 0.0;
+    params         = {Dual(U, U_seed), Dual(beta, 0.0), Dual(mu, mu_seed), Dual(t_hop, 0.0), bipartite, Dual(0.0, 0.0)};
   } else {
     params = {U, beta, mu, t_hop, bipartite, 0.0};
   }
@@ -204,7 +207,7 @@ void run_free_energy(mpi::communicator &world, int order, int n_cycles, double U
   if (world.rank() == 0) {
     std::cout << "Order-" << order << " staggered dimer coefficient: " << result.coeff << " ± " << result.error << std::endl;
 
-    std::string observable = std::is_same_v<T, Dual> ? "density" : "Omega";
+    std::string observable = (dual_mode == 1) ? "density" : (dual_mode == 2) ? "double_occupancy" : "free_energy";
     std::string filename   = "./results/dimer_square_lattice_" + observable + ".csv";
 
     std::ostringstream row;
@@ -275,9 +278,9 @@ int main(int argc, char *argv[]) {
 
   if (argc < 7) {
     if (mpi::communicator().rank() == 0) {
-      std::cerr << "Usage: " << argv[0] << " order n_cycles U beta mu t [alpha] [use_dual] [use_cluster] [rx ry s1 s2]" << std::endl;
+      std::cerr << "Usage: " << argv[0] << " order n_cycles U beta mu t [alpha] [dual_mode] [use_cluster] [rx ry s1 s2]" << std::endl;
       std::cerr << "  rx ry s1 s2 : if all four are present, run the density-density correlator at r=(rx,ry) with mark spins (s1,s2)." << std::endl;
-      std::cerr << "  use_dual (default 0): 1 = μ-derivative (density) coefficient. Free-energy mode only." << std::endl;
+      std::cerr << "  dual_mode (default 0): 0 = free energy Omega, 1 = density (∂Ω/∂μ), 2 = double occupancy (∂Ω/∂U). Free-energy mode only." << std::endl;
       std::cerr << "  use_cluster (default 0): 1 = 3-dimer triangle (ED-comparable), 0 = infinite lattice (correlator mode only)." << std::endl;
       std::cerr << "  s1 s2 : mark spins (0=down, 1=up) at (0,0) and r." << std::endl;
     }
@@ -291,8 +294,13 @@ int main(int argc, char *argv[]) {
   double mu        = std::stod(argv[5]);
   double t_hop     = std::stod(argv[6]);
   double alpha     = (argc > 7 ? std::stod(argv[7]) : 0.001);
-  bool use_dual    = (argc > 8 ? std::stoi(argv[8]) != 0 : false);
+  int dual_mode    = (argc > 8 ? std::stoi(argv[8]) : 0);
   bool use_cluster = (argc > 9 ? std::stoi(argv[9]) != 0 : false);
+
+  if (dual_mode < 0 || dual_mode > 2) {
+    if (mpi::communicator().rank() == 0) { std::cerr << "dual_mode must be 0 (free energy), 1 (density), or 2 (double occupancy)." << std::endl; }
+    return 1;
+  }
 
   std::vector<int> r;
   int s1 = 0, s2 = 0;
@@ -308,9 +316,9 @@ int main(int argc, char *argv[]) {
     s1     = std::stoi(argv[12]);
     s2     = std::stoi(argv[13]);
     r      = {rx, ry};
-    if (use_dual) {
+    if (dual_mode != 0) {
       if (mpi::communicator().rank() == 0) {
-        std::cerr << "use_dual must be 0 in density-density mode (no μ-derivative for the correlator)." << std::endl;
+        std::cerr << "dual_mode must be 0 in density-density mode (no μ/U-derivative for the correlator)." << std::endl;
       }
       return 1;
     }
@@ -337,10 +345,12 @@ int main(int argc, char *argv[]) {
   if (!r.empty()) {
     run_correlator(world, order, n_cycles, U, beta, mu, t_hop, alpha, use_cluster, n_warmup_cycles, length_cycle, random_name, random_seed, verbosity,
                    r, s1, s2);
-  } else if (use_dual) {
-    run_free_energy<Dual>(world, order, n_cycles, U, beta, mu, t_hop, alpha, n_warmup_cycles, length_cycle, random_name, random_seed, verbosity);
+  } else if (dual_mode != 0) {
+    run_free_energy<Dual>(world, order, n_cycles, U, beta, mu, t_hop, alpha, n_warmup_cycles, length_cycle, random_name, random_seed, verbosity,
+                          dual_mode);
   } else {
-    run_free_energy<double>(world, order, n_cycles, U, beta, mu, t_hop, alpha, n_warmup_cycles, length_cycle, random_name, random_seed, verbosity);
+    run_free_energy<double>(world, order, n_cycles, U, beta, mu, t_hop, alpha, n_warmup_cycles, length_cycle, random_name, random_seed, verbosity,
+                            dual_mode);
   }
 
   return 0;
