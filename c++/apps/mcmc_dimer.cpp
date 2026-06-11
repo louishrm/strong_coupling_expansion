@@ -254,7 +254,8 @@ void run_correlator(mpi::communicator &world, int order, int n_cycles, double U,
   if (world.rank() == 0) {
     std::cout << "Building rooted catalog for r=(" << r[0] << "," << r[1] << ") spins=(" << s1 << "," << s2 << ")"
               << (use_cluster ? " on the 3-dimer cluster..." : " on the infinite lattice...") << std::endl;
-    std::cout << "Rooted catalog: " << calculator->get_n_diagrams() << " diagrams." << std::endl;
+    std::cout << "Rooted catalog: " << calculator->get_n_catalog() << " topologies generated, " << calculator->get_n_pruned()
+              << " dropped (empty embedding), " << calculator->get_n_diagrams() << " diagrams instantiated." << std::endl;
   }
 
   using ConfigT = sc_expansion::dimer::Configuration<double, sc_expansion::dimer::SumDiagrams<double>>;

@@ -118,8 +118,8 @@ static void broadcast_graphs(std::vector<sc_expansion::Graph> &graphs, mpi::comm
 // this is computed only for diagnostic reporting (printed + written to CSV) and
 // does not feed the estimator.
 template <typename T>
-std::pair<double, double> compute_reference_integral_mpi(sc_expansion::atomic::SumDiagrams<T> &calculator,
-                                                         sc_expansion::Parameters<T> const &params, int order, mpi::communicator &world) {
+std::pair<double, double> compute_reference_integral_mpi(sc_expansion::atomic::SumDiagrams<T> &calculator, sc_expansion::Parameters<T> const &params,
+                                                         int order, mpi::communicator &world) {
 
   uint64_t n_perms = sc_expansion::factorial(order);
   uint64_t rank    = world.rank();
@@ -259,10 +259,12 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
   double reference_integral        = std::numeric_limits<double>::quiet_NaN();
   double signed_reference_integral = std::numeric_limits<double>::quiet_NaN();
   if (compute_reference) {
-    if (world.rank() == 0) { std::cout << "Computing reference integral across " << world.size() << " MPI ranks (SJT) [diagnostic only]..." << std::endl; }
-    auto t_ref_start = std::chrono::high_resolution_clock::now();
-    auto [ri, sri]   = compute_reference_integral_mpi(calculator, params, order, world);
-    auto t_ref_end   = std::chrono::high_resolution_clock::now();
+    if (world.rank() == 0) {
+      std::cout << "Computing reference integral across " << world.size() << " MPI ranks (SJT) [diagnostic only]..." << std::endl;
+    }
+    auto t_ref_start          = std::chrono::high_resolution_clock::now();
+    auto [ri, sri]            = compute_reference_integral_mpi(calculator, params, order, world);
+    auto t_ref_end            = std::chrono::high_resolution_clock::now();
     reference_integral        = ri;
     signed_reference_integral = sri;
     if (world.rank() == 0) {
@@ -270,7 +272,8 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
                 << " computed in " << std::chrono::duration<double>(t_ref_end - t_ref_start).count() << " s." << std::endl;
     }
   } else if (world.rank() == 0) {
-    std::cout << "Skipping infinite-U reference integral (|f+alpha| estimator only; set SCE_COMPUTE_REFERENCE=1 to enable the diagnostic)." << std::endl;
+    std::cout << "Skipping infinite-U reference integral (|f+alpha| estimator only; set SCE_COMPUTE_REFERENCE=1 to enable the diagnostic)."
+              << std::endl;
   }
 
   if (world.rank() == 0) { std::filesystem::create_directory("./results"); }
@@ -373,7 +376,8 @@ int main(int argc, char *argv[]) {
       std::cerr << "Usage: " << argv[0] << " order n_cycles U beta mu [bipartite] [alpha] [dual_mode] [rx ry s1 s2]" << std::endl;
       std::cerr << "  dual_mode (default 0): 0 = free energy (Omega); 1 = density (∂Ω/∂μ); 2 = double occupancy (∂Ω/∂U)." << std::endl;
       std::cerr << "  rx ry s1 s2: if all four are present, run density-density correlator at r=(rx,ry) with mark spins (s1,s2)." << std::endl;
-      std::cerr << "  env SCE_COMPUTE_REFERENCE=1: also compute the (diagnostic, O(n!)) infinite-U reference integral; default skips it." << std::endl;
+      std::cerr << "  env SCE_COMPUTE_REFERENCE=1: also compute the (diagnostic, O(n!)) infinite-U reference integral; default skips it."
+                << std::endl;
     }
     return 1;
   }
