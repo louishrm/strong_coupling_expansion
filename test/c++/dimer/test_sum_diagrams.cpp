@@ -96,7 +96,16 @@ TEST(DimerSumDiagrams, BuildRootedCatalogMatchesGenerator) {
 
 // -----------------------------------------------------------------------------
 //  Rooted constructor wiring: density-density mode flag, target r, per-diagram
-//  rooted state, and that the diagram count matches the flattened catalog.
+//  rooted state, and the zero-embedding pruning contract.
+//
+//  init_from_rooted_catalog drops catalog entries whose mark-pinned embedding
+//  comes up empty (free_multiplicity == 0 / no valid configurations) — the
+//  generator's d_super/diameter filters are only necessary conditions for a
+//  non-zero embedding, so the kept diagram list is a SUBSET of the catalog. This
+//  test pins that subset exactly: a catalog entry survives in the full
+//  SumDiagrams iff, built on its own, it has a non-empty embedding. (Pruning
+//  changes no physics — dropped diagrams contribute exactly zero — so the value
+//  tests below are unaffected.)
 // -----------------------------------------------------------------------------
 TEST(DimerSumDiagrams, RootedConstructorWiring) {
   double const U = 8.0, beta = 1.0, mu = 2.0, t = 1.0;
@@ -115,9 +124,25 @@ TEST(DimerSumDiagrams, RootedConstructorWiring) {
 
   EXPECT_TRUE(sd.is_density_density_mode());
   EXPECT_EQ(sd.get_target_r(), r);
-  EXPECT_EQ(sd.get_n_diagrams(), (int)cat_graphs.size());
-  EXPECT_EQ((int)sd.get_diagrams().size(), (int)cat_graphs.size());
-  EXPECT_EQ((int)sd.get_graphs().size(), (int)cat_graphs.size());
+
+  // The kept list is a subset of the catalog, and the two accessors agree.
+  EXPECT_EQ((int)sd.get_diagrams().size(), sd.get_n_diagrams());
+  EXPECT_EQ((int)sd.get_graphs().size(), sd.get_n_diagrams());
+  EXPECT_GE(sd.get_n_diagrams(), 1);
+  EXPECT_LE(sd.get_n_diagrams(), (int)cat_graphs.size());
+
+  // Independent oracle: build each catalog entry as its own single-graph
+  // SumDiagrams. It survives (get_n_diagrams() == 1) iff its mark-pinned
+  // embedding is non-empty — exactly the predicate init_from_rooted_catalog
+  // prunes on. The surviving entries' (marks, sites) keys form the expected
+  // kept multiset.
+  std::multiset<std::vector<int>> expected_keys;
+  for (size_t i = 0; i < cat_graphs.size(); ++i) {
+    SumDiagrams<double> one(params, order, {cat_graphs[i]}, {cat_marks[i]}, {cat_sites[i]}, r, s1, s2);
+    EXPECT_LE(one.get_n_diagrams(), 1);
+    if (one.get_n_diagrams() == 1) expected_keys.insert(mark_site_key(cat_marks[i], cat_sites[i]));
+  }
+  EXPECT_EQ(sd.get_n_diagrams(), (int)expected_keys.size());
 
   // Diagrams are stored V-descending; verify the ordering invariant.
   auto const &diagrams = sd.get_diagrams();
@@ -125,20 +150,22 @@ TEST(DimerSumDiagrams, RootedConstructorWiring) {
     EXPECT_GE(diagrams[i - 1].get_graph().get_V(), diagrams[i].get_graph().get_V());
   }
 
-  // Every diagram is rooted, carries the ctor's mark spins and target r, and has
-  // two marks / two sites. The (marks, sites) multiset must equal the catalog's
-  // (independent of the V-descending reordering).
-  std::multiset<std::vector<int>> diag_keys, cat_keys;
+  // Every kept diagram is rooted, carries the ctor's mark spins and target r, has
+  // two marks / two sites, and a genuinely non-empty embedding. The kept
+  // (marks, sites) multiset must equal the oracle's surviving set (independent of
+  // the V-descending reordering).
+  std::multiset<std::vector<int>> diag_keys;
   for (auto const &d : diagrams) {
     EXPECT_TRUE(d.is_rooted_diagram());
     EXPECT_EQ(d.get_mark_spins(), (std::vector<int>{s1, s2}));
     EXPECT_EQ(d.get_target_r(), r);
     ASSERT_EQ(d.get_marks().size(), 2u);
     ASSERT_EQ(d.get_sites().size(), 2u);
+    EXPECT_GT(d.get_free_multiplicity(), 0.0);
+    EXPECT_FALSE(d.get_valid_configurations().empty());
     diag_keys.insert(mark_site_key(d.get_marks(), d.get_sites()));
   }
-  for (size_t i = 0; i < cat_marks.size(); ++i) cat_keys.insert(mark_site_key(cat_marks[i], cat_sites[i]));
-  EXPECT_EQ(diag_keys, cat_keys);
+  EXPECT_EQ(diag_keys, expected_keys);
 }
 
 // -----------------------------------------------------------------------------

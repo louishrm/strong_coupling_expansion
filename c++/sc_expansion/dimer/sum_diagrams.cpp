@@ -40,7 +40,9 @@ namespace sc_expansion::dimer {
                                                 std::vector<std::vector<int>> const &sites, std::vector<int> const &r, int s1, int s2,
                                                 std::vector<std::pair<int, int>> const &cluster_positions, int n_cluster_sites,
                                                 bool pin_origin) {
-    this->target_r = r;
+    this->target_r  = r;
+    this->n_catalog = (int)graphs_in.size();
+    this->n_pruned  = 0;
 
     // Max cumulant order over the catalog graphs, accounting for the
     // StaticDensity mark bonus (each mark on a vertex adds +1 to that vertex's
@@ -76,6 +78,30 @@ namespace sc_expansion::dimer {
                                     MarkEncoding::StaticDensity, pin_origin);
       else
         this->diagrams.emplace_back(this->graphs.back(), vt_ptrs, marks[i], sites[i], mark_spins, r, MarkEncoding::StaticDensity);
+
+      // Drop zero-contribution diagrams (mirrors atomic's embedding_counts[i]==0
+      // skip in atomic::SumDiagrams::init_from_rooted_catalog). The
+      // DimerDistanceRootedDiagramGenerator's d_super/diameter filters are only
+      // NECESSARY conditions for ≥1 mark-pinned embedding, so the actual
+      // mark-constrained enumeration (compute_spatial_configurations_rooted[_cluster])
+      // can still come up empty — e.g. a graph whose only parity-allowed dimer
+      // sector is unreachable at this order, or a graph that does not fit the open
+      // cluster. Such a diagram has zero total embedding weight (free_multiplicity
+      // == 0) and hence no valid configurations, so it contributes EXACTLY zero to
+      // density_density(); keeping it only wastes per-MC-step evaluate()/dirty
+      // bookkeeping. Pruning here changes no physics (the summed series is
+      // identical) — it only shrinks the evaluated diagram list.
+      //
+      // graphs/diagrams are std::deque, so pop_back/emplace_back never invalidate
+      // references to the other elements: the Graph const& that each retained
+      // Diagram holds stays valid, and dropping the just-built tail pair (diagram
+      // first — it references graphs.back() — then its graph) is safe.
+      Diagram<T> const &built = this->diagrams.back();
+      if (built.get_free_multiplicity() == 0.0 || built.get_valid_configurations().empty()) {
+        this->diagrams.pop_back();
+        this->graphs.pop_back();
+        ++this->n_pruned;
+      }
     }
   }
 

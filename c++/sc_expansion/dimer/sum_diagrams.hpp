@@ -84,6 +84,14 @@ namespace sc_expansion::dimer {
 
     int get_n_diagrams() const { return (int)this->diagrams.size(); }
 
+    // Pruning bookkeeping. get_n_catalog() is the number of rooted topologies the
+    // generator handed init_from_rooted_catalog; get_n_pruned() is how many were
+    // dropped because their mark-pinned embedding came up empty (zero
+    // free_multiplicity / no valid configurations) and so contributed exactly
+    // zero. get_n_diagrams() == get_n_catalog() - get_n_pruned().
+    int get_n_catalog() const { return this->n_catalog; }
+    int get_n_pruned() const { return this->n_pruned; }
+
     bool is_density_density_mode() const { return !this->target_r.empty(); }
     std::vector<int> const &get_target_r() const { return this->target_r; }
 
@@ -100,6 +108,8 @@ namespace sc_expansion::dimer {
     std::deque<VertexType<T>> vertex_types; // index = cumulant_order - 1
     HubbardSolver<2, T> solver;
     std::vector<int> target_r; // empty ⇒ not in density-density mode
+    int n_catalog = 0;         // rooted topologies presented to init_from_rooted_catalog
+    int n_pruned  = 0;         // of those, dropped for empty (zero-weight) embedding
   };
 
 } // namespace sc_expansion::dimer
