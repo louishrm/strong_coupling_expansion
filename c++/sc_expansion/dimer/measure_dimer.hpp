@@ -1,0 +1,118 @@
+#pragma once
+#include "../configuration_base.hpp"
+#include <triqs/stat/accumulator.hpp>
+#include "../myjackknife.hpp"
+#include <iostream>
+#include <chrono>
+#include <memory>
+#include <cmath>
+
+// Uniform-reference defensive ratio estimator.
+// Sampling weight: W = |f(τ) + α| (whatever ConfigurationBase exposes as
+// metropolis_weight). Configurations live on the hypercube [0,β]^n.
+// Estimator:    coeff = α · β^n · ⟨f/W⟩ / ⟨α/W⟩.
+// First written for the dimer expansion; now also used by the atomic MC.
+// Pilot-run helper ⟨|f|/W⟩ is exposed in the result for alpha auto-tuning:
+//     α_new = α · ⟨|f|/W⟩ / ⟨α/W⟩  ⇒ tunes α to typical |f|.
+struct DimerMeasureResult {
+  double coeff          = 0.0;
+  double error          = 0.0;
+  double mean_sign      = 0.0;
+  double sign_error     = 0.0;
+  double mean_abs       = 0.0;
+  double abs_error      = 0.0;
+  double mean_omega_abs = 0.0; // ⟨|f|/W⟩, used for alpha auto-tuning
+};
+
+template <typename T> struct measure_dimer {
+
+  ConfigurationBase<T> *config;
+
+  // Accumulators for defensive importance sampling ratio estimator:
+  //   acc_integrand: accumulates f / W
+  //   acc_reference: accumulates alpha / W
+  //   acc_abs_integrand: accumulates |f| / W (used only for alpha tuning)
+  triqs::stat::accumulator<double> acc_integrand;
+  triqs::stat::accumulator<double> acc_reference;
+  triqs::stat::accumulator<double> acc_abs_integrand;
+
+  double alpha;
+
+  // Shared result struct — survives copy into mc_generic internals
+  std::shared_ptr<DimerMeasureResult> result;
+
+  // Progress tracking
+  long step_count  = 0;
+  int report_every = 5000;
+  int verbosity    = 0;
+  std::chrono::high_resolution_clock::time_point last_report;
+
+  measure_dimer(ConfigurationBase<T> *config_, int n_bins, int block_size, double alpha_, int verbosity_ = 0)
+     : config(config_),
+       acc_integrand(0.0, 0, n_bins, block_size + 100),
+       acc_reference(0.0, 0, n_bins, block_size + 100),
+       acc_abs_integrand(0.0, 0, n_bins, block_size + 100),
+       alpha(alpha_),
+       result(std::make_shared<DimerMeasureResult>()),
+       verbosity(verbosity_),
+       last_report(std::chrono::high_resolution_clock::now()) {}
+
+  void accumulate(double) {
+    double W = config->metropolis_weight;
+
+    if (W > 0.0) {
+      double f = config->get_integrand();
+      acc_integrand << (f / W);
+      acc_reference << (this->alpha / W);
+      acc_abs_integrand << (std::abs(f) / W);
+    }
+
+    this->step_count++;
+    if (this->verbosity > 0 && this->step_count % this->report_every == 0) {
+      auto now             = std::chrono::high_resolution_clock::now();
+      double dt            = std::chrono::duration<double>(now - this->last_report).count();
+      double steps_per_sec = this->report_every / dt;
+      std::cout << "[measure_dimer] step " << this->step_count << " | " << steps_per_sec << " steps/s" << std::endl;
+      this->last_report = now;
+    }
+  }
+
+  void collect_results(mpi::communicator c) {
+
+    // Ratio estimator: coeff = alpha * beta^n * <f/W> / <alpha/W>
+    int order   = config->get_order();
+    double norm = this->alpha * std::pow(config->beta, order);
+
+    auto ratio_func = [norm](double avg_int, double avg_ref) {
+      if (std::abs(avg_ref) < 1e-18) return 0.0;
+      return (avg_int / avg_ref) * norm;
+    };
+
+    auto jk = triqs::stat::local::jackknife_mpi(c, ratio_func, acc_integrand, acc_reference);
+
+    this->result->coeff = std::get<0>(jk);
+    this->result->error = std::get<1>(jk);
+
+    auto pick_first  = [](double x, double) { return x; };
+    auto pick_second = [](double, double y) { return y; };
+    auto int_jk      = triqs::stat::local::jackknife_mpi(c, pick_first, acc_integrand, acc_reference);
+    auto ref_jk      = triqs::stat::local::jackknife_mpi(c, pick_second, acc_integrand, acc_reference);
+
+    this->result->mean_sign  = std::get<0>(int_jk);
+    this->result->sign_error = std::get<1>(int_jk);
+    this->result->mean_abs   = std::get<0>(ref_jk);
+    this->result->abs_error  = std::get<1>(ref_jk);
+
+    auto abs_jk                  = triqs::stat::local::jackknife_mpi(c, pick_first, acc_abs_integrand, acc_reference);
+    this->result->mean_omega_abs = std::get<0>(abs_jk);
+
+    if (c.rank() == 0) {
+      std::cout << "--- Measurement Results (defensive ratio estimator, W = |f + alpha|) ---" << std::endl;
+      std::cout << "Alpha:               " << this->alpha << std::endl;
+      std::cout << "Mean f/W:            " << this->result->mean_sign << std::endl;
+      std::cout << "Mean alpha/W:        " << this->result->mean_abs << std::endl;
+      std::cout << "Jackknife Coeff:     " << this->result->coeff << std::endl;
+      std::cout << "Jackknife Error:     " << this->result->error << std::endl;
+    }
+  }
+};

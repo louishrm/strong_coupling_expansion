@@ -1,9 +1,6 @@
 #pragma once
-
-#include <triqs/atom_diag/atom_diag.hpp>
-#include <triqs/atom_diag/functions.hpp>
+#include <array>
 #include <vector>
-#include <nda/nda.hpp>
 #include <utility>
 #include <iostream>
 #include <algorithm>
@@ -11,107 +8,86 @@
 #include <tuple>
 #include <cmath>
 #include "dual.hpp"
+#include "args.hpp"
+#include "fock_space.hpp"
+#include "hilbert_traits.hpp"
 
 namespace sc_expansion {
 
-  using Arg     = std::pair<double, int>;
-  using ArgList = std::vector<Arg>;
-
-  template <typename T> struct Parameters {
-    T U;
-    T beta;
-    T mu;
-    T t            = T(0.0); // Only used for the dimer, but included here for convenience
-    bool bipartite = true;
-  };
-
-  struct Args {
-
-    std::vector<double> taus;
-    std::vector<int> spins;
-    std::vector<int> ops; // 0: cup, 1: cdn, 2: cdag_up, 3: cdag_dn
-    double permutation_sign;
-    int order;
-
-    Args(std::vector<double> taus, std::vector<int> spins);
-
-    void sort_args();
-    bool verify_consecutive_terms_infinite_U() const;
-  };
-
-  struct Transition {
-    int connected_state;
-    double matrix_element;
-  };
-
-  template <typename T> struct TransitionT {
-    int connected_state;
-    T matrix_element;
-  };
-
-  template <typename T> struct TransitionList {
-    // transition list the dimer, operators connect to linear combination of eigenstates (max 6)
-    std::vector<TransitionT<T>> transitions;
-  };
-
-  template <typename T> class HubbardAtom {
+  template <int N_sites, typename T> class HubbardSolver {
 
     public:
-    static constexpr int N_STATES = 4;
-    static constexpr int N_OPS    = 4;
+    using Traits                       = HilbertTraits<N_sites>;
+    static constexpr int N_STATES      = Traits::N_STATES;
+    static constexpr int N_OPS         = Traits::N_OPS;
+    static constexpr int MAX_G0N_ORDER = 16; // max 2*cumulant_order supported in G0n
 
-    HubbardAtom(Parameters<T> const &params);
-
-    T G0(std::vector<double> const &taus, std::vector<int> const &spins) const;
-    T G0_infinite_U(std::vector<double> const &taus, std::vector<int> const &spins) const;
-
-    // Internal members made public for testing and cumulant solver efficiency
     Parameters<T> const &params;
+    HubbardSolver(Parameters<T> const &params);
 
     T Z;
     T Z_infinite_U;
-    std::array<T, N_STATES> E;
 
-    static const std::array<Transition, N_STATES * N_OPS> lookup_table;
+    T G0n(Args<N_sites, T> const &args) const;
+    T G0n_infinite_U(Args<N_sites, T> const &args) const;
 
-    static constexpr int valid_start_states[N_OPS][2] = {
-       {1, 3}, // op 0 (c_up):       Needs state 1 (|up>) or 3 (|up down>)
-       {2, 3}, // op 1 (c_down):     Needs state 2 (|down>) or 3 (|up down>)
-       {0, 2}, // op 2 (cdag_up):    Needs state 0 (|0>) or 2 (|down>)
-       {0, 1}  // op 3 (cdag_down):  Needs state 0 (|0>) or 1 (|up>)
-    };
-  };
+    // ⟨T_τ Π_k n_{σ_k}(0) Π_i O_i(τ_i)⟩ / Z, atomic only (N_sites == 1).
+    // Each entry of `density_orbitals` is one static n_{σ}(0) insertion at τ=0;
+    // 0, 1, or 2 entries supported (callers of the static density-density
+    // correlator need at most 2). Since H_0 is diagonal in occupation for the
+    // atomic case, n_σ commutes with everything and can sit OUTSIDE the
+    // time-ordering — `args` is reused as-is (no re-sort, no extra sign).
+    // For N_sites != 1 the implementation is a placeholder that asserts and
+    // returns 0; cluster generalization is deferred.
+    T G0n_with_densities(Args<N_sites, T> const &args, std::vector<int> const &density_orbitals) const;
+    T G0n_with_densities_infinite_U(Args<N_sites, T> const &args, std::vector<int> const &density_orbitals) const;
 
-  template <typename T> std::pair<T, int> fermion_operator_act(int op_index, int state);
+    // ⟨n_σ⟩ = Tr(e^{-βH} c†_σ c_σ) / Z, computed directly from the
+    // eigenbasis. Used by the rooted (correlator) cumulant evaluator to
+    // bypass the τ=0 equal-time ambiguity that ⟨T_τ c_σ(0) c†_σ(0)⟩
+    // would otherwise introduce when the mark block is folded into
+    // the partition lattice as a sub-cumulant.
+    // `orbital` is the FermionOperator orbital index (σ ∈ {0..N_ORBITALS}).
+    T compute_n_sigma(int orbital) const;
+    // Closed-form fast path exposed for tests. Returns 0 when no closed form
+    // applies (e.g. dimer, or higher orders). Production code should call G0n,
+    // which dispatches to this when applicable.
+    T G01(Args<N_sites, T> const &args) const;
 
-  static constexpr double SQRT2_INV = 0.70710678118654752440;
-
-  template <typename T> T Eplus(T t, T U, T mu) { return T(0.5) * (U + sqrt(U * U + 16.0 * t * t)) - 2.0 * mu; }
-  template <typename T> T Eminus(T t, T U, T mu) { return T(0.5) * (U - sqrt(U * U + 16.0 * t * t)) - 2.0 * mu; }
-
-  template <typename T> struct Eigenstate {
-    std::vector<std::pair<int, T>> coefficients; // List of (basis state index, coefficient) pairs
-    T energy;
-    int particle_number;
-  };
-
-  template <typename T> class HubbardDimer {
-    public:
-    static constexpr int N_STATES = 16;
-    static constexpr int N_OPS    = 8;
-    HubbardDimer(Parameters<T> const &params, T t);
-
-    // transition_table[op_index][eigenv_ket_index] -> list of {eigenv_bra_index, matrix_element}
-    std::array<std::array<TransitionList<T>, N_STATES>, N_OPS> transition_table;
+    // Accessors for testing
+    T get_Z() const { return this->Z; }
+    T get_exp_beta_E(int i) const { return this->exp_beta_E[i]; }
+    const Eigenstate<T> &get_eigenstate(int i) const { return this->all_eigenstates[i]; }
+    const SparseMatrix<T> &get_operator_matrix(int op_idx) const { return this->operator_matrices[op_idx]; }
 
     private:
-    Parameters<T> const &params;
-    T t;
-    T Z;
-    std::array<Eigenstate<T>, N_STATES> all_eigenstates;
+    using ExpTable = std::array<std::array<T, N_STATES>, MAX_G0N_ORDER>;
+    // Dense N_STATES×N_STATES matrix in the energy eigenbasis. Small (4 or 16
+    // per side), so density operators are assembled and applied densely.
+    using DenseMatrix = std::array<std::array<T, N_STATES>, N_STATES>;
 
-    void compute_eigenstates();
+    // Build N = Π_k n_{σ_k} (n_σ = c†_σ c_σ) as a dense matrix in the energy
+    // eigenbasis. The factors commute, so build order is irrelevant. Used by
+    // the cluster (N_sites != 1) density-insertion path, where n_σ is not
+    // diagonal in the hybridized eigenbasis.
+    DenseMatrix build_density_matrix(std::vector<int> const &density_orbitals) const;
+
+    // Trace evaluator shared by the density paths: seeds each start state,
+    // applies the τ=0 density matrix N (no evolution factor) at the right-most
+    // trace slot, then the hybridization operators O_i exactly as G0n does.
+    // Correct for any N_sites; the atomic case keeps a diagonal fast path only
+    // for performance.
+    T G0n_with_density_matrix(Args<N_sites, T> const &args, DenseMatrix const &N_matrix) const;
+
+    std::array<FermionOperator<N_sites, T>, N_OPS> operators;
+    std::array<Eigenstate<T>, N_STATES> all_eigenstates;
+    std::array<std::array<TransitionList<T>, N_STATES>, N_OPS> transition_table;
+    std::array<SparseMatrix<T>, N_OPS> operator_matrices;
+    std::array<T, N_STATES> exp_beta_E;
+    std::array<T, N_STATES> eigenstate_energies;
+
     void compute_transition_table();
+    void build_tau_exp_tables(Args<N_sites, T> const &args, ExpTable &fwd, ExpTable &inv) const;
   };
 
 } // namespace sc_expansion

@@ -4,317 +4,329 @@
 
 namespace sc_expansion {
 
-  Args::Args(std::vector<double> taus_, std::vector<int> spins_) : taus(std::move(taus_)), spins(std::move(spins_)) {
-    if (taus.size() != spins.size()) { throw std::runtime_error("Error in Args constructor: taus and spins must have the same size"); }
+  template <int N_sites, typename T> HubbardSolver<N_sites, T>::HubbardSolver(Parameters<T> const &params_) : params(params_) {
+    for (int i = 0; i < N_OPS; ++i) { this->operators[i] = FermionOperator<N_sites, T>(static_cast<uint8_t>(i)); }
 
-    this->order            = taus.size();
-    this->permutation_sign = 1.0; // Placeholder, will be set after sorting
-    this->sort_args();
-  }
+    Traits::diagonalize(this->params, this->all_eigenstates);
 
-  void Args::sort_args() {
-    int n = this->taus.size();
-    std::vector<int> argsort(n);
-    std::iota(argsort.begin(), argsort.end(), 0);
-
-    std::vector<int> ops_local(n); // 0 = cup, 1 = cdn, 2 = cdag_up, 3 = cdag_dn
-
-    for (size_t i = 0; i < n; ++i) {
-
-      if (i % 2 == 0) {
-        ops_local[i] = 2 + this->spins[i];
-      } // Even index: creation operator (cdag_up or cdag_dn)
-      else {
-        ops_local[i] = this->spins[i];
-      } // Odd index: annihilation operator (cup or cdn)
-    }
-
-    std::stable_sort(argsort.begin(), argsort.end(), [&](int i, int j) { return this->taus[i] > this->taus[j]; });
-
-    this->permutation_sign = compute_permutation_sign(argsort);
-
-    std::vector<double> sorted_times(n);
-    std::vector<int> sorted_ops(n);
-
-    for (size_t i = 0; i < n; ++i) {
-      sorted_times[i] = this->taus[argsort[i]];
-      sorted_ops[i]   = ops_local[argsort[i]];
-    }
-
-    this->taus = std::move(sorted_times);
-    this->ops  = std::move(sorted_ops);
-  }
-
-  bool Args::verify_consecutive_terms_infinite_U() const {
-    int n = this->order;
-
-    // 2. Internal Sequence Checks
-    for (int i = 0; i + 1 < n; ++i) {
-
-      int op_late  = this->ops[i];     // Applied second
-      int op_early = this->ops[i + 1]; // Applied first
-
-      bool early_is_create = (op_early >= 2);
-      bool late_is_create  = (op_late >= 2);
-
-      // Rule A: Strict Alternation
-      if (early_is_create == late_is_create) return false;
-
-      // Rule B: Spin Conservation while occupied
-      if (early_is_create) {
-        if (op_late != op_early - 2) return false;
-      }
-    }
-
-    int op_beta = this->ops[0];     // The very last operator applied (latest time)
-    int op_zero = this->ops[n - 1]; // The very first operator applied (earliest time)
-
-    bool beta_is_create = (op_beta >= 2);
-
-    if (beta_is_create) {
-      if (op_zero != op_beta - 2) { return false; }
-    }
-
-    return true;
-  }
-
-  template <typename T>
-  const std::array<Transition, HubbardAtom<T>::N_STATES * HubbardAtom<T>::N_OPS> HubbardAtom<T>::lookup_table = []() {
-    std::array<Transition, HubbardAtom<T>::N_STATES * HubbardAtom<T>::N_OPS> table;
-
-    // Iterate through all 4 states (00, 01, 10, 11)
-    for (int state = 0; state < HubbardAtom<T>::N_STATES; ++state) {
-
-      // Iterate through all 4 operators (0=c_up, 1=c_down, 2=cdag_up, 3=cdag_down)
-      for (int op = 0; op < HubbardAtom<T>::N_OPS; ++op) {
-
-        // The 1D array index: (State * 4) + Operator
-        int index = (state * HubbardAtom<T>::N_OPS) | op;
-
-        int next_state = 0;
-        double mel     = 0.0;
-
-        // Decode the operator type
-        bool is_create = (op >= 2);     // Ops 2 and 3 are creation
-        bool is_down   = (op % 2 != 0); // Ops 1 and 3 are down spin
-
-        // Decode the current state's orbital occupancies
-        // Bit 0 (right) is UP, Bit 1 (left) is DOWN
-        int n_up = state & 1;
-        int n_dn = (state >> 1) & 1;
-
-        int target_orbital_occ = is_down ? n_dn : n_up;
-
-        // 1. Pauli Exclusion / Annihilation Check
-        if (is_create && target_orbital_occ == 1) {
-          mel = 0.0; // Cannot create if orbital is already full
-        } else if (!is_create && target_orbital_occ == 0) {
-          mel = 0.0; // Cannot destroy if orbital is already empty
-        } else {
-          // The state survives the operator!
-
-          // 2. Calculate New State (Toggle the target bit using XOR)
-          int bit_to_flip = is_down ? 2 : 1; // 2 in binary is 10, 1 is 01
-          next_state      = state ^ bit_to_flip;
-
-          // 3. Calculate Fermionic Sign
-          // Basis rule: |up down> = cdag_up cdag_down |0>
-          // Any 'down' operator must jump over the 'up' orbital.
-          if (is_down && n_up == 1) {
-            mel = -1.0; // Jumped over an occupied up-electron
-          } else {
-            mel = 1.0; // No jump, or jumped over an empty orbital
-          }
-        }
-
-        // Save to the table
-        table[index] = {next_state, mel};
-      }
-    }
-
-    return table;
-  }();
-
-  template <typename T> HubbardAtom<T>::HubbardAtom(Parameters<T> const &params_) : params(params_) {
-    this->Z = T(1.0) + 2.0 * exp(params.beta * params.mu) + exp(params.beta * (2.0 * params.mu - params.U)); // Partition function at finite U
-    this->Z_infinite_U = T(1.0) + 2.0 * exp(params.beta * params.mu);                                        // Partition function at infinite U
-    this->E            = {T(0.0), -params.mu, -params.mu, params.U - 2.0 * params.mu};
-  }
-
-  template <typename T> T HubbardAtom<T>::G0(std::vector<double> const &taus, std::vector<int> const &spins) const {
-    Args args(taus, spins);
-    T G0_value = T(0.0);
-
-    // get the only two states that the list op in the sorted list can act on
-    int last_op = args.ops.back();
-
-    for (int initial_state : this->valid_start_states[last_op]) {
-
-      int current_state   = initial_state;
-      T current_trace_val = T(1.0);
-
-      for (int i = args.order - 1; i >= 0; --i) {
-
-        int table_index = current_state * HubbardAtom<T>::N_OPS + args.ops[i];
-        Transition t    = this->lookup_table[table_index];
-
-        if (t.matrix_element == 0.0) {
-          current_trace_val = T(0.0);
-          break;
-        }
-        int next_state    = t.connected_state;
-        T energy_diff     = this->E[next_state] - this->E[current_state];
-        current_trace_val = current_trace_val * t.matrix_element * exp(args.taus[i] * energy_diff);
-        current_state     = next_state;
-      }
-
-      // Add to value for Dual properly
-      if (current_state == initial_state) {
-        current_trace_val = current_trace_val * exp(-this->params.beta * this->E[current_state]);
-        G0_value          = G0_value + current_trace_val;
-      }
-    }
-
-    return T(1.0) / this->Z * args.permutation_sign * G0_value;
-  }
-
-  template <typename T> T HubbardAtom<T>::G0_infinite_U(std::vector<double> const &taus, std::vector<int> const &spins) const {
-    Args args(taus, spins);
-    T G0_value = T(0.0);
-
-    if (!args.verify_consecutive_terms_infinite_U()) { return T(0.0); }
-
-    // If the sequence is valid, we can directly compute the contribution from the first operator.
-    // The contribution from the rest of the sequence is guaranteed to be 1 due to the strict alternation and spin conservation rules.
-
-    int first_op = args.ops[0];
-    if (first_op >= 2) {
-      // First operator is a creation operator
-      G0_value = exp(this->params.beta * this->params.mu) / this->Z_infinite_U;
-    } else {
-      // First operator is a destruction operator
-      G0_value = T(1.0) / this->Z_infinite_U;
-    }
-
-    return args.permutation_sign * G0_value;
-  }
-
-  template <typename T> std::pair<T, int> fermion_operator_act(int op, int state) {
-    int action  = (op >> 2) & 1; // 0 destroy, 1 create
-    int orbital = op & 3;        // 0: 1down 1: 2down 2: 1up 3: 2up
-
-    // check occupation of the orbital
-    int occupation = (state >> orbital) & 1;
-    if (occupation == action) { // the bits have to be different for the operator to act non-trivially
-      return {T(0.0), -1};      // zero mel
-    }
-
-    int new_state = state ^ (1 << orbital);
-
-    unsigned int mask    = (1 << orbital) - 1;
-    int electrons_jumped = std::popcount(static_cast<unsigned int>(state) & mask); // Number of occupied orbitals before the target orbital
-
-    return {(electrons_jumped % 2 == 0 ? T(1.0) : T(-1.0)), new_state};
-  }
-
-  template <typename T> HubbardDimer<T>::HubbardDimer(Parameters<T> const &params_, T t_) : params(params_), t(t_) {
-    this->compute_eigenstates();
+    for (int i = 0; i < N_OPS; ++i) { this->operator_matrices[i] = this->operators[i].compute_sparse_matrix(this->all_eigenstates); }
     this->compute_transition_table();
 
-    // Compute Z = sum(exp(-beta * E_i))
+    for (int i = 0; i < N_STATES; ++i) { this->eigenstate_energies[i] = this->all_eigenstates[i].energy; }
+
+    using std::exp;
+    for (int i = 0; i < N_STATES; ++i) { this->exp_beta_E[i] = exp(-this->params.beta * this->eigenstate_energies[i]); }
+
     this->Z = T(0.0);
-    for (const auto &state : this->all_eigenstates) { this->Z = this->Z + exp(-this->params.beta * state.energy); }
+    for (int i = 0; i < N_STATES; ++i) { this->Z = this->Z + this->exp_beta_E[i]; }
+
+    this->Z_infinite_U = Traits::compute_Z_infinite_U(this->exp_beta_E);
   }
 
-  template <typename T> void HubbardDimer<T>::compute_eigenstates() {
-
-    // |n> = |n2u n1u n2d n1d> = bit(n2u, n1u, n2d, n1d)
-
-    this->all_eigenstates[0] = Eigenstate<T>{{{0, T(1.0)}}, T(0.0), 0};
-
-    // N=1, Sz=-1/2 |down,0> ± |0,down>
-    this->all_eigenstates[1] = Eigenstate<T>{{{1, T(SQRT2_INV)}, {2, T(SQRT2_INV)}}, -this->params.t - this->params.mu, 1};
-    this->all_eigenstates[2] = Eigenstate<T>{{{1, T(SQRT2_INV)}, {2, -T(SQRT2_INV)}}, this->params.t - this->params.mu, 1};
-
-    // N=1, Sz=+1/2 |up,0> ± |0,up>
-    this->all_eigenstates[3] = Eigenstate<T>{{{4, T(SQRT2_INV)}, {8, T(SQRT2_INV)}}, -this->params.t - this->params.mu, 1};
-    this->all_eigenstates[4] = Eigenstate<T>{{{4, T(SQRT2_INV)}, {8, -T(SQRT2_INV)}}, this->params.t - this->params.mu, 1};
-
-    // N=2, Sz=-1 |down,down>
-    this->all_eigenstates[5] = Eigenstate<T>{{{3, T(1.0)}}, -2.0 * this->params.mu, 2};
-
-    // N=2, Sz=0, parity = even
-    // a(|down up, 0> + |0, down up>) + b(|down, up> + |up, down>)
-    T Ep              = Eplus(this->t, this->params.U, this->params.mu);
-    T Em              = Eminus(this->t, this->params.U, this->params.mu);
-    T norm_plus       = Ep * SQRT2_INV / (sqrt(Ep * Ep + 16.0 * this->t * this->t));
-    T norm_minus      = Em * SQRT2_INV / (sqrt(Em * Em + 16.0 * this->t * this->t));
-    T component_plus  = -2.0 * this->t / Ep * norm_plus;
-    T component_minus = -2.0 * this->t / Em * norm_minus;
-
-    this->all_eigenstates[6] = Eigenstate<T>{{{5, T(norm_plus)}, {10, T(norm_plus)}, {9, T(component_plus)}, {6, T(component_plus)}}, Ep, 2};
-    this->all_eigenstates[7] = Eigenstate<T>{{{5, T(norm_minus)}, {10, T(norm_minus)}, {9, T(component_minus)}, {6, T(component_minus)}}, Em, 2};
-
-    // N=2, Sz=0, parity = odd
-    //|down up, 0> - |0, down up> and |up, down> - |down,up>
-    this->all_eigenstates[8] = Eigenstate<T>{{{5, T(SQRT2_INV)}, {10, -T(SQRT2_INV)}}, this->params.U - 2.0 * this->params.mu, 2};
-    this->all_eigenstates[9] = Eigenstate<T>{{{9, T(SQRT2_INV)}, {6, -T(SQRT2_INV)}}, -2.0 * this->params.mu, 2};
-
-    // N=2, Sz=+1 |up,up>
-    this->all_eigenstates[10] = Eigenstate<T>{{{12, T(1.0)}}, -2.0 * this->params.mu, 2};
-
-    // N=3, Sz = -1/2, |down up, down> ± |down, down up>
-    this->all_eigenstates[11] = Eigenstate<T>{{{7, T(SQRT2_INV)}, {11, T(SQRT2_INV)}}, this->params.U + this->params.t - 3.0 * this->params.mu, 3};
-    this->all_eigenstates[12] =
-       Eigenstate<T>{{{7, T(SQRT2_INV)}, {11, -T(SQRT2_INV)}}, this->params.U - this->params.t - 3.0 * this->params.mu, 3};
-
-    // N=3, Sz = +1/2, |down up, up> ± |up, down up>
-    this->all_eigenstates[13] =
-       Eigenstate<T>{{{13, T(SQRT2_INV)}, {14, T(SQRT2_INV)}}, this->params.U + this->params.t - 3.0 * this->params.mu, 3};
-    this->all_eigenstates[14] =
-       Eigenstate<T>{{{13, T(SQRT2_INV)}, {14, -T(SQRT2_INV)}}, this->params.U - this->params.t - 3.0 * this->params.mu, 3};
-
-    // N=4, Sz=0 |down up, down up>
-    this->all_eigenstates[15] = Eigenstate<T>{{{15, T(1.0)}}, 2.0 * this->params.U - 4.0 * this->params.mu, 4};
-  }
-
-  template <typename T> void HubbardDimer<T>::compute_transition_table() {
-
-    for (int op_index = 0; op_index < this->N_OPS; ++op_index) {
-      for (int eigenv_ket_index = 0; eigenv_ket_index < this->N_STATES; ++eigenv_ket_index) {
-
-        for (int eigenv_bra_index = 0; eigenv_bra_index < this->N_STATES; ++eigenv_bra_index) {
-
-          T matrix_element = T(0.0);
-          for (auto const &[ket_basis_index, ket_coeff] : this->all_eigenstates[eigenv_ket_index].coefficients) {
-            auto [mel, new_state] = fermion_operator_act<T>(op_index, ket_basis_index);
-
-            if (new_state != -1) {
-              for (auto const &[bra_basis_index, bra_coeff] : this->all_eigenstates[eigenv_bra_index].coefficients) {
-                if (bra_basis_index == new_state) { matrix_element = matrix_element + bra_coeff * mel * ket_coeff; }
-              }
-            }
-          }
-
-          auto is_zero = [](auto const &val) {
-            if constexpr (std::is_same_v<std::decay_t<decltype(val)>, Dual>) { return std::abs(val.value) < 1e-15; }
-            else {
-              return std::abs(val) < 1e-15;
-            }
-          };
-
-          if (!is_zero(matrix_element)) {
-            this->transition_table[op_index][eigenv_ket_index].transitions.push_back({eigenv_bra_index, matrix_element});
-          }
-        }
+  template <int N_sites, typename T> void HubbardSolver<N_sites, T>::compute_transition_table() {
+    for (int op_idx = 0; op_idx < N_OPS; ++op_idx) {
+      for (const auto &entry : this->operator_matrices[op_idx].entries) {
+        this->transition_table[op_idx][entry.col].transitions.push_back({entry.row, entry.value});
       }
     }
   }
 
-  template class HubbardAtom<double>;
-  template class HubbardAtom<Dual>;
+  template <int N_sites, typename T>
+  void HubbardSolver<N_sites, T>::build_tau_exp_tables(Args<N_sites, T> const &args, ExpTable &fwd, ExpTable &inv) const {
+    using std::exp;
+    int n = args.order;
+    for (int i = 0; i < n; ++i) {
+      double tau_i = args.taus[i];
+      for (int s = 0; s < N_STATES; ++s) {
+        fwd[i][s] = exp(tau_i * this->eigenstate_energies[s]);
+        inv[i][s] = T(1.0) / fwd[i][s];
+      }
+    }
+  }
 
-  template class HubbardDimer<double>;
-  template class HubbardDimer<Dual>;
+  template <int N_sites, typename T> T HubbardSolver<N_sites, T>::G0n(Args<N_sites, T> const &args) const {
+    if (!args.operator_sequence_is_valid()) return T(0.0);
+
+    // Per-cluster fast paths (e.g. atomic n=2 closed form). Returns false on miss.
+    {
+      T fast;
+      if (Traits::try_closed_form_G0n(args, this->params, this->Z, fast)) return fast;
+    }
+
+    int n = args.order;
+
+    // exp(tau * deltaE) = exp(tau * E_row) * inv_exp(tau * E_col), avoiding exp() in the inner loop.
+    ExpTable exp_tau_E, inv_exp_tau_E;
+    this->build_tau_exp_tables(args, exp_tau_E, inv_exp_tau_E);
+
+    std::array<T, N_STATES> buf_a, buf_b;
+
+    T result = T(0.0);
+    for (int start_state = 0; start_state < N_STATES; ++start_state) {
+      T *amplitudes = buf_a.data();
+      T *next       = buf_b.data();
+
+      std::fill(amplitudes, amplitudes + N_STATES, T(0.0));
+      amplitudes[start_state] = this->exp_beta_E[start_state];
+
+      for (int i = n - 1; i >= 0; --i) {
+        std::fill(next, next + N_STATES, T(0.0));
+        uint8_t op_idx = args.ops[i].op;
+
+        for (auto const &entry : this->operator_matrices[op_idx].entries) {
+          if (is_zero(amplitudes[entry.col])) continue;
+          next[entry.row] = next[entry.row] + amplitudes[entry.col] * entry.value * exp_tau_E[i][entry.row] * inv_exp_tau_E[i][entry.col];
+        }
+        std::swap(amplitudes, next);
+      }
+      result = result + amplitudes[start_state];
+    }
+    return (T(1.0) / this->Z) * args.permutation_sign * result;
+  }
+
+  template <int N_sites, typename T> T HubbardSolver<N_sites, T>::G0n_infinite_U(Args<N_sites, T> const &args) const {
+    using std::exp;
+
+    if (!(args.operator_sequence_is_valid_infinite_U())) return T(0.0);
+
+    // Single-site infinite-U short-circuit. For N_sites>=2 the validity check above
+    // already returns false, so this branch is dead but compiles uniformly.
+    FermionOperator<N_sites, T> first_op = args.ops[0];
+    if (first_op.get_action() == 0) {
+      return (T(1.0) / this->Z_infinite_U) * args.permutation_sign;
+    } else {
+      return exp(this->params.beta * this->params.mu) * (T(1.0) / this->Z_infinite_U) * args.permutation_sign;
+    }
+  }
+
+  template <int N_sites, typename T>
+  typename HubbardSolver<N_sites, T>::DenseMatrix
+  HubbardSolver<N_sites, T>::build_density_matrix(std::vector<int> const &density_orbitals) const {
+    constexpr uint8_t ACTION_BIT_LOCAL = FermionOperator<N_sites, T>::ACTION_BIT;
+
+    // Start from the identity; multiply in each n_σ. The n_σ commute, so the
+    // accumulation order does not matter.
+    DenseMatrix acc{};
+    for (int i = 0; i < N_STATES; ++i) { acc[i][i] = T(1.0); }
+
+    for (int orb : density_orbitals) {
+      uint8_t c_idx     = static_cast<uint8_t>(orb);
+      uint8_t c_dag_idx = static_cast<uint8_t>(ACTION_BIT_LOCAL | orb);
+
+      // n_σ = M(c†_σ) · M(c_σ) in the eigenbasis (both are sparse eigenbasis
+      // matrices held by the solver).
+      DenseMatrix n_sigma{};
+      for (auto const &cd : this->operator_matrices[c_dag_idx].entries) {
+        for (auto const &ca : this->operator_matrices[c_idx].entries) {
+          if (ca.row == cd.col) { n_sigma[cd.row][ca.col] = n_sigma[cd.row][ca.col] + cd.value * ca.value; }
+        }
+      }
+
+      // acc ← n_σ · acc.
+      DenseMatrix prod{};
+      for (int row = 0; row < N_STATES; ++row) {
+        for (int k = 0; k < N_STATES; ++k) {
+          if (is_zero(n_sigma[row][k])) continue;
+          for (int col = 0; col < N_STATES; ++col) {
+            if (is_zero(acc[k][col])) continue;
+            prod[row][col] = prod[row][col] + n_sigma[row][k] * acc[k][col];
+          }
+        }
+      }
+      acc = prod;
+    }
+    return acc;
+  }
+
+  template <int N_sites, typename T>
+  T HubbardSolver<N_sites, T>::G0n_with_density_matrix(Args<N_sites, T> const &args, DenseMatrix const &N_matrix) const {
+    int n = args.order;
+
+    // exp(tau * deltaE) factors for the hybridization operators (see G0n).
+    ExpTable exp_tau_E, inv_exp_tau_E;
+    this->build_tau_exp_tables(args, exp_tau_E, inv_exp_tau_E);
+
+    std::array<T, N_STATES> buf_a, buf_b;
+
+    T result = T(0.0);
+    for (int start_state = 0; start_state < N_STATES; ++start_state) {
+      T *amplitudes = buf_a.data();
+      T *next       = buf_b.data();
+
+      std::fill(amplitudes, amplitudes + N_STATES, T(0.0));
+      amplitudes[start_state] = this->exp_beta_E[start_state];
+
+      // Apply N at τ=0 (right-most slot of the time-ordered trace, no
+      // evolution factor): amplitudes ← N · amplitudes.
+      std::fill(next, next + N_STATES, T(0.0));
+      for (int col = 0; col < N_STATES; ++col) {
+        if (is_zero(amplitudes[col])) continue;
+        for (int row = 0; row < N_STATES; ++row) {
+          if (is_zero(N_matrix[row][col])) continue;
+          next[row] = next[row] + N_matrix[row][col] * amplitudes[col];
+        }
+      }
+      std::swap(amplitudes, next);
+
+      // Then the hybridization operators, exactly as G0n does.
+      for (int i = n - 1; i >= 0; --i) {
+        std::fill(next, next + N_STATES, T(0.0));
+        uint8_t op_idx = args.ops[i].op;
+
+        for (auto const &entry : this->operator_matrices[op_idx].entries) {
+          if (is_zero(amplitudes[entry.col])) continue;
+          next[entry.row] = next[entry.row] + amplitudes[entry.col] * entry.value * exp_tau_E[i][entry.row] * inv_exp_tau_E[i][entry.col];
+        }
+        std::swap(amplitudes, next);
+      }
+      result = result + amplitudes[start_state];
+    }
+    return (T(1.0) / this->Z) * args.permutation_sign * result;
+  }
+
+  template <int N_sites, typename T>
+  T HubbardSolver<N_sites, T>::G0n_with_densities(Args<N_sites, T> const &args, std::vector<int> const &density_orbitals) const {
+    // Empty decoration must recover plain G0n exactly (EmptyOrbitalsMatchesG0n).
+    if (density_orbitals.empty()) return this->G0n(args);
+    if (!args.operator_sequence_is_valid()) return T(0.0);
+
+    if constexpr (N_sites != 1) {
+      // Cluster path: H_dimer mixes orbitals, so n_σ is NOT diagonal in the
+      // energy eigenbasis and the atomic start-state weighting is wrong.
+      // Insert N = Π_k n_{σ_k} as a matrix at the τ=0 trace slot.
+      DenseMatrix N_matrix = this->build_density_matrix(density_orbitals);
+      return this->G0n_with_density_matrix(args, N_matrix);
+    } else {
+      // ---- Atomic diagonal fast path ----
+      // For atomic, n_σ is diagonal in the eigenbasis (states 0..3 are pure
+      // occupation bitstrings). Precompute the per-start-state density factor.
+      int n = args.order;
+
+      std::array<T, N_STATES> density_factor;
+      for (int s = 0; s < N_STATES; ++s) {
+        T factor = T(1.0);
+        for (int orb : density_orbitals) { factor = factor * T((s & (1 << orb)) ? 1.0 : 0.0); }
+        density_factor[s] = factor;
+      }
+
+      if (n == 0) {
+        // Pure density expectation, no time-evolution kernel: just weight by Boltzmann.
+        T result = T(0.0);
+        for (int s = 0; s < N_STATES; ++s) { result = result + density_factor[s] * this->exp_beta_E[s]; }
+        return (T(1.0) / this->Z) * args.permutation_sign * result;
+      }
+
+      ExpTable exp_tau_E, inv_exp_tau_E;
+      this->build_tau_exp_tables(args, exp_tau_E, inv_exp_tau_E);
+
+      std::array<T, N_STATES> buf_a, buf_b;
+      T result = T(0.0);
+      for (int start_state = 0; start_state < N_STATES; ++start_state) {
+        if (is_zero(density_factor[start_state])) continue;
+
+        T *amplitudes = buf_a.data();
+        T *next       = buf_b.data();
+
+        std::fill(amplitudes, amplitudes + N_STATES, T(0.0));
+        amplitudes[start_state] = this->exp_beta_E[start_state];
+
+        for (int i = n - 1; i >= 0; --i) {
+          std::fill(next, next + N_STATES, T(0.0));
+          uint8_t op_idx = args.ops[i].op;
+
+          for (auto const &entry : this->operator_matrices[op_idx].entries) {
+            if (is_zero(amplitudes[entry.col])) continue;
+            next[entry.row] = next[entry.row] + amplitudes[entry.col] * entry.value * exp_tau_E[i][entry.row] * inv_exp_tau_E[i][entry.col];
+          }
+          std::swap(amplitudes, next);
+        }
+        result = result + density_factor[start_state] * amplitudes[start_state];
+      }
+      return (T(1.0) / this->Z) * args.permutation_sign * result;
+    }
+  }
+
+  template <int N_sites, typename T>
+  T HubbardSolver<N_sites, T>::G0n_with_densities_infinite_U(Args<N_sites, T> const &args, std::vector<int> const &density_orbitals) const {
+    using std::exp;
+    if constexpr (N_sites != 1) {
+      static_cast<void>(args);
+      static_cast<void>(density_orbitals);
+      return T(0.0);
+    } else {
+      // Closed form, τ-independent. At U=∞ the projected Hilbert space is
+      // {|0⟩, |↓⟩, |↑⟩}; the density n_σ(0) projects the trace onto start
+      // state |σ⟩. Because the operator chain is particle-number balanced at
+      // each vertex, the e^{μ(Στ−Στ′)} factors cancel across the diagram —
+      // so the per-leaf trace is either 0 (operator string can't close on
+      // |σ⟩) or e^{βμ}/Z_∞ × permutation_sign (the |σ⟩ Boltzmann weight).
+      //
+      // Cases on density_orbitals.size():
+      //   0   — no density; defer to the vacuum closed form.
+      //   1   — single n_σ(0) at the marked vertex.
+      //   2   — coincident pair. Same spin: n²=n, collapses to one density;
+      //         opposite spin: double-occupancy projector, identically zero
+      //         at U=∞ (no |↑↓⟩ state).
+      if (density_orbitals.empty()) return this->G0n_infinite_U(args);
+      if (density_orbitals.size() == 2 && density_orbitals[0] != density_orbitals[1]) return T(0.0);
+      int sigma = density_orbitals[0];
+
+      if (!args.operator_sequence_is_valid_infinite_U()) return T(0.0);
+
+      // Order-0 with no hopping operators: just the |σ⟩ Boltzmann weight.
+      if (args.order == 0) {
+        return exp(this->params.beta * this->params.mu) * (T(1.0) / this->Z_infinite_U) * args.permutation_sign;
+      }
+
+      // ops are stored with ops[0]=largest τ, ops[n-1]=smallest τ (matches
+      // operator_sequence_is_valid_infinite_U's iteration convention). The
+      // trace closes on |σ⟩ iff the largest-τ operator is c†_σ (creation of
+      // σ): the time-ordered product is applied to |σ⟩ right-to-left
+      // (smallest τ first); the LAST op applied is ops[0], and it must end
+      // the chain at |σ⟩. c†_σ acting on |0⟩ → |σ⟩ closes the trace; the
+      // mirror "c_σ at largest τ" would end at |0⟩, not |σ⟩.
+      auto last_op = args.ops[0];
+      if (last_op.get_action() != 1 || last_op.get_orbital_index() != (uint8_t)sigma) {
+        return T(0.0);
+      }
+
+      return exp(this->params.beta * this->params.mu) * (T(1.0) / this->Z_infinite_U) * args.permutation_sign;
+    }
+  }
+
+  template <int N_sites, typename T> T HubbardSolver<N_sites, T>::G01(Args<N_sites, T> const &args) const {
+    T out = T(0.0);
+    Traits::try_closed_form_G0n(args, this->params, this->Z, out);
+    return out;
+  }
+
+  template <int N_sites, typename T> T HubbardSolver<N_sites, T>::compute_n_sigma(int orbital) const {
+    // ⟨n_σ⟩ = Σ_α (e^{-βE_α}/Z) ⟨α| c†_σ c_σ |α⟩
+    //       = Σ_α (e^{-βE_α}/Z) Σ_β c_σ_{βα} · c†_σ_{αβ}
+    constexpr uint8_t ACTION_BIT_LOCAL = FermionOperator<N_sites, T>::ACTION_BIT;
+    uint8_t c_op_id                    = static_cast<uint8_t>(orbital);
+    uint8_t c_dag_op_id                = static_cast<uint8_t>(ACTION_BIT_LOCAL | orbital);
+
+    T result = T(0.0);
+    for (int alpha = 0; alpha < N_STATES; ++alpha) {
+      // Apply c_σ to |α⟩; record the resulting amplitudes by state.
+      std::array<T, N_STATES> after_c{};
+      for (auto const &e : this->operator_matrices[c_op_id].entries) {
+        if (e.col == alpha) after_c[e.row] = after_c[e.row] + e.value;
+      }
+      // ⟨α| c†_σ |β⟩ for the resulting β states.
+      T diag = T(0.0);
+      for (auto const &e : this->operator_matrices[c_dag_op_id].entries) {
+        if (e.row == alpha) diag = diag + e.value * after_c[e.col];
+      }
+      result = result + this->exp_beta_E[alpha] * diag;
+    }
+    return result / this->Z;
+  }
+
+  template class HubbardSolver<1, double>;
+  template class HubbardSolver<1, Dual>;
+  template class HubbardSolver<2, double>;
+  template class HubbardSolver<2, Dual>;
 
 } // namespace sc_expansion

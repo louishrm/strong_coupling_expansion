@@ -1,0 +1,169 @@
+/*
+ * MCMC test for sc_expansion::atomic::Configuration (single-site series)
+ * benchmarked against the analytical expansion coefficients in
+ * analytical/benchmark_atomic_expansion.py.
+ *
+ * All graphs are forced to free_multiplicity=1 via override_fm=1 so the MC
+ * estimate is compared directly against the cluster coefficient (no lattice
+ * embedding weight). Pure-hopping only — the shifted-expansion (delta) scheme
+ * relied on self-loop counterterms which have been removed from this branch.
+ *
+ * Uses the uniform-reference defensive estimator (measure_dimer): the atomic
+ * Configuration's weight is now W = |f + alpha|, matching the dimer scheme.
+ *
+ * Usage:  mpirun -np 4 ./test_mcmc_atom
+ *         (also works with 1 rank: ./test_mcmc_atom)
+ */
+
+#include <gtest/gtest.h>
+#include "sc_expansion/atomic/configuration.hpp"
+#include "sc_expansion/atomic/sum_diagrams.hpp"
+#include "sc_expansion/generate_diagrams.hpp"
+#include "sc_expansion/graph.hpp"
+#include "sc_expansion/hubbard_solver.hpp"
+#include "sc_expansion/args.hpp"
+#include "sc_expansion/fock_space.hpp"
+#include "sc_expansion/move.hpp"
+#include "sc_expansion/dimer/measure_dimer.hpp"
+#include "sc_expansion/dual.hpp"
+#include <triqs/mc_tools/mc_generic.hpp>
+#include <triqs/utility/callbacks.hpp>
+#include <mpi/mpi.hpp>
+#include <cmath>
+#include <memory>
+
+static void run_mcmc_atom_check(int order, double U, double beta, double mu, double exact_coeff, double rel_tol, int n_cycles) {
+
+  mpi::communicator world;
+
+  double alpha     = 0.001;
+  int n_warmup     = 2000;
+  int length_cycle = 1;
+
+  sc_expansion::Parameters<double> params{U, beta, mu, 0.0, true};
+  sc_expansion::atomic::SumDiagrams<double> calculator(params, order, /*override_fm=*/1);
+
+  auto config = std::make_unique<sc_expansion::atomic::Configuration<double>>(params, order, alpha, calculator);
+
+  int random_seed = 32186222 + world.rank() * 786512;
+  int verbosity   = (world.rank() == 0 ? 2 : 0);
+
+  triqs::mc_tools::mc_generic<double> mc("", random_seed, verbosity);
+
+  int n_bins     = 50;
+  int block_size = (n_cycles / n_bins) + 1;
+
+  measure_dimer<double> meas(config.get(), n_bins, block_size, alpha);
+  mc.add_move(move<double>(config.get(), mc.get_rng()), "time_swap");
+  mc.add_measure(meas, "defensive_measure");
+
+  mc.warmup_and_accumulate(n_warmup, n_cycles, length_cycle, triqs::utility::clock_callback(-1));
+  mc.collect_results(world);
+
+  if (world.rank() == 0) {
+    double mc_mean  = meas.result->coeff;
+    double mc_error = meas.result->error;
+
+    double rel_err = std::abs(mc_mean - exact_coeff) / std::abs(exact_coeff);
+
+    std::cout << "Exact (Python ED):  " << exact_coeff << std::endl;
+    std::cout << "MC estimate:        " << mc_mean << std::endl;
+    std::cout << "MC error:           " << mc_error << std::endl;
+    std::cout << "Relative error:     " << rel_err << std::endl;
+
+    EXPECT_LT(rel_err, rel_tol) << "MC estimate " << mc_mean << " deviates from exact " << exact_coeff << " by " << rel_err * 100 << "%";
+
+    std::cout << "\n=== Vertex Cache Stats ===" << std::endl;
+    auto const &vt = config->get_calculator().get_vertex_types();
+    for (size_t i = 0; i < vt.size(); i++) {
+      auto [lhits, lmisses] = vt[i].get_local_cache_stats();
+      long ltotal           = lhits + lmisses;
+      double l_hit_rate     = ltotal > 0 ? 100.0 * lhits / ltotal : 0.0;
+      std::cout << "  Cumulant order " << (i + 1) << ": local hits=" << lhits << " misses=" << lmisses << " hit_rate=" << l_hit_rate << "%"
+                << std::endl;
+    }
+  }
+}
+
+// Deterministic infinite-U reference-integral check (no MC).
+static void run_infinite_u_check(int order, double U, double beta, double mu, double expected_signed_coeff, double tol) {
+  sc_expansion::Parameters<double> params{U, beta, mu, 0.0, true};
+  sc_expansion::atomic::SumDiagrams<double> calculator(params, order, /*override_fm=*/1);
+  auto [abs_coeff, signed_coeff] = calculator.free_energy_infinite_U_coefficient();
+
+  std::cout << "Expected (Python): " << expected_signed_coeff << std::endl;
+  std::cout << "C++  signed_coeff: " << signed_coeff << std::endl;
+  std::cout << "abs_coeff:         " << abs_coeff << std::endl;
+
+  EXPECT_NEAR(signed_coeff, expected_signed_coeff, tol);
+}
+
+TEST(McmcAtom, InfiniteUDimerOrder2) {
+  run_infinite_u_check(/*order=*/2, /*U=*/8.0, /*beta=*/2.0, /*mu=*/3.0,
+                       /*expected_signed_coeff=*/-0.0012363096839754632, /*tol=*/1e-12);
+}
+TEST(McmcAtom, InfiniteUDimerOrder4) {
+  run_infinite_u_check(/*order=*/4, /*U=*/8.0, /*beta=*/2.0, /*mu=*/3.0,
+                       /*expected_signed_coeff=*/-4.0904630472238777e-04, /*tol=*/1e-12);
+}
+
+TEST(McmcAtom, Order4Coefficient) {
+  run_mcmc_atom_check(/*order=*/4, /*U=*/8.0, /*beta=*/2.0, /*mu=*/3.0,
+                      /*exact_coeff=*/-0.019604213442906773, /*rel_tol=*/0.10, /*n_cycles=*/100000);
+}
+
+// Density-mode MC: T=Dual lets atomic::Configuration extract the .derivative of
+// each Dual result, turning the free-energy MC into a density MC.
+static void run_mcmc_density_check(int order, double U, double beta, double mu, double exact_density_coeff, double rel_tol, int n_cycles) {
+  mpi::communicator world;
+
+  double alpha     = 0.001;
+  int n_warmup     = 2000;
+  int length_cycle = 1;
+
+  sc_expansion::Parameters<Dual> params{Dual(U, 0.0), Dual(beta, 0.0), Dual(mu, 1.0), Dual(0.0, 0.0), true};
+
+  sc_expansion::atomic::SumDiagrams<Dual> calculator(params, order, /*override_fm=*/1);
+
+  auto config = std::make_unique<sc_expansion::atomic::Configuration<Dual>>(params, order, alpha, calculator);
+
+  int random_seed = 32186222 + world.rank() * 786512;
+  int verbosity   = (world.rank() == 0 ? 2 : 0);
+
+  triqs::mc_tools::mc_generic<double> mc("", random_seed, verbosity);
+
+  int n_bins     = 50;
+  int block_size = (n_cycles / n_bins) + 1;
+
+  measure_dimer<Dual> meas(config.get(), n_bins, block_size, alpha);
+  mc.add_move(move<Dual>(config.get(), mc.get_rng()), "time_swap");
+  mc.add_measure(meas, "defensive_measure");
+
+  mc.warmup_and_accumulate(n_warmup, n_cycles, length_cycle, triqs::utility::clock_callback(-1));
+  mc.collect_results(world);
+
+  if (world.rank() == 0) {
+    double mc_mean  = meas.result->coeff;
+    double mc_error = meas.result->error;
+    double rel_err  = std::abs(mc_mean - exact_density_coeff) / std::abs(exact_density_coeff);
+
+    std::cout << "Exact (ED):     " << exact_density_coeff << std::endl;
+    std::cout << "MC estimate:    " << mc_mean << std::endl;
+    std::cout << "MC error:       " << mc_error << std::endl;
+    std::cout << "Relative error: " << rel_err << std::endl;
+
+    EXPECT_LT(rel_err, rel_tol) << "MC density estimate " << mc_mean << " deviates from exact " << exact_density_coeff << " by " << rel_err * 100
+                                << "%";
+  }
+}
+
+TEST(McmcAtom, DensityOrder2MCMCDual) {
+  run_mcmc_density_check(/*order=*/2, /*U=*/8.0, /*beta=*/2.0, /*mu=*/3.0,
+                         /*exact_density_coeff=*/0.0021180825055121203, /*rel_tol=*/0.10, /*n_cycles=*/100000);
+}
+
+int main(int argc, char **argv) {
+  mpi::environment env(argc, argv);
+  ::testing::InitGoogleTest(&argc, argv);
+  return RUN_ALL_TESTS();
+}

@@ -27,6 +27,8 @@
 
 namespace triqs::stat::local {
 
+  using nda::make_regular;
+
   namespace details {
 
     // Represent the jacknifed series.
