@@ -173,8 +173,29 @@ namespace sc_expansion::dimer {
     mutable double phase2_seconds   = 0.0;
     std::vector<std::vector<int>> config_to_local; // [gc_idx][vertex] -> state_idx
 
+    // --- Incremental per-node cumulant cache (factored path) ---
+    // A single MC move changes one tau, hence one operator on a vertex, so most
+    // sub-cumulant nodes of an expensive vertex are unaffected. For vertices whose
+    // plan has >= kNodeCacheThreshold nodes we persist every node value across MC
+    // steps and recompute only the nodes whose (transitive) line dependence
+    // intersects the changed taus; cheaper vertices keep the plain evaluate_plan
+    // path. node_cache_values[v][s][node] is the persistent buffer;
+    // node_line_mask[v][s][node] the precomputed global-line bitmask;
+    // vertex_dirty_lines[v] accumulates changed global-line bits since v's last
+    // refresh; vertex_needs_full[v] forces a full recompute (first eval /
+    // mark_all_dirty). Bitmasks require n_lines <= 63 (always true for the dimer).
+    static constexpr size_t kNodeCacheThreshold = 8;
+    std::vector<char> vertex_use_node_cache;
+    std::vector<std::vector<std::vector<T>>> node_cache_values;     // [v][s][node]
+    std::vector<std::vector<std::vector<uint64_t>>> node_line_mask; // [v][s][node]
+    std::vector<uint64_t> vertex_dirty_lines;
+    std::vector<char> vertex_needs_full;
+
     void setup_vertices(std::vector<VertexType<T> *> const &vertex_types);
     void build_local_plans(HubbardSolver<2, T> const &solver);
+    // Precompute node_line_mask / allocate node_cache_values and decide which
+    // vertices use the incremental cache. Called once, after build_local_plans.
+    void build_node_cache_metadata();
     void compute_spatial_configurations();
     void compute_spatial_configurations_cluster(std::vector<std::pair<int, int>> const &cluster_positions, int n_cluster_sites);
     void compute_spatial_configurations_rooted();

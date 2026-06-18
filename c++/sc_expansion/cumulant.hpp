@@ -187,4 +187,19 @@ namespace sc_expansion {
   T evaluate_plan(CumulantPlan const &plan, Args<N_sites, T> const &master_unprimed, Args<N_sites, T> const &master_primed,
                   HubbardSolver<N_sites, T> const &solver, bool infinite_U);
 
+  // Incremental variant of evaluate_plan for the MC hot path. Reuses cached
+  // per-node values across calls: node i is recomputed only if `recompute_all`
+  // is set OR its line-dependence mask `node_line_mask[i]` intersects
+  // `changed_lines`. `value` is the caller-owned persistent buffer (resized to
+  // plan.nodes.size() on first use); clean nodes keep their previous entry, which
+  // — since a clean node depends on no changed line — is bit-identical to what a
+  // fresh recompute at the current taus would produce. `node_line_mask[i]` is the
+  // set of global hopping-line indices node i depends on (its leaf operators plus
+  // every descendant sub-cumulant), as a bitmask. The return value matches
+  // evaluate_plan exactly for the supplied args.
+  template <int N_sites, typename T>
+  T evaluate_plan_incremental(CumulantPlan const &plan, Args<N_sites, T> const &master_unprimed, Args<N_sites, T> const &master_primed,
+                              HubbardSolver<N_sites, T> const &solver, bool infinite_U, std::vector<T> &value,
+                              std::vector<uint64_t> const &node_line_mask, bool recompute_all, uint64_t changed_lines);
+
 } // namespace sc_expansion

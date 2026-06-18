@@ -942,11 +942,25 @@ namespace sc_expansion::dimer {
     for (int v = 0; v < V; ++v) { this->local_values[v].resize(this->local_states[v].size(), T(0.0)); }
 
     this->vertex_dirty_finite.assign(V, true);
+
+    // Incremental-cache bookkeeping is sized here (alongside vertex_dirty_finite)
+    // so mark_tau_dirty / mark_all_dirty are safe to call before the lazy
+    // build_local_plans; the per-(v,s) buffers/masks and the use-cache decision
+    // are filled later, in build_node_cache_metadata.
+    this->vertex_dirty_lines.assign(V, 0);
+    this->vertex_needs_full.assign(V, (char)1);
+    this->vertex_use_node_cache.assign(V, (char)0);
+    this->node_cache_values.assign(V, {});
+    this->node_line_mask.assign(V, {});
   }
 
   template <typename T> void Diagram<T>::mark_tau_dirty(int tau_index) {
     if (!this->local_states.empty()) {
-      for (int v : this->tau_to_vertices[tau_index]) { this->vertex_dirty_finite[v] = true; }
+      uint64_t bit = (tau_index < 64) ? (uint64_t(1) << tau_index) : 0;
+      for (int v : this->tau_to_vertices[tau_index]) {
+        this->vertex_dirty_finite[v] = true;
+        this->vertex_dirty_lines[v] |= bit; // accumulates changed lines until v is refreshed
+      }
       return;
     }
     for (int v : this->tau_to_vertices[tau_index]) {
@@ -957,6 +971,7 @@ namespace sc_expansion::dimer {
   template <typename T> void Diagram<T>::mark_all_dirty() {
     if (!this->local_states.empty()) {
       std::fill(this->vertex_dirty_finite.begin(), this->vertex_dirty_finite.end(), true);
+      std::fill(this->vertex_needs_full.begin(), this->vertex_needs_full.end(), (char)1); // force full node recompute
       return;
     }
     for (auto &config_instances : this->vertex_instances) {
@@ -1003,6 +1018,67 @@ namespace sc_expansion::dimer {
     }
 
     this->local_plans_built = true;
+    this->build_node_cache_metadata();
+  }
+
+  // Precompute, per expensive vertex, each plan node's transitive global-line
+  // dependence and allocate the persistent value buffer. A node depends on a line
+  // if any of its leaf operators sit on that line, or if any descendant
+  // sub-cumulant does (children precede parents in plan.nodes, so a single forward
+  // pass suffices). Mark nodes evaluate to <n_sigma> and carry no line dependence.
+  template <typename T> void Diagram<T>::build_node_cache_metadata() {
+    int V       = this->graph.get_V();
+    int n_lines = (int)this->hopping_lines.lines.size();
+    // Bitmask line indices must fit in uint64; n_lines is the expansion order
+    // (<= ~12 for the dimer), so this always holds. Otherwise leave the cache
+    // disabled and fall back to plain evaluate_plan.
+    bool lines_ok = (n_lines <= 63);
+
+    for (int v = 0; v < V; ++v) {
+      int n_states     = (int)this->local_states[v].size();
+      size_t max_nodes = 0;
+      for (int s = 0; s < n_states; ++s) max_nodes = std::max(max_nodes, this->local_plans_finite[v][s].nodes.size());
+
+      this->vertex_use_node_cache[v] = (lines_ok && max_nodes >= kNodeCacheThreshold) ? (char)1 : (char)0;
+      if (!this->vertex_use_node_cache[v]) continue;
+
+      this->node_line_mask[v].assign(n_states, {});
+      this->node_cache_values[v].assign(n_states, {});
+      int n_legs = (int)this->legs_per_vertex[v].size();
+
+      for (int s = 0; s < n_states; ++s) {
+        // stable u-index k <-> k-th annihilator leg (in leg order); stable
+        // p-index k <-> k-th creator leg. Mirrors Args::split_from_raw exactly,
+        // so the stable-index -> line map is tau-independent / stable across steps.
+        std::vector<int> u_line, p_line;
+        for (int leg = 0; leg < n_legs; ++leg) {
+          FermionOperator<2, T> op(this->local_states[v][s][leg]);
+          int line = this->legs_per_vertex[v][leg].line_index;
+          if (op.get_action() == 0) u_line.push_back(line);
+          else p_line.push_back(line);
+        }
+
+        auto const &plan = this->local_plans_finite[v][s];
+        std::vector<uint64_t> mask(plan.nodes.size(), 0);
+        std::vector<char> is_mark(plan.nodes.size(), 0);
+        for (int mid : plan.mark_node_ids)
+          if (mid >= 0 && mid < (int)mask.size()) is_mark[mid] = 1;
+
+        for (size_t i = 0; i < plan.nodes.size(); ++i) {
+          uint64_t m = 0;
+          if (!is_mark[i]) {
+            for (int su : plan.nodes[i].leaf.u_global_idx) m |= (uint64_t(1) << u_line[su]);
+            for (int sp : plan.nodes[i].leaf.p_global_idx) m |= (uint64_t(1) << p_line[sp]);
+          }
+          for (auto const &term : plan.nodes[i].subtraction_terms)
+            for (int fid : term.factor_node_ids) m |= mask[fid];
+          mask[i] = m;
+        }
+
+        this->node_line_mask[v][s]    = std::move(mask);
+        this->node_cache_values[v][s] = std::vector<T>(plan.nodes.size(), T(0.0));
+      }
+    }
   }
 
   template <typename T> T Diagram<T>::evaluate_factored(std::vector<double> const &taus, HubbardSolver<2, T> const &solver) {
@@ -1025,13 +1101,25 @@ namespace sc_expansion::dimer {
       std::vector<double> local_taus(n_legs);
       for (int i = 0; i < n_legs; ++i) local_taus[i] = taus[this->legs_per_vertex[v][i].line_index];
 
+      bool use_cache   = this->vertex_use_node_cache[v];
+      bool full        = this->vertex_needs_full[v];
+      uint64_t changed = this->vertex_dirty_lines[v];
+
       for (int s = 0; s < (int)this->local_states[v].size(); ++s) {
         auto [unprimed, primed] = Args<2, T>::split_from_raw(local_taus, this->local_states[v][s]);
-        T val                   = evaluate_plan(plans[v][s], unprimed, primed, solver, /*infinite_U=*/false);
-        values[v][s]            = val * T(unprimed.permutation_sign) * T(primed.permutation_sign);
+        T val;
+        if (use_cache) {
+          val = evaluate_plan_incremental(plans[v][s], unprimed, primed, solver, /*infinite_U=*/false, this->node_cache_values[v][s],
+                                          this->node_line_mask[v][s], full, changed);
+        } else {
+          val = evaluate_plan(plans[v][s], unprimed, primed, solver, /*infinite_U=*/false);
+        }
+        values[v][s] = val * T(unprimed.permutation_sign) * T(primed.permutation_sign);
       }
 
-      dirty[v] = false;
+      dirty[v]                    = false;
+      this->vertex_dirty_lines[v] = 0;
+      this->vertex_needs_full[v]  = false;
     }
     auto t_p2 = std::chrono::high_resolution_clock::now();
 
