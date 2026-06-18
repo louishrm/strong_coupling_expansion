@@ -493,6 +493,57 @@ namespace sc_expansion {
     return C_stable * T(master_unprimed.permutation_sign) * T(master_primed.permutation_sign);
   }
 
+  template <int N_sites, typename T>
+  T evaluate_plan_incremental(CumulantPlan const &plan, Args<N_sites, T> const &master_unprimed, Args<N_sites, T> const &master_primed,
+                              HubbardSolver<N_sites, T> const &solver, bool infinite_U, std::vector<T> &value,
+                              std::vector<uint64_t> const &node_line_mask, bool recompute_all, uint64_t changed_lines) {
+
+    if (plan.root_id < 0) return T(0.0);
+
+    value.resize(plan.nodes.size()); // no-op after the first call; guarantees sizing
+
+    std::vector<int> inv_argsort_u = invert_argsort(master_unprimed.argsort);
+    std::vector<int> inv_argsort_p = invert_argsort(master_primed.argsort);
+
+    for (size_t i = 0; i < plan.nodes.size(); ++i) {
+      // Reuse the cached value when neither this node's leaf nor any descendant
+      // sub-cumulant depends on a changed line. value[i] holds the raw node
+      // value (the master permutation sign is applied once at the return), so it
+      // is reusable regardless of how the master sort moved for OTHER lines.
+      if (!recompute_all && (node_line_mask[i] & changed_lines) == 0) continue;
+
+      auto const &node = plan.nodes[i];
+
+      T v;
+      int mark_slot = -1;
+      for (size_t k = 0; k < plan.mark_node_ids.size(); ++k) {
+        if ((int)i == plan.mark_node_ids[k]) { mark_slot = (int)k; break; }
+      }
+      if (mark_slot >= 0) {
+        v = solver.compute_n_sigma(plan.mark_orbitals[mark_slot]);
+      } else {
+        Args<N_sites, T> args =
+           build_leaf_args_stable<N_sites, T>(node.leaf, master_unprimed, master_primed, inv_argsort_u, inv_argsort_p, plan.coincidence_groups);
+        if (node.leaf_density_orbitals.empty()) {
+          v = infinite_U ? solver.G0n_infinite_U(args) : solver.G0n(args);
+        } else {
+          v = infinite_U ? solver.G0n_with_densities_infinite_U(args, node.leaf_density_orbitals)
+                         : solver.G0n_with_densities(args, node.leaf_density_orbitals);
+        }
+      }
+
+      for (auto const &term : node.subtraction_terms) {
+        T prod = T((double)term.sign);
+        for (int fid : term.factor_node_ids) prod = prod * value[fid];
+        v = v + prod;
+      }
+      value[i] = v;
+    }
+
+    T C_stable = value[plan.root_id];
+    return C_stable * T(master_unprimed.permutation_sign) * T(master_primed.permutation_sign);
+  }
+
   // Explicit instantiations
   template class CumulantSolver<1, double>;
   template class CumulantSolver<1, Dual>;
@@ -507,5 +558,16 @@ namespace sc_expansion {
                                            HubbardSolver<2, double> const &, bool);
   template Dual evaluate_plan<2, Dual>(CumulantPlan const &, Args<2, Dual> const &, Args<2, Dual> const &,
                                        HubbardSolver<2, Dual> const &, bool);
+
+  template double evaluate_plan_incremental<1, double>(CumulantPlan const &, Args<1, double> const &, Args<1, double> const &,
+                                                       HubbardSolver<1, double> const &, bool, std::vector<double> &, std::vector<uint64_t> const &,
+                                                       bool, uint64_t);
+  template Dual evaluate_plan_incremental<1, Dual>(CumulantPlan const &, Args<1, Dual> const &, Args<1, Dual> const &, HubbardSolver<1, Dual> const &,
+                                                   bool, std::vector<Dual> &, std::vector<uint64_t> const &, bool, uint64_t);
+  template double evaluate_plan_incremental<2, double>(CumulantPlan const &, Args<2, double> const &, Args<2, double> const &,
+                                                       HubbardSolver<2, double> const &, bool, std::vector<double> &, std::vector<uint64_t> const &,
+                                                       bool, uint64_t);
+  template Dual evaluate_plan_incremental<2, Dual>(CumulantPlan const &, Args<2, Dual> const &, Args<2, Dual> const &, HubbardSolver<2, Dual> const &,
+                                                   bool, std::vector<Dual> &, std::vector<uint64_t> const &, bool, uint64_t);
 
 } // namespace sc_expansion
