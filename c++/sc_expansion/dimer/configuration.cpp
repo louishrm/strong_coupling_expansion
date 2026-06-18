@@ -14,13 +14,24 @@ namespace sc_expansion::dimer {
     triqs::mc_tools::random_generator RNG("mt19937", 23432);
     for (int i = 0; i < this->order; ++i) this->state[i] = RNG(this->beta);
 
+    // The calculator's per-vertex caches may be shared across Configuration
+    // instances (the alpha pilot reuses the SAME calculator object as production,
+    // and leaves the caches clean but holding the pilot's final-state values).
+    // Mark everything dirty so this initial evaluation is a full recompute
+    // consistent with THIS config's state; every subsequent MC step then updates
+    // incrementally via the move's per-tau dirty marking.
+    this->calculator.clear_all_caches();
     this->omega             = this->compute_omega();
     this->metropolis_weight = std::abs(this->omega + this->alpha);
   }
 
   template <typename T, typename Calculator> double Configuration<T, Calculator>::compute_omega() const {
+    // No blanket cache clear here. The move marks only the vertices touching the
+    // changed tau dirty (and re-dirties them on reject), so the unchanged per-
+    // vertex cumulant values stay valid and are reused across MC steps. Clearing
+    // every step would force a full Phase-1 cumulant recompute of every vertex in
+    // every diagram and defeat the incremental cache entirely.
     T val = this->calculator.compute_sum_diagrams(this->state);
-    this->calculator.clear_all_caches();
     if constexpr (std::is_same_v<T, Dual>) {
       return val.derivative;
     } else {
