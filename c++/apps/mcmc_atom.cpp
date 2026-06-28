@@ -17,97 +17,6 @@
 #include <limits>
 #include <cstdlib>
 
-// Broadcast a rooted catalog (graphs + per-graph mark pair) from rank 0 to all
-// other ranks. Each graph is serialised as broadcast_graphs() does; the marks
-// pair travels alongside as two extra ints per graph. The receiving rank
-// reconstructs (graphs, marks) using Graph's override constructor — i.e. the
-// caller is responsible for having passed rooted symmetry factor / fm = 1 in.
-static void broadcast_rooted_catalog(std::vector<sc_expansion::Graph> &graphs, std::vector<std::vector<int>> &marks, mpi::communicator &world) {
-
-  int n_graphs = (int)graphs.size();
-  MPI_Bcast(&n_graphs, 1, MPI_INT, 0, world.get());
-
-  if (world.rank() != 0) {
-    graphs.clear();
-    marks.clear();
-  }
-
-  for (int g = 0; g < n_graphs; g++) {
-    int V, aut, sym, fm;
-    int bip_only;
-    int mark0, mark1;
-    std::vector<uint8_t> adj;
-
-    if (world.rank() == 0) {
-      auto const &graph = graphs[g];
-      V                 = graph.get_V();
-      aut               = graph.get_automorphism_count();
-      sym               = (int)graph.get_symmetry_factor();
-      fm                = (int)graph.get_free_multiplicity();
-      bip_only          = graph.get_bipartite_only() ? 1 : 0;
-      adj               = graph.get_canonical_form();
-      mark0             = marks[g][0];
-      mark1             = marks[g][1];
-    }
-
-    MPI_Bcast(&V, 1, MPI_INT, 0, world.get());
-    MPI_Bcast(&aut, 1, MPI_INT, 0, world.get());
-    MPI_Bcast(&sym, 1, MPI_INT, 0, world.get());
-    MPI_Bcast(&fm, 1, MPI_INT, 0, world.get());
-    MPI_Bcast(&bip_only, 1, MPI_INT, 0, world.get());
-    MPI_Bcast(&mark0, 1, MPI_INT, 0, world.get());
-    MPI_Bcast(&mark1, 1, MPI_INT, 0, world.get());
-
-    int adj_size = V * V;
-    if (world.rank() != 0) { adj.resize(adj_size); }
-    MPI_Bcast(adj.data(), adj_size, MPI_UNSIGNED_CHAR, 0, world.get());
-
-    if (world.rank() != 0) {
-      graphs.emplace_back(adj, V, aut, sym, fm, bip_only != 0);
-      marks.push_back({mark0, mark1});
-    }
-  }
-}
-
-// Broadcast a vector of Graph objects from rank 0 to all other ranks.
-// Each graph is serialised as: V, automorphism_count, symmetry_factor, free_multiplicity,
-// bipartite_only flag, and the flattened canonical adjacency matrix (V*V uint8_t values).
-static void broadcast_graphs(std::vector<sc_expansion::Graph> &graphs, mpi::communicator &world) {
-
-  int n_graphs = (int)graphs.size();
-  MPI_Bcast(&n_graphs, 1, MPI_INT, 0, world.get());
-
-  if (world.rank() != 0) { graphs.clear(); }
-
-  for (int g = 0; g < n_graphs; g++) {
-    int V, aut, sym, fm;
-    int bip_only;
-    std::vector<uint8_t> adj;
-
-    if (world.rank() == 0) {
-      auto const &graph = graphs[g];
-      V                 = graph.get_V();
-      aut               = graph.get_automorphism_count();
-      sym               = (int)graph.get_symmetry_factor();
-      fm                = (int)graph.get_free_multiplicity();
-      bip_only          = graph.get_bipartite_only() ? 1 : 0;
-      adj               = graph.get_canonical_form();
-    }
-
-    MPI_Bcast(&V, 1, MPI_INT, 0, world.get());
-    MPI_Bcast(&aut, 1, MPI_INT, 0, world.get());
-    MPI_Bcast(&sym, 1, MPI_INT, 0, world.get());
-    MPI_Bcast(&fm, 1, MPI_INT, 0, world.get());
-    MPI_Bcast(&bip_only, 1, MPI_INT, 0, world.get());
-
-    int adj_size = V * V;
-    if (world.rank() != 0) { adj.resize(adj_size); }
-    MPI_Bcast(adj.data(), adj_size, MPI_UNSIGNED_CHAR, 0, world.get());
-
-    if (world.rank() != 0) { graphs.emplace_back(adj, V, aut, sym, fm, bip_only != 0); }
-  }
-}
-
 // MPI-parallel computation of the infinite-U reference integral using SJT.
 // The n! permutations (simplices) are divided into contiguous chunks in SJT order.
 // Each rank fast-forwards the SJT generator to its chunk start, then evaluates its
@@ -202,42 +111,52 @@ void run(mpi::communicator &world, int order, int n_cycles, double U, double bet
     params = {U, beta, mu, 0.0, bipartite, 0.0};
   }
 
-  // --- Phase 1: Rank 0 builds the catalog, then broadcasts to all ranks ---
+  // --- Phase 1: every rank builds an identical catalog independently ---
+  // Both catalogs are deterministic functions of their inputs (free energy:
+  // (order, bipartite); correlator: (order, bipartite, r)), so each rank builds
+  // the same thing with no MPI exchange. This replaces the former rank-0-build-
+  // then-broadcast, which stalled every other rank in a collective for the whole
+  // (~minutes at high order) enumeration and then fired thousands of tiny
+  // per-graph broadcasts at once — a pattern that triggered UCX wireup /
+  // connection-refused failures at large rank counts. The generators' peak
+  // memory is only the deduped catalog (~MB), so per-rank build is safe even at
+  // high rank density; and the ranks would otherwise sit idle during the rank-0
+  // build, so this costs no wall-clock.
   std::vector<sc_expansion::Graph> graphs;
   std::vector<std::vector<int>> rooted_marks;
-  if (world.rank() == 0) {
-    if (corr_mode) {
-      std::cout << "Generating rooted (density-density) catalog on rank 0 for r=(";
+  if (corr_mode) {
+    if (world.rank() == 0) {
+      std::cout << "Building rooted (density-density) catalog per rank for r=(";
       for (size_t i = 0; i < r.size(); ++i) std::cout << r[i] << (i + 1 < r.size() ? "," : "");
       std::cout << ")..." << std::endl;
-      auto t0 = std::chrono::high_resolution_clock::now();
-      sc_expansion::atomic::build_rooted_catalog(order, params.bipartite, r, graphs, rooted_marks);
-      auto t1 = std::chrono::high_resolution_clock::now();
-      std::cout << "Generated " << graphs.size() << " rooted topologies in " << std::chrono::duration<double>(t1 - t0).count() << " s." << std::endl;
+    }
+    auto t0 = std::chrono::high_resolution_clock::now();
+    sc_expansion::atomic::build_rooted_catalog(order, params.bipartite, r, graphs, rooted_marks);
+    auto t1 = std::chrono::high_resolution_clock::now();
+    if (world.rank() == 0)
+      std::cout << "Built " << graphs.size() << " rooted topologies in " << std::chrono::duration<double>(t1 - t0).count() << " s." << std::endl;
+  } else {
+    // Free energy: try the shared on-disk cache (warmed by generate_bipartite_
+    // diagrams for the square lattice, or generate_dimer_diagrams for the full
+    // non-bipartite set), falling back to per-rank generation + rank-0 self-warm.
+    if (sc_expansion::load_vacuum_graphs(order, params.bipartite, graphs)) {
+      if (world.rank() == 0)
+        std::cout << "Loaded " << graphs.size() << " cached diagrams from " << sc_expansion::vacuum_diagrams_path(order, params.bipartite) << std::endl;
     } else {
-      bool loaded = false;
-      if (params.bipartite) {
-        auto path = sc_expansion::bipartite_diagrams_path(order);
-        if (sc_expansion::load_bipartite_graphs(order, graphs)) {
-          std::cout << "Loaded " << graphs.size() << " cached diagrams from " << path << std::endl;
-          loaded = true;
-        }
-      }
-      if (!loaded) {
-        std::cout << "Generating vacuum diagrams on rank 0..." << std::endl;
-        auto t0 = std::chrono::high_resolution_clock::now();
-        sc_expansion::VacuumDiagramGenerator gen(order, params.bipartite);
-        gen.generate();
-        graphs  = gen.get_unique_graphs();
-        auto t1 = std::chrono::high_resolution_clock::now();
+      if (world.rank() == 0) { std::cout << "Cache miss; generating vacuum diagrams per rank..." << std::endl; }
+      auto t0 = std::chrono::high_resolution_clock::now();
+      sc_expansion::VacuumDiagramGenerator gen(order, params.bipartite);
+      gen.generate();
+      graphs  = gen.get_unique_graphs();
+      auto t1 = std::chrono::high_resolution_clock::now();
+      if (world.rank() == 0) {
         std::cout << "Generated " << graphs.size() << " unique diagrams in " << std::chrono::duration<double>(t1 - t0).count() << " s." << std::endl;
+        try {
+          sc_expansion::save_vacuum_graphs(order, params.bipartite, graphs);
+          std::cout << "Cached vacuum diagrams to " << sc_expansion::vacuum_diagrams_path(order, params.bipartite) << "." << std::endl;
+        } catch (std::exception const &e) { std::cerr << "Warning: could not write vacuum-diagram cache: " << e.what() << std::endl; }
       }
     }
-  }
-  if (corr_mode) {
-    broadcast_rooted_catalog(graphs, rooted_marks, world);
-  } else {
-    broadcast_graphs(graphs, world);
   }
 
   // --- Phase 2: All ranks construct the calculator from pre-built graphs ---

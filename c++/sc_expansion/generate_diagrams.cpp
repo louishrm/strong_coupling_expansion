@@ -6,6 +6,7 @@
 #include <fstream>
 #include <queue>
 #include <stdexcept>
+#include <unistd.h> // getpid (process-unique temp name for atomic cache writes)
 
 namespace sc_expansion {
 
@@ -22,35 +23,57 @@ namespace sc_expansion {
   // so the cache lives at <project>/diagrams/ regardless of the executable's CWD.
   static const std::string DIAGRAMS_DIR = std::string(SC_EXPANSION_PROJECT_ROOT) + "/diagrams";
 
-  std::string bipartite_diagrams_path(int order) { return DIAGRAMS_DIR + "/bipartite_order_" + std::to_string(order); }
-
-  void save_bipartite_graphs(int order, const std::vector<Graph> &graphs) {
-    std::filesystem::create_directories(DIAGRAMS_DIR);
-    std::ofstream out(bipartite_diagrams_path(order), std::ios::binary);
-    if (!out) { throw std::runtime_error("Failed to open " + bipartite_diagrams_path(order) + " for writing"); }
-
-    int32_t n = static_cast<int32_t>(graphs.size());
-    out.write(reinterpret_cast<const char *>(&n), sizeof(n));
-
-    for (auto const &g : graphs) {
-      int32_t V     = g.get_V();
-      int32_t aut   = g.get_automorphism_count();
-      int32_t sym   = static_cast<int32_t>(g.get_symmetry_factor());
-      int32_t fm    = static_cast<int32_t>(g.get_free_multiplicity());
-      uint8_t bonly = g.get_bipartite_only() ? 1 : 0;
-      auto adj      = g.get_canonical_form();
-
-      out.write(reinterpret_cast<const char *>(&V), sizeof(V));
-      out.write(reinterpret_cast<const char *>(&aut), sizeof(aut));
-      out.write(reinterpret_cast<const char *>(&sym), sizeof(sym));
-      out.write(reinterpret_cast<const char *>(&fm), sizeof(fm));
-      out.write(reinterpret_cast<const char *>(&bonly), sizeof(bonly));
-      out.write(reinterpret_cast<const char *>(adj.data()), static_cast<std::streamsize>(adj.size()));
-    }
+  std::string vacuum_diagrams_path(int order, bool bipartite_only) {
+    // bipartite_only keeps the historical "bipartite_order_N" filename so
+    // existing caches still load; the full set gets a distinct prefix.
+    return DIAGRAMS_DIR + "/" + (bipartite_only ? "bipartite" : "nonbipartite") + "_order_" + std::to_string(order);
   }
 
-  bool load_bipartite_graphs(int order, std::vector<Graph> &out_graphs) {
-    std::string path = bipartite_diagrams_path(order);
+  void save_vacuum_graphs(int order, bool bipartite_only, const std::vector<Graph> &graphs) {
+    std::filesystem::create_directories(DIAGRAMS_DIR);
+    std::string final_path = vacuum_diagrams_path(order, bipartite_only);
+
+    // Write to a process-unique temp file, then atomically rename into place.
+    // A reader therefore only ever sees a complete file: a crash mid-write
+    // leaves a stray .tmp (not a torn cache), and concurrent writers (e.g.
+    // several array tasks self-warming a cold cache) each rename their own
+    // complete copy — last writer wins, all copies are byte-identical.
+    std::string tmp_path = final_path + ".tmp." + std::to_string(static_cast<long>(::getpid()));
+    {
+      std::ofstream out(tmp_path, std::ios::binary);
+      if (!out) { throw std::runtime_error("Failed to open " + tmp_path + " for writing"); }
+
+      int32_t n = static_cast<int32_t>(graphs.size());
+      out.write(reinterpret_cast<const char *>(&n), sizeof(n));
+
+      for (auto const &g : graphs) {
+        int32_t V     = g.get_V();
+        int32_t aut   = g.get_automorphism_count();
+        int32_t sym   = static_cast<int32_t>(g.get_symmetry_factor());
+        int32_t fm    = static_cast<int32_t>(g.get_free_multiplicity());
+        uint8_t bonly = g.get_bipartite_only() ? 1 : 0;
+        auto adj      = g.get_canonical_form();
+
+        out.write(reinterpret_cast<const char *>(&V), sizeof(V));
+        out.write(reinterpret_cast<const char *>(&aut), sizeof(aut));
+        out.write(reinterpret_cast<const char *>(&sym), sizeof(sym));
+        out.write(reinterpret_cast<const char *>(&fm), sizeof(fm));
+        out.write(reinterpret_cast<const char *>(&bonly), sizeof(bonly));
+        out.write(reinterpret_cast<const char *>(adj.data()), static_cast<std::streamsize>(adj.size()));
+      }
+      out.flush();
+      if (!out) {
+        std::error_code ec;
+        std::filesystem::remove(tmp_path, ec);
+        throw std::runtime_error("Failed while writing " + tmp_path);
+      }
+    } // close the stream before renaming
+
+    std::filesystem::rename(tmp_path, final_path);
+  }
+
+  bool load_vacuum_graphs(int order, bool bipartite_only, std::vector<Graph> &out_graphs) {
+    std::string path = vacuum_diagrams_path(order, bipartite_only);
     if (!std::filesystem::exists(path)) return false;
 
     std::ifstream in(path, std::ios::binary);
@@ -80,6 +103,11 @@ namespace sc_expansion {
     }
     return true;
   }
+
+  // Backward-compatible bipartite-only wrappers (filename unchanged).
+  std::string bipartite_diagrams_path(int order) { return vacuum_diagrams_path(order, /*bipartite_only=*/true); }
+  void save_bipartite_graphs(int order, const std::vector<Graph> &graphs) { save_vacuum_graphs(order, /*bipartite_only=*/true, graphs); }
+  bool load_bipartite_graphs(int order, std::vector<Graph> &out_graphs) { return load_vacuum_graphs(order, /*bipartite_only=*/true, out_graphs); }
 
   std::vector<uint8_t> generate_n_cycle_adjacency_matrix(int n) {
     if (n <= 1) {

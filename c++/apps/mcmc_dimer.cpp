@@ -13,10 +13,13 @@
 // catalogs span bipartite + non-bipartite topologies; params.bipartite is
 // forced false accordingly.
 //
-// Free-energy mode broadcasts the (expensive) vacuum-diagram set from rank 0.
-// Correlator mode enumerates its rooted catalog deterministically from
-// (order, r) on every rank (cheap), so each rank builds an identical
-// SumDiagrams independently — no broadcast.
+// Both modes enumerate their diagram catalog deterministically on every rank
+// (free energy: the vacuum-diagram set from `order`; correlator: the rooted
+// catalog from (order, r)), so each rank builds an identical calculator
+// independently — no broadcast. The vacuum enumeration is CPU-heavy at high
+// order but its peak memory is only the deduped unique-graph set (~MB), so
+// running it per rank is safe even with many ranks per node; the ranks would
+// otherwise sit idle while rank 0 generated, so this costs no wall-clock.
 //
 // Correlator mode embeds on the full (infinite) lattice by default
 // (use_cluster=0), or on a 3-dimer triangular cluster (use_cluster=1,
@@ -48,46 +51,6 @@
 #include <sstream>
 #include <chrono>
 #include <memory>
-
-// Broadcast a vector of Graph objects from rank 0 to all other ranks (used by
-// free-energy mode for the vacuum-diagram set). Each graph is serialised as:
-// V, automorphism_count, symmetry_factor, free_multiplicity, bipartite_only
-// flag, and the flattened canonical adjacency matrix (V*V uint8_t values).
-static void broadcast_graphs(std::vector<sc_expansion::Graph> &graphs, mpi::communicator &world) {
-
-  int n_graphs = (int)graphs.size();
-  MPI_Bcast(&n_graphs, 1, MPI_INT, 0, world.get());
-
-  if (world.rank() != 0) { graphs.clear(); }
-
-  for (int g = 0; g < n_graphs; g++) {
-    int V, aut, sym, fm;
-    int bip_only;
-    std::vector<uint8_t> adj;
-
-    if (world.rank() == 0) {
-      auto const &graph = graphs[g];
-      V                 = graph.get_V();
-      aut               = graph.get_automorphism_count();
-      sym               = (int)graph.get_symmetry_factor();
-      fm                = (int)graph.get_free_multiplicity();
-      bip_only          = graph.get_bipartite_only() ? 1 : 0;
-      adj               = graph.get_canonical_form();
-    }
-
-    MPI_Bcast(&V, 1, MPI_INT, 0, world.get());
-    MPI_Bcast(&aut, 1, MPI_INT, 0, world.get());
-    MPI_Bcast(&sym, 1, MPI_INT, 0, world.get());
-    MPI_Bcast(&fm, 1, MPI_INT, 0, world.get());
-    MPI_Bcast(&bip_only, 1, MPI_INT, 0, world.get());
-
-    int adj_size = V * V;
-    if (world.rank() != 0) { adj.resize(adj_size); }
-    MPI_Bcast(adj.data(), adj_size, MPI_UNSIGNED_CHAR, 0, world.get());
-
-    if (world.rank() != 0) { graphs.emplace_back(adj, V, aut, sym, fm, bip_only != 0); }
-  }
-}
 
 // Shared pilot + production MCMC for either calculator. `ConfigT` is the
 // dimer::Configuration instantiation wrapping `Calculator` (FreeEnergyCalculator
@@ -184,19 +147,43 @@ void run_free_energy(mpi::communicator &world, int order, int n_cycles, double U
 
   if (world.rank() == 0) { std::filesystem::create_directory("./results"); }
 
-  // Rank 0 generates non-bipartite vacuum diagrams, then broadcasts.
+  // Vacuum-diagram catalog. Every rank obtains an identical set with no MPI
+  // exchange: it first tries the on-disk cache (warmed by generate_dimer_
+  // diagrams, or self-warmed below), and on a miss falls back to generating
+  // locally. The enumeration is deterministic in `order`, so the per-rank
+  // fallback yields the same catalog on every rank; its peak memory is just the
+  // deduped unique-graph set (~MB), so it is safe even at high rank density.
+  //
+  // This replaces the former rank-0-only generate-then-broadcast, which stalled
+  // every other rank in a collective for the whole (~minutes at high order)
+  // enumeration and then fired thousands of tiny per-graph broadcasts at once —
+  // a pattern that triggered UCX wireup / connection-refused failures at large
+  // rank counts.
   std::vector<sc_expansion::Graph> graphs;
-  if (world.rank() == 0) {
-    std::cout << "Generating non-bipartite vacuum diagrams on rank 0..." << std::endl;
+  if (sc_expansion::load_vacuum_graphs(order, /*bipartite_only=*/false, graphs)) {
+    if (world.rank() == 0) {
+      std::cout << "Loaded " << graphs.size() << " vacuum diagrams from cache " << sc_expansion::vacuum_diagrams_path(order, false) << "."
+                << std::endl;
+    }
+  } else {
+    if (world.rank() == 0) { std::cout << "Cache miss; generating non-bipartite vacuum diagrams per rank..." << std::endl; }
     auto t0 = std::chrono::high_resolution_clock::now();
     sc_expansion::VacuumDiagramGenerator gen(order, /*bipartite_only=*/false);
     gen.generate();
     graphs  = gen.get_unique_graphs();
     auto t1 = std::chrono::high_resolution_clock::now();
-    std::cout << "Generated " << graphs.size() << " unique diagrams (incl. non-bipartite) in " << std::chrono::duration<double>(t1 - t0).count()
-              << " s." << std::endl;
+    if (world.rank() == 0) {
+      std::cout << "Generated " << graphs.size() << " unique diagrams (incl. non-bipartite) in " << std::chrono::duration<double>(t1 - t0).count()
+                << " s." << std::endl;
+      // Self-warm the cache so subsequent jobs / μ-points / dual_modes skip the
+      // enumeration. Only rank 0 writes; the atomic temp+rename in save makes
+      // concurrent writers (several array tasks racing a cold cache) safe.
+      try {
+        sc_expansion::save_vacuum_graphs(order, /*bipartite_only=*/false, graphs);
+        std::cout << "Cached vacuum diagrams to " << sc_expansion::vacuum_diagrams_path(order, false) << "." << std::endl;
+      } catch (std::exception const &e) { std::cerr << "Warning: could not write vacuum-diagram cache: " << e.what() << std::endl; }
+    }
   }
-  broadcast_graphs(graphs, world);
 
   sc_expansion::dimer::FreeEnergyCalculator<T> calculator(params, order, graphs);
 

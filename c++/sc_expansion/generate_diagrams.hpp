@@ -11,9 +11,23 @@ namespace sc_expansion {
   // On-disk cache for generated vacuum diagrams. Stored as a binary blob in the
   // project-root "diagrams/" directory so MCMC apps can skip regeneration at
   // high orders where diagram enumeration is expensive.
+  //
+  // The cache is keyed by (order, bipartite_only): the bipartite-only and the
+  // full (non-bipartite) catalogs at the same order are *different* sets, so
+  // they get different files (a dimer/non-bipartite job must never load the
+  // bipartite-only set, or vice versa). save_vacuum_graphs writes atomically
+  // (process-unique temp file + rename), so a crash mid-write — or several
+  // writers racing on a cold cache — never leaves a torn file a reader could
+  // pick up. load returns true and fills out_graphs on success, false if the
+  // file is absent (and throws only on a present-but-corrupt file).
+  std::string vacuum_diagrams_path(int order, bool bipartite_only);
+  void save_vacuum_graphs(int order, bool bipartite_only, const std::vector<Graph> &graphs);
+  bool load_vacuum_graphs(int order, bool bipartite_only, std::vector<Graph> &out_graphs);
+
+  // Backward-compatible wrappers for the bipartite-only catalog (bipartite_only
+  // = true). The on-disk filename is unchanged, so existing caches still load.
   std::string bipartite_diagrams_path(int order);
   void save_bipartite_graphs(int order, const std::vector<Graph> &graphs);
-  // Returns true and fills out_graphs on success; false if the file is missing.
   bool load_bipartite_graphs(int order, std::vector<Graph> &out_graphs);
 
 

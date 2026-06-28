@@ -13,6 +13,15 @@
 using namespace sc_expansion;
 
 static void print_bipartite_diagrams(int order) {
+  // Idempotent: if the cache already exists, do nothing (so re-running the prep
+  // step, or a SLURM requeue, is free).
+  std::vector<Graph> existing;
+  if (load_bipartite_graphs(order, existing)) {
+    std::cout << "Cache already present at " << bipartite_diagrams_path(order) << " (" << existing.size() << " diagrams); nothing to do."
+              << std::endl;
+    return;
+  }
+
   VacuumDiagramGenerator gen(order, true);
   reset_embedding_timer();
   auto t0 = std::chrono::steady_clock::now();
