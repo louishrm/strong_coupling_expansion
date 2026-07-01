@@ -384,14 +384,17 @@ namespace sc_expansion {
   // ============================================================================
 
   namespace {
-    std::vector<int> invert_argsort(std::vector<int> const &argsort) {
+    // NOTE: the returning builders below are superseded on the MC hot path by the
+    // allocation-free fill_leaf_args_stable / invert_argsort_into further down;
+    // kept here only as the readable reference the unit tests are checked against.
+    [[maybe_unused]] std::vector<int> invert_argsort(std::vector<int> const &argsort) {
       std::vector<int> inv(argsort.size());
       for (size_t i = 0; i < argsort.size(); ++i) inv[argsort[i]] = (int)i;
       return inv;
     }
 
     template <int N_sites, typename T>
-    Args<N_sites, T> build_leaf_args_stable(CumulantPlan::LeafOps const &leaf, Args<N_sites, T> const &master_unprimed,
+    [[maybe_unused]] Args<N_sites, T> build_leaf_args_stable(CumulantPlan::LeafOps const &leaf, Args<N_sites, T> const &master_unprimed,
                                             Args<N_sites, T> const &master_primed, std::vector<int> const &inv_argsort_u,
                                             std::vector<int> const &inv_argsort_p,
                                             std::vector<CumulantPlan::CoincidenceGroup> const &groups) {
@@ -442,6 +445,93 @@ namespace sc_expansion {
       }
       return Args<N_sites, T>(std::move(taus), std::move(ops));
     }
+
+    // --- Allocation-free hot-path variants -----------------------------------
+    // The MC inner loop evaluates one cumulant plan per (dirty vertex, local
+    // state) every step, and one leaf per plan node. The returning variants
+    // above heap-allocate ~9 small vectors per node (drop/kept buffers + the
+    // Args sort), which dominates at high order. The variants below write into
+    // caller-/thread_local-owned buffers that retain capacity across calls, so
+    // the steady-state hot path performs no allocation. They are semantically
+    // identical to invert_argsort / build_leaf_args_stable and are exercised by
+    // the same cumulant unit tests through evaluate_plan(_incremental).
+
+    inline void invert_argsort_into(std::vector<int> const &argsort, std::vector<int> &inv) {
+      inv.resize(argsort.size());
+      for (size_t i = 0; i < argsort.size(); ++i) inv[argsort[i]] = (int)i;
+    }
+
+    template <int N_sites, typename T>
+    void fill_leaf_args_stable(Args<N_sites, T> &out, CumulantPlan::LeafOps const &leaf, Args<N_sites, T> const &master_unprimed,
+                               Args<N_sites, T> const &master_primed, std::vector<int> const &inv_argsort_u, std::vector<int> const &inv_argsort_p,
+                               std::vector<CumulantPlan::CoincidenceGroup> const &groups) {
+      auto &taus = out.taus;
+      auto &ops  = out.ops;
+      taus.clear();
+      ops.clear();
+
+      auto emit = [&](int u_global, int p_global) {
+        int sp = inv_argsort_p[p_global];
+        int su = inv_argsort_u[u_global];
+        taus.push_back(master_primed.taus[sp]);
+        ops.push_back(master_primed.ops[sp]);
+        taus.push_back(master_unprimed.taus[su]);
+        ops.push_back(master_unprimed.ops[su]);
+      };
+
+      if (groups.empty()) {
+        // Common (vacuum / free-energy) path: no coincidence dropping, kept == leaf.
+        int n_eff = (int)leaf.u_global_idx.size();
+        for (int i = 0; i < n_eff; ++i) emit(leaf.u_global_idx[i], leaf.p_global_idx[i]);
+      } else {
+        // Coincidence-group path (same-site density marks): drop all but the first
+        // occurrence of each group's legs. Mirrors build_leaf_args_stable exactly.
+        thread_local std::vector<char> drop_u, drop_p;
+        thread_local std::vector<int> present_u, present_p, kept_u, kept_p;
+        drop_u.assign(leaf.u_global_idx.size(), 0);
+        drop_p.assign(leaf.p_global_idx.size(), 0);
+        for (auto const &g : groups) {
+          present_u.clear();
+          present_p.clear();
+          for (size_t i = 0; i < leaf.u_global_idx.size(); ++i)
+            if (std::find(g.u_stable.begin(), g.u_stable.end(), leaf.u_global_idx[i]) != g.u_stable.end()) present_u.push_back((int)i);
+          for (size_t i = 0; i < leaf.p_global_idx.size(); ++i)
+            if (std::find(g.p_stable.begin(), g.p_stable.end(), leaf.p_global_idx[i]) != g.p_stable.end()) present_p.push_back((int)i);
+          if (present_u.size() < 2) continue;
+          for (size_t i = 1; i < present_u.size(); ++i) drop_u[present_u[i]] = 1;
+          for (size_t i = 1; i < present_p.size(); ++i) drop_p[present_p[i]] = 1;
+        }
+        kept_u.clear();
+        kept_p.clear();
+        for (size_t i = 0; i < leaf.u_global_idx.size(); ++i)
+          if (!drop_u[i]) kept_u.push_back(leaf.u_global_idx[i]);
+        for (size_t i = 0; i < leaf.p_global_idx.size(); ++i)
+          if (!drop_p[i]) kept_p.push_back(leaf.p_global_idx[i]);
+        int n_eff = (int)kept_u.size();
+        for (int i = 0; i < n_eff; ++i) emit(kept_u[i], kept_p[i]);
+      }
+
+      // In-place stable sort by descending tau (matches Args::sort_args), reusing
+      // thread_local scratch so the steady-state hot path performs no allocation.
+      int order = (int)taus.size();
+      out.order = order;
+      thread_local std::vector<int> argsort_buf;
+      thread_local std::vector<double> tau_buf;
+      thread_local std::vector<FermionOperator<N_sites, T>> op_buf;
+      argsort_buf.resize(order);
+      std::iota(argsort_buf.begin(), argsort_buf.end(), 0);
+      std::stable_sort(argsort_buf.begin(), argsort_buf.end(), [&](int a, int b) { return taus[a] > taus[b]; });
+      out.permutation_sign = (double)compute_permutation_sign(argsort_buf);
+      tau_buf.resize(order);
+      op_buf.resize(order);
+      for (int i = 0; i < order; ++i) {
+        tau_buf[i] = taus[argsort_buf[i]];
+        op_buf[i]  = ops[argsort_buf[i]];
+      }
+      std::swap(taus, tau_buf);
+      std::swap(ops, op_buf);
+      // out.argsort is unused by the G0n evaluators, so it is left stale (no copy).
+    }
   } // namespace
 
   template <int N_sites, typename T>
@@ -450,11 +540,15 @@ namespace sc_expansion {
 
     if (plan.root_id < 0) return T(0.0);
 
-    std::vector<int> inv_argsort_u = invert_argsort(master_unprimed.argsort);
-    std::vector<int> inv_argsort_p = invert_argsort(master_primed.argsort);
+    thread_local std::vector<int> inv_argsort_u, inv_argsort_p;
+    invert_argsort_into(master_unprimed.argsort, inv_argsort_u);
+    invert_argsort_into(master_primed.argsort, inv_argsort_p);
 
-    std::vector<T> value;
+    thread_local std::vector<T> value;
+    value.clear();
     value.reserve(plan.nodes.size());
+
+    thread_local Args<N_sites, T> leaf_args(std::vector<double>{}, std::vector<FermionOperator<N_sites, T>>{});
 
     for (size_t i = 0; i < plan.nodes.size(); ++i) {
       auto const &node = plan.nodes[i];
@@ -471,13 +565,13 @@ namespace sc_expansion {
         // ⟨n_σ⟩_∞ for this equal-time pair, so fall through there.
         v = solver.compute_n_sigma(plan.mark_orbitals[mark_slot]);
       } else {
-        Args<N_sites, T> args =
-           build_leaf_args_stable<N_sites, T>(node.leaf, master_unprimed, master_primed, inv_argsort_u, inv_argsort_p, plan.coincidence_groups);
+        fill_leaf_args_stable<N_sites, T>(leaf_args, node.leaf, master_unprimed, master_primed, inv_argsort_u, inv_argsort_p,
+                                          plan.coincidence_groups);
         if (node.leaf_density_orbitals.empty()) {
-          v = infinite_U ? solver.G0n_infinite_U(args) : solver.G0n(args);
+          v = infinite_U ? solver.G0n_infinite_U(leaf_args) : solver.G0n(leaf_args);
         } else {
-          v = infinite_U ? solver.G0n_with_densities_infinite_U(args, node.leaf_density_orbitals)
-                         : solver.G0n_with_densities(args, node.leaf_density_orbitals);
+          v = infinite_U ? solver.G0n_with_densities_infinite_U(leaf_args, node.leaf_density_orbitals)
+                         : solver.G0n_with_densities(leaf_args, node.leaf_density_orbitals);
         }
       }
 
@@ -502,8 +596,11 @@ namespace sc_expansion {
 
     value.resize(plan.nodes.size()); // no-op after the first call; guarantees sizing
 
-    std::vector<int> inv_argsort_u = invert_argsort(master_unprimed.argsort);
-    std::vector<int> inv_argsort_p = invert_argsort(master_primed.argsort);
+    thread_local std::vector<int> inv_argsort_u, inv_argsort_p;
+    invert_argsort_into(master_unprimed.argsort, inv_argsort_u);
+    invert_argsort_into(master_primed.argsort, inv_argsort_p);
+
+    thread_local Args<N_sites, T> leaf_args(std::vector<double>{}, std::vector<FermionOperator<N_sites, T>>{});
 
     for (size_t i = 0; i < plan.nodes.size(); ++i) {
       // Reuse the cached value when neither this node's leaf nor any descendant
@@ -522,13 +619,13 @@ namespace sc_expansion {
       if (mark_slot >= 0) {
         v = solver.compute_n_sigma(plan.mark_orbitals[mark_slot]);
       } else {
-        Args<N_sites, T> args =
-           build_leaf_args_stable<N_sites, T>(node.leaf, master_unprimed, master_primed, inv_argsort_u, inv_argsort_p, plan.coincidence_groups);
+        fill_leaf_args_stable<N_sites, T>(leaf_args, node.leaf, master_unprimed, master_primed, inv_argsort_u, inv_argsort_p,
+                                          plan.coincidence_groups);
         if (node.leaf_density_orbitals.empty()) {
-          v = infinite_U ? solver.G0n_infinite_U(args) : solver.G0n(args);
+          v = infinite_U ? solver.G0n_infinite_U(leaf_args) : solver.G0n(leaf_args);
         } else {
-          v = infinite_U ? solver.G0n_with_densities_infinite_U(args, node.leaf_density_orbitals)
-                         : solver.G0n_with_densities(args, node.leaf_density_orbitals);
+          v = infinite_U ? solver.G0n_with_densities_infinite_U(leaf_args, node.leaf_density_orbitals)
+                         : solver.G0n_with_densities(leaf_args, node.leaf_density_orbitals);
         }
       }
 

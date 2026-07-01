@@ -51,6 +51,8 @@
 #include <sstream>
 #include <chrono>
 #include <memory>
+#include <algorithm>
+#include <vector>
 
 // Shared pilot + production MCMC for either calculator. `ConfigT` is the
 // dimer::Configuration instantiation wrapping `Calculator` (FreeEnergyCalculator
@@ -190,6 +192,34 @@ void run_free_energy(mpi::communicator &world, int order, int n_cycles, double U
   using ConfigT = sc_expansion::dimer::Configuration<T>;
   auto result   = run_mcmc<T, ConfigT>(world, params, order, n_cycles, calculator, alpha, "dimer_coefficient", n_warmup_cycles, length_cycle,
                                        random_name, random_seed, verbosity);
+
+  if (world.rank() == 0) {
+    // --- Per-diagram timing breakdown (diagnostic) ---------------------------
+    // Phase 1 = cumulant (vertex cumulant) eval; Phase 2 = config-sum. Times are
+    // CUMULATIVE over pilot + warmup + production (the calculator is shared), so
+    // read the RELATIVE split and the ranking of the top offenders, not the
+    // absolute seconds. This tells us whether the per-step cost is dominated by
+    // cumulant evaluation (chase the cumulant/allocation path) or the config sum.
+    double p1_total = 0.0, p2_total = 0.0;
+    std::vector<std::pair<double, int>> by_time;
+    auto const &diags = calculator.get_diagrams();
+    int di = 0;
+    for (auto const &d : diags) {
+      double a = d.get_phase1_time(), b = d.get_phase2_time();
+      p1_total += a;
+      p2_total += b;
+      by_time.emplace_back(a + b, di++);
+    }
+    std::sort(by_time.rbegin(), by_time.rend());
+    std::cout << "--- Diagram timing (cumulative incl. pilot+warmup; relative split is what matters) ---" << std::endl;
+    std::cout << "Phase1 (cumulant) total: " << p1_total << " s   Phase2 (config sum) total: " << p2_total << " s   ("
+              << diags.size() << " diagrams)" << std::endl;
+    for (int k = 0; k < (int)std::min<size_t>(12, by_time.size()); ++k) {
+      auto const &d = diags[by_time[k].second];
+      std::cout << "  diagram #" << by_time[k].second << "  V=" << d.get_graph().get_V() << "  total=" << by_time[k].first
+                << "s  (p1=" << d.get_phase1_time() << "  p2=" << d.get_phase2_time() << ")" << std::endl;
+    }
+  }
 
   if (world.rank() == 0) {
     std::cout << "Order-" << order << " staggered dimer coefficient: " << result.coeff << " ± " << result.error << std::endl;

@@ -41,8 +41,8 @@ namespace sc_expansion::dimer {
 
     // Cluster-restricted embedding: spatial configs computed from only the given
     // positions. Weights are divided by n_cluster_sites for per-dimer values.
-    Diagram(Graph const &graph, std::vector<VertexType<T> *> const &vertex_types,
-            std::vector<std::pair<int, int>> const &cluster_positions, int n_cluster_sites);
+    Diagram(Graph const &graph, std::vector<VertexType<T> *> const &vertex_types, std::vector<std::pair<int, int>> const &cluster_positions,
+            int n_cluster_sites);
 
     // Rooted (density-density correlator) constructor. `marks` are the marked-
     // vertex indices in `graph`'s (canonical) labeling; `sites` is the within-
@@ -200,7 +200,7 @@ namespace sc_expansion::dimer {
     void compute_spatial_configurations_cluster(std::vector<std::pair<int, int>> const &cluster_positions, int n_cluster_sites);
     void compute_spatial_configurations_rooted();
     void compute_spatial_configurations_rooted_cluster(std::vector<std::pair<int, int>> const &cluster_positions, int n_cluster_sites,
-                                                        bool pin_origin);
+                                                       bool pin_origin);
 
     // Graph automorphisms that fix every marked vertex pointwise; also sets
     // rooted_sym_factor (= |these automorphisms| × multi-edge factorial). Shared
@@ -216,8 +216,7 @@ namespace sc_expansion::dimer {
                                std::map<std::vector<uint8_t>, int> &config_counts) const;
 
     void solve_cluster_embedding(int placed_count, std::vector<bool> &placed, std::vector<std::pair<int, int>> &coords,
-                                 std::map<std::vector<uint8_t>, int> &config_counts,
-                                 std::vector<std::pair<int, int>> const &cluster_positions) const;
+                                 std::map<std::vector<uint8_t>, int> &config_counts, std::vector<std::pair<int, int>> const &cluster_positions) const;
 
     std::vector<uint8_t> canonicalize_directions(std::vector<uint8_t> const &dirs, std::vector<std::vector<int>> const &automorphisms,
                                                  bool include_inversion = true) const;
